@@ -1,0 +1,62 @@
+# .github/workflows/ai-analysis.yml
+name: AI Infrastructure Analysis
+
+on:
+  workflow_run:
+    workflows: ["Infrastructure Discovery & Analysis"]
+    types:
+      - completed
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Claude Environment
+        run: |
+          # Clone turbo-flow-claude setup
+          git clone https://github.com/marcuspat/turbo-flow-claude claude-env
+          cd claude-env/devpods && ./setup.sh
+          
+      - name: Download Discovery Reports
+        uses: actions/download-artifact@v3
+        with:
+          name: infrastructure-reports
+          path: reports/
+          
+      - name: AI Analysis
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Decrypt reports
+          cargocrypt decrypt reports/security-scan.json.enc
+          
+          # Run AI analysis with context
+          cat <<EOF | cf-swarm "Analyze infrastructure and provide recommendations"
+          Infrastructure State:
+          $(cat reports/drift-report.json)
+          
+          Security Issues:
+          $(cat reports/security-scan.json)
+          
+          Network Topology:
+          $(cat inventory/kubernetes/cluster-state.json)
+          
+          Provide:
+          1. Critical security issues
+          2. Performance optimizations
+          3. Cost reduction opportunities
+          4. Drift remediation steps
+          EOF
+          
+      - name: Generate Executive Report
+        run: |
+          python scripts/generate_report.py reports/ > reports/executive-summary.md
+          
+      - name: Notify Teams
+        if: contains(fromJson(steps.analyze.outputs.severity), 'critical')
+        run: |
+          # Send notifications for critical issues
+          curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+            -d '{"text":"Critical infrastructure issues detected. Check reports."}'
