@@ -1,0 +1,69 @@
+# .github/workflows/infrastructure-scan.yml
+name: Infrastructure Discovery & Analysis
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Tools
+        run: |
+          # Install all platform tools
+          cargo install k8s-netinspect
+          cargo install secret-scan
+          cargo install driftguard
+          cargo install file-hasher
+          cargo install cargocrypt
+          pip install json-prettify
+          
+      - name: Kubernetes Discovery
+        run: |
+          k8s-netinspect diagnose --output json > inventory/kubernetes/cluster-state.json
+          k8s-netinspect diagnose --namespace production > inventory/kubernetes/prod-namespace.json
+          
+      - name: Security Scan
+        run: |
+          secret-scan . --format json --output reports/security-scan.json
+          
+      - name: Drift Detection
+        run: |
+          driftguard analyze . --recursive --output json --output-file reports/drift-report.json
+          
+      - name: Generate Inventory Hash
+        run: |
+          file-hasher inventory/*.json --algorithm sha256 > reports/inventory-integrity.txt
+          
+      - name: Upload to RAG
+        run: |
+          python scripts/update_rag.py inventory/ rag/
+          
+      - name: Encrypt Sensitive Reports
+        run: |
+          cargocrypt init
+          cargocrypt encrypt reports/security-scan.json
+          
+      - name: Format Reports
+        run: |
+          json-prettify reports/*.json --stats --output reports/formatted/
+          
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: infrastructure-reports
+          path: reports/
