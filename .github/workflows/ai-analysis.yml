@@ -1,62 +1,97 @@
 # .github/workflows/ai-analysis.yml
-name: AI Infrastructure Analysis
+name: AI Infrastructure Analysis & Insights
 
 on:
   workflow_run:
-    workflows: ["Infrastructure Discovery & Analysis"]
+    workflows: ["Infrastructure Discovery & Analysis", "Security Audit & Compliance"]
     types:
       - completed
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      analysis_type:
+        description: 'Analysis type'
+        required: true
+        default: 'comprehensive'
+        type: choice
+        options:
+          - comprehensive
+          - security-focused
+          - performance-focused
+          - cost-optimization
 
 jobs:
-  analyze:
+  ai-analysis:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Claude Environment
-        run: |
-          # Clone turbo-flow-claude setup
-          git clone https://github.com/marcuspat/turbo-flow-claude claude-env
-          cd claude-env/devpods && ./setup.sh
-          
-      - name: Download Discovery Reports
-        uses: actions/download-artifact@v3
-        with:
-          name: infrastructure-reports
-          path: reports/
-          
-      - name: AI Analysis
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          # Decrypt reports
-          cargocrypt decrypt reports/security-scan.json.enc
-          
-          # Run AI analysis with context
-          cat <<EOF | cf-swarm "Analyze infrastructure and provide recommendations"
-          Infrastructure State:
-          $(cat reports/drift-report.json)
-          
-          Security Issues:
-          $(cat reports/security-scan.json)
-          
-          Network Topology:
-          $(cat inventory/kubernetes/cluster-state.json)
-          
-          Provide:
-          1. Critical security issues
-          2. Performance optimizations
-          3. Cost reduction opportunities
-          4. Drift remediation steps
-          EOF
-          
-      - name: Generate Executive Report
-        run: |
-          python scripts/generate_report.py reports/ > reports/executive-summary.md
-          
-      - name: Notify Teams
-        if: contains(fromJson(steps.analyze.outputs.severity), 'critical')
-        run: |
-          # Send notifications for critical issues
-          curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
-            -d '{"text":"Critical infrastructure issues detected. Check reports."}'
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install anthropic requests pyyaml
+
+    - name: Download artifacts
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          if (!fs.existsSync('reports')) {
+            fs.mkdirSync('reports', { recursive: true });
+          }
+
+          const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            run_id: ${{ github.event.workflow_run.id }}
+          });
+
+          for (const artifact of artifacts.data.artifacts) {
+            console.log(`Downloading ${artifact.name}...`);
+            const download = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: artifact.id,
+              archive_format: 'zip'
+            });
+            fs.writeFileSync(`${artifact.name}.zip`, Buffer.from(download.data));
+          }
+
+    - name: Extract artifacts
+      run: |
+        for file in *.zip; do
+          unzip -o "$file" -d reports/
+        done
+
+    - name: Run AI Analysis
+      env:
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      run: |
+        python3 scripts/ai_analysis.py --analysis-type "${{ github.event.inputs.analysis_type || 'comprehensive' }}" --data-dir reports/
+
+    - name: Upload AI Analysis Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: ai-analysis-report
+        path: |
+          reports/ai-analysis-report.json
+        retention-days: 30
+
+    - name: Create Issue for Findings
+      if: always()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        if [ -f "reports/ai-analysis-report.json" ]; then
+          issue_title="🤖 AI Infrastructure Analysis Report"
+          issue_body="AI analysis has been completed for the infrastructure. Check the workflow artifacts for the detailed report."
+          gh issue create --title "$issue_title" --body "$issue_body" --label "ai-analysis,automated" || true
+        fi
