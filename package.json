@@ -1,0 +1,22 @@
+{
+  "name": "noip",
+  "version": "1.0.0",
+  "description": "NetOps Intelligence Platform (NOIP)",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "build": "tsc",
+    "lint": "echo 'Add linting here'",
+    "typecheck": "tsc --noEmit",
+    "playwright": "playwright test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "playwright": "^1.55.1",
+    "typescript": "^5.9.2"
+  }
+}

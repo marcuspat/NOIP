@@ -1,0 +1,11 @@
+{
+  "timestamp": "2025-09-24T00:41:34.727711",
+  "drift_analysis": {
+    "total_resources": 50,
+    "drifted_resources": 2,
+    "drift_percentage": 4.0,
+    "summary": {
+      "critical_issues": 0
+    }
+  }
+}

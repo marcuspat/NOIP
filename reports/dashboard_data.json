@@ -1,0 +1,16 @@
+{
+  "timestamp": "2025-09-24T01:04:28.048857",
+  "security": {
+    "critical_issues": 0,
+    "high_issues": 1,
+    "risk_score": 78
+  },
+  "drift": {
+    "drifted_resources": 2,
+    "drift_percentage": 4.0
+  },
+  "infrastructure": {
+    "node_health_percentage": 95.0
+  },
+  "data_sources": 5
+}

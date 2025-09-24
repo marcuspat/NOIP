@@ -1,0 +1,733 @@
+{
+  "timestamp": "2025-09-24T01:05:48.243571",
+  "project_root": ".",
+  "summary": {
+    "critical": 59,
+    "high": 8,
+    "medium": 2,
+    "low": 0,
+    "info": 0,
+    "total": 69
+  },
+  "risk_score": 634,
+  "risk_level": "CRITICAL",
+  "test_results": [
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: API_KEY=\"your-anthropic-key-here\"",
+      "timestamp": "2025-09-24T01:05:31.063286",
+      "file_path": "README.md",
+      "line_number": 27,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: API_KEY=\"your-anthropic-api-key\"",
+      "timestamp": "2025-09-24T01:05:31.065563",
+      "file_path": "README.md",
+      "line_number": 168,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: private_key",
+      "timestamp": "2025-09-24T01:05:31.089538",
+      "file_path": "docs/security-implementation-plan.md",
+      "line_number": 98,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: AKIAIOSFODNN7EXAMPLE",
+      "timestamp": "2025-09-24T01:05:31.091659",
+      "file_path": "docs/security-implementation-plan.md",
+      "line_number": 392,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: secret = \"AKIAIOSFODNN7EXAMPLE\"",
+      "timestamp": "2025-09-24T01:05:31.091830",
+      "file_path": "docs/security-implementation-plan.md",
+      "line_number": 409,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: AKIAIOSFODNN7EXAMPLE",
+      "timestamp": "2025-09-24T01:05:31.091835",
+      "file_path": "docs/security-implementation-plan.md",
+      "line_number": 409,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: AKIAIOSFODNN7EXAMPLE",
+      "timestamp": "2025-09-24T01:05:31.092063",
+      "file_path": "docs/security-implementation-plan.md",
+      "line_number": 425,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: AUTH_TOKEN",
+      "timestamp": "2025-09-24T01:05:31.246313",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 172,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.247956",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 387,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.247988",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 391,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.248080",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 404,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: auth-token",
+      "timestamp": "2025-09-24T01:05:31.248111",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 406,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.248151",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 412,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.248793",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 497,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.248827",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 501,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: auth-token",
+      "timestamp": "2025-09-24T01:05:31.249618",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 601,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.249672",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 607,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.251613",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 842,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.251687",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 854,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.251797",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 871,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.251906",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 886,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.252012",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 899,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.252105",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 912,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.252179",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 923,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.252304",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 943,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.252494",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 966,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.252748",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 1004,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.252965",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 1032,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.253058",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 1045,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.253385",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 1064,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.254015",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 1104,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.254480",
+      "file_path": "agents/cypress-e2e-testing-specialist.md",
+      "line_number": 1139,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.815331",
+      "file_path": "agents/jest-testing-specialist.md",
+      "line_number": 1203,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.815422",
+      "file_path": "agents/jest-testing-specialist.md",
+      "line_number": 1216,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.815551",
+      "file_path": "agents/jest-testing-specialist.md",
+      "line_number": 1237,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.815727",
+      "file_path": "agents/jest-testing-specialist.md",
+      "line_number": 1263,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.816361",
+      "file_path": "agents/jest-testing-specialist.md",
+      "line_number": 1363,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:31.816498",
+      "file_path": "agents/jest-testing-specialist.md",
+      "line_number": 1385,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: password='your_password'",
+      "timestamp": "2025-09-24T01:05:31.908994",
+      "file_path": "agents/redis-specialist.md",
+      "line_number": 257,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: password='your_password'",
+      "timestamp": "2025-09-24T01:05:31.909029",
+      "file_path": "agents/redis-specialist.md",
+      "line_number": 258,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:32.053189",
+      "file_path": "agents/aws-cloud-architect.md",
+      "line_number": 1427,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:32.063801",
+      "file_path": "agents/big-bang-integration-specialist.md",
+      "line_number": 733,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: AuthToken",
+      "timestamp": "2025-09-24T01:05:32.063822",
+      "file_path": "agents/big-bang-integration-specialist.md",
+      "line_number": 734,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:32.063859",
+      "file_path": "agents/big-bang-integration-specialist.md",
+      "line_number": 738,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:32.063916",
+      "file_path": "agents/big-bang-integration-specialist.md",
+      "line_number": 743,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:32.064117",
+      "file_path": "agents/big-bang-integration-specialist.md",
+      "line_number": 760,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:32.064193",
+      "file_path": "agents/big-bang-integration-specialist.md",
+      "line_number": 767,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: password=\"test\"",
+      "timestamp": "2025-09-24T01:05:33.578611",
+      "file_path": "agents/security-testing-specialist.md",
+      "line_number": 181,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: auth_token",
+      "timestamp": "2025-09-24T01:05:34.094281",
+      "file_path": "agents/react-19-specialist.md",
+      "line_number": 1433,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: auth-token",
+      "timestamp": "2025-09-24T01:05:34.478770",
+      "file_path": "agents/graphql-query-language-specialist.md",
+      "line_number": 315,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:34.481343",
+      "file_path": "agents/graphql-query-language-specialist.md",
+      "line_number": 540,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:34.707167",
+      "file_path": "agents/playwright-testing-specialist.md",
+      "line_number": 404,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:34.707191",
+      "file_path": "agents/playwright-testing-specialist.md",
+      "line_number": 405,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:34.707265",
+      "file_path": "agents/playwright-testing-specialist.md",
+      "line_number": 414,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:34.708898",
+      "file_path": "agents/playwright-testing-specialist.md",
+      "line_number": 616,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:34.709059",
+      "file_path": "agents/playwright-testing-specialist.md",
+      "line_number": 636,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: authToken",
+      "timestamp": "2025-09-24T01:05:34.709130",
+      "file_path": "agents/playwright-testing-specialist.md",
+      "line_number": 644,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: privateKey",
+      "timestamp": "2025-09-24T01:05:35.032551",
+      "file_path": ".claude/agents/consensus/security-manager.md",
+      "line_number": 48,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Secret Detection",
+      "status": "FAIL",
+      "severity": "CRITICAL",
+      "details": "Potential secret found: privateKey",
+      "timestamp": "2025-09-24T01:05:35.032812",
+      "file_path": ".claude/agents/consensus/security-manager.md",
+      "line_number": 74,
+      "recommendation": "Remove hardcoded secrets and use environment variables or secret management"
+    },
+    {
+      "test_name": "Vulnerability Detection",
+      "status": "WARN",
+      "severity": "HIGH",
+      "details": "Potential vulnerability: Use of eval() - potential code injection",
+      "timestamp": "2025-09-24T01:05:35.453458",
+      "file_path": "scripts/security-testing-framework.py",
+      "line_number": 79,
+      "recommendation": "Review and mitigate potential security vulnerability"
+    },
+    {
+      "test_name": "Vulnerability Detection",
+      "status": "WARN",
+      "severity": "HIGH",
+      "details": "Potential vulnerability: Use of document.write() - potential XSS",
+      "timestamp": "2025-09-24T01:05:35.453481",
+      "file_path": "scripts/security-testing-framework.py",
+      "line_number": 80,
+      "recommendation": "Review and mitigate potential security vulnerability"
+    },
+    {
+      "test_name": "Vulnerability Detection",
+      "status": "WARN",
+      "severity": "HIGH",
+      "details": "Potential vulnerability: Use of exec() - potential code injection",
+      "timestamp": "2025-09-24T01:05:35.453506",
+      "file_path": "scripts/security-testing-framework.py",
+      "line_number": 82,
+      "recommendation": "Review and mitigate potential security vulnerability"
+    },
+    {
+      "test_name": "Vulnerability Detection",
+      "status": "WARN",
+      "severity": "HIGH",
+      "details": "Potential vulnerability: Use of system() - potential command injection",
+      "timestamp": "2025-09-24T01:05:35.453519",
+      "file_path": "scripts/security-testing-framework.py",
+      "line_number": 83,
+      "recommendation": "Review and mitigate potential security vulnerability"
+    },
+    {
+      "test_name": "Vulnerability Detection",
+      "status": "WARN",
+      "severity": "HIGH",
+      "details": "Potential vulnerability: Use of os.system - potential command injection",
+      "timestamp": "2025-09-24T01:05:35.453544",
+      "file_path": "scripts/security-testing-framework.py",
+      "line_number": 85,
+      "recommendation": "Review and mitigate potential security vulnerability"
+    },
+    {
+      "test_name": "Vulnerability Detection",
+      "status": "WARN",
+      "severity": "HIGH",
+      "details": "Potential vulnerability: Use of subprocess - potential command injection",
+      "timestamp": "2025-09-24T01:05:35.454845",
+      "file_path": "scripts/security-testing-framework.py",
+      "line_number": 281,
+      "recommendation": "Review and mitigate potential security vulnerability"
+    },
+    {
+      "test_name": "Vulnerability Detection",
+      "status": "WARN",
+      "severity": "HIGH",
+      "details": "Potential vulnerability: Use of subprocess - potential command injection",
+      "timestamp": "2025-09-24T01:05:35.455159",
+      "file_path": "scripts/security-testing-framework.py",
+      "line_number": 326,
+      "recommendation": "Review and mitigate potential security vulnerability"
+    },
+    {
+      "test_name": "File Integrity Check",
+      "status": "FAIL",
+      "severity": "HIGH",
+      "details": "Suspicious file extension: .bat",
+      "timestamp": "2025-09-24T01:05:35.485502",
+      "file_path": "claude-flow.bat",
+      "line_number": null,
+      "recommendation": "Review suspicious executable file"
+    },
+    {
+      "test_name": "File Permission Check",
+      "status": "WARN",
+      "severity": "MEDIUM",
+      "details": "Insecure file permissions: 0o100666",
+      "timestamp": "2025-09-24T01:05:35.529094",
+      "file_path": "package.json",
+      "line_number": null,
+      "recommendation": "Set restrictive file permissions (chmod 644)"
+    },
+    {
+      "test_name": "File Permission Check",
+      "status": "WARN",
+      "severity": "MEDIUM",
+      "details": "Insecure file permissions: 0o100666",
+      "timestamp": "2025-09-24T01:05:35.529183",
+      "file_path": "requirements.txt",
+      "line_number": null,
+      "recommendation": "Set restrictive file permissions (chmod 644)"
+    }
+  ],
+  "encryption_results": [
+    {
+      "algorithm": "AES-256-CBC",
+      "key_size": 256,
+      "status": "PASS",
+      "performance_ms": 1.7540454864501953,
+      "test_data": "Test data for encryption verification"
+    },
+    {
+      "algorithm": "SHA-256",
+      "key_size": 256,
+      "status": "PASS",
+      "performance_ms": 0.030517578125,
+      "test_data": "Test data for hashing verification"
+    }
+  ],
+  "recommendations": [
+    "IMMEDIATE ACTION REQUIRED: Address all CRITICAL security issues",
+    "Remove hardcoded secrets and implement proper secret management",
+    "Review and mitigate potential code injection vulnerabilities",
+    "Review and fix insecure file permissions",
+    "Implement regular security scanning in CI/CD pipeline",
+    "Use environment variables for configuration",
+    "Enable security headers in web applications",
+    "Implement proper input validation",
+    "Regular security audits and penetration testing"
+  ]
+}

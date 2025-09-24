@@ -1,0 +1,28 @@
+{
+  "timestamp": "2025-09-24T00:41:34.727240",
+  "target": "test",
+  "scan_type": "full",
+  "kubernetes": {
+    "clusters": [
+      {
+        "name": "test-cluster",
+        "nodes": 3,
+        "pods": 12,
+        "namespaces": 5,
+        "version": "v1.28.0"
+      }
+    ]
+  },
+  "network": {
+    "subnets": 2,
+    "instances": 6,
+    "load_balancers": 1,
+    "security_groups": 4
+  },
+  "cloud": {
+    "provider": "aws",
+    "regions": 1,
+    "services": 5,
+    "cost_estimate": 2500
+  }
+}

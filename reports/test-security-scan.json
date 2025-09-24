@@ -1,0 +1,1 @@
+{"timestamp": "2024-01-01T12:00:00Z", "security": {"critical_issues": 0, "high_issues": 1, "risk_score": 78}, "drift": {"drifted_resources": 2, "drift_percentage": 4.0}, "infrastructure": {"node_health_percentage": 95.0}}

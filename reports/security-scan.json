@@ -1,0 +1,10 @@
+{
+  "timestamp": "2025-09-24T00:41:34.727551",
+  "scan_results": {
+    "total_findings": 5,
+    "critical": 0,
+    "high": 1,
+    "medium": 2,
+    "low": 2
+  }
+}

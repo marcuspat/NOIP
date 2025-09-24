@@ -1,0 +1,921 @@
+# .github/workflows/ai-analysis.yml
+name: AI Infrastructure Analysis & Insights
+
+on:
+  workflow_run:
+    workflows: ["Infrastructure Discovery & Analysis", "Security Audit & Compliance"]
+    types:
+      - completed
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      analysis_type:
+        description: 'Analysis type'
+        required: true
+        default: 'comprehensive'
+        type: choice
+        options:
+          - comprehensive
+          - security-focused
+          - performance-focused
+          - cost-optimization
+          - compliance-review
+      data_sources:
+        description: 'Data sources to include'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - infrastructure-only
+          - security-only
+          - drift-only
+      generate_report:
+        description: 'Generate detailed report'
+        required: true
+        default: 'true'
+        type: boolean
+      create_issue:
+        description: 'Create GitHub issue for findings'
+        required: true
+        default: 'true'
+        type: boolean
+  schedule:
+    - cron: '0 8 * * *'  # Daily at 8 AM UTC
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'scripts/ai-analysis.py'
+      - 'claude-flow/**'
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+  CLAUDE_MODEL: 'claude-3-sonnet-20240229'
+
+jobs:
+  wait-for-workflows:
+    name: Wait for Dependent Workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      infra-run-id: ${{ steps.wait.outputs.infra-run-id }}
+      security-run-id: ${{ steps.wait.outputs.security-run-id }}
+      artifacts-available: ${{ steps.check.outputs.artifacts-available }}
+
+    steps:
+      - name: Wait for workflows to complete
+        id: wait
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const runId = context.payload.workflow_run.id;
+
+            // Wait for infrastructure scan workflow
+            let infraRunId = null;
+            let securityRunId = null;
+
+            if (context.payload.workflow_run.name === 'Infrastructure Discovery & Analysis') {
+              infraRunId = runId;
+            } else if (context.payload.workflow_run.name === 'Security Audit & Compliance') {
+              securityRunId = runId;
+            }
+
+            // If triggered manually, find the latest completed runs
+            if (context.eventName === 'workflow_dispatch') {
+              const infraRuns = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: 'infrastructure-scan.yml',
+                per_page: 1,
+                status: 'completed'
+              });
+
+              const securityRuns = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: 'security-audit.yml',
+                per_page: 1,
+                status: 'completed'
+              });
+
+              if (infraRuns.data.workflow_runs.length > 0) {
+                infraRunId = infraRuns.data.workflow_runs[0].id;
+              }
+
+              if (securityRuns.data.workflow_runs.length > 0) {
+                securityRunId = securityRuns.data.workflow_runs[0].id;
+              }
+            }
+
+            core.setOutput('infra-run-id', infraRunId);
+            core.setOutput('security-run-id', securityRunId);
+
+      - name: Check artifact availability
+        id: check
+        run: |
+          echo "Checking artifact availability..."
+          # In a real implementation, you'd check if artifacts exist
+          echo "artifacts-available=true" >> $GITHUB_OUTPUT
+
+  data-collection:
+    name: Collect Analysis Data
+    runs-on: ubuntu-latest
+    needs: wait-for-workflows
+    if: needs.wait-for-workflows.outputs.artifacts-available == 'true'
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Download infrastructure artifacts
+        if: ${{ needs.wait-for-workflows.outputs.infra-run-id != '' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const runId = '${{ needs.wait-for-workflows.outputs.infra-run-id }}';
+
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner,
+              repo,
+              run_id: parseInt(runId)
+            });
+
+            for (const artifact of artifacts.data.artifacts) {
+              if (artifact.name.includes('infrastructure-reports')) {
+                await exec.exec('mkdir -p reports');
+                await exec.exec(`curl -L -o reports.zip -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "${artifact.archive_download_url}"`);
+                await exec.exec('unzip -q reports.zip -d reports/');
+                await exec.exec('rm reports.zip');
+                break;
+              }
+            }
+
+      - name: Download security artifacts
+        if: ${{ needs.wait-for-workflows.outputs.security-run-id != '' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const runId = '${{ needs.wait-for-workflows.outputs.security-run-id }}';
+
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner,
+              repo,
+              run_id: parseInt(runId)
+            });
+
+            for (const artifact of artifacts.data.artifacts) {
+              if (artifact.name.includes('security-audit-reports') || artifact.name.includes('compliance-reports')) {
+                await exec.exec('mkdir -p reports/security');
+                await exec.exec(`curl -L -o security.zip -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "${artifact.archive_download_url}"`);
+                await exec.exec('unzip -q security.zip -d reports/security/');
+                await exec.exec('rm security.zip');
+                break;
+              }
+            }
+
+      - name: Verify data sources
+        run: |
+          echo "🔍 Verifying data sources..."
+
+          python3 << 'EOF'
+          import json
+          from pathlib import Path
+
+          data_status = {
+            "timestamp": "$(date -Iseconds)",
+            "analysis_type": "${{ github.event.inputs.analysis_type || 'comprehensive' }}",
+            "data_sources": {},
+            "files_found": []
+          }
+
+          # Check infrastructure data
+          infra_files = [
+            "reports/drift-report.json",
+            "reports/security-scan.json",
+            "inventory/kubernetes/cluster-state.json",
+            "reports/inventory-integrity.json"
+          ]
+
+          for file_path in infra_files:
+            if Path(file_path).exists():
+              data_status["data_sources"]["infrastructure"] = True
+              data_status["files_found"].append(file_path)
+
+          # Check security data
+          security_files = [
+            "reports/security/security-audit.json",
+            "reports/security/compliance-report.json",
+            "reports/security/security-gate.json"
+          ]
+
+          for file_path in security_files:
+            if Path(file_path).exists():
+              data_status["data_sources"]["security"] = True
+              data_status["files_found"].append(file_path)
+
+          # Save data status
+          with open("reports/data-status.json", "w") as f:
+            json.dump(data_status, f, indent=2)
+
+          print(f"✅ Data verification complete. Found {len(data_status['files_found'])} data files")
+          EOF
+
+      - name: Upload data collection results
+        uses: actions/upload-artifact@v3
+        with:
+          name: analysis-data
+          path: |
+            reports/
+            inventory/
+          retention-days: 7
+
+  ai-analysis:
+    name: AI-Powered Analysis
+    runs-on: ubuntu-latest
+    needs: data-collection
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing AI analysis dependencies..."
+
+          # Install Python packages
+          pip install anthropic openai requests beautifulsoup4 pandas numpy plotly
+
+          # Install Claude Flow if available
+          if [ -f "claude-flow/package.json" ]; then
+            cd claude-flow && npm install && cd ..
+          fi
+
+      - name: Download collected data
+        uses: actions/download-artifact@v3
+        with:
+          name: analysis-data
+          path: reports/
+
+      - name: Initialize Claude Flow
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "🤖 Initializing Claude Flow..."
+
+          # Initialize Claude Flow environment
+          if [ -f "claude-flow" ]; then
+            export CLAUDE_FLOW_CONFIG="claude-flow.config.json"
+            export WORKSPACE_FOLDER="/workspaces/NOIP"
+
+            # Start Claude Flow session
+            cat > claude-flow-session.json << EOF
+            {
+              "session_id": "ai-analysis-${{ github.run_id }}",
+              "analysis_type": "${{ github.event.inputs.analysis_type || 'comprehensive' }}",
+              "data_sources": "${{ github.event.inputs.data_sources || 'all' }}",
+              "started_at": "$(date -Iseconds)"
+            }
+            EOF
+
+            echo "✅ Claude Flow initialized"
+          else
+            echo "⚠️  Claude Flow not available, using direct API calls"
+          fi
+
+      - name: Run AI Analysis
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          echo "🤖 Running AI infrastructure analysis..."
+
+          python3 << 'EOF'
+          import json
+          import os
+          import requests
+          import anthropic
+          from pathlib import Path
+          from datetime import datetime
+          import hashlib
+
+          class AIInfrastructureAnalyzer:
+              def __init__(self):
+                  self.anthropic_client = anthropic.Anthropic(
+                      api_key=os.environ.get("ANTHROPIC_API_KEY")
+                  )
+                  self.analysis_type = "${{ github.event.inputs.analysis_type || 'comprehensive' }}"
+                  self.data_sources = "${{ github.event.inputs.data_sources || 'all' }}"
+
+              def load_data(self):
+                  """Load all available analysis data"""
+                  data = {
+                      "infrastructure": {},
+                      "security": {},
+                      "compliance": {},
+                      "drift": {}
+                  }
+
+                  # Load infrastructure data
+                  infra_files = {
+                      "drift": "reports/drift-report.json",
+                      "security": "reports/security-scan.json",
+                      "kubernetes": "inventory/kubernetes/cluster-state.json",
+                      "integrity": "reports/inventory-integrity.json"
+                  }
+
+                  for key, file_path in infra_files.items():
+                      if Path(file_path).exists():
+                          try:
+                              with open(file_path) as f:
+                                  data["infrastructure"][key] = json.load(f)
+                          except Exception as e:
+                              print(f"Warning: Could not load {file_path}: {e}")
+
+                  # Load security data
+                  security_files = {
+                      "audit": "reports/security/security-audit.json",
+                      "compliance": "reports/security/compliance-report.json",
+                      "gate": "reports/security/security-gate.json"
+                  }
+
+                  for key, file_path in security_files.items():
+                      if Path(file_path).exists():
+                          try:
+                              with open(file_path) as f:
+                                  data["security"][key] = json.load(f)
+                          except Exception as e:
+                              print(f"Warning: Could not load {file_path}: {e}")
+
+                  return data
+
+              def create_analysis_prompt(self, data):
+                  """Create context-aware analysis prompt"""
+
+                  # Extract key insights from data
+                  drift_summary = data.get("infrastructure", {}).get("drift", {}).get("summary", {})
+                  security_summary = data.get("security", {}).get("audit", {}).get("summary", {})
+                  k8s_info = data.get("infrastructure", {}).get("kubernetes", {}).get("cluster_info", {})
+                  compliance_score = data.get("security", {}).get("compliance", {}).get("compliance_score", 100)
+
+                  prompt = |2-
+              # NetOps Infrastructure Analysis Request
+
+              ## Analysis Configuration
+              - **Analysis Type:** {self.analysis_type}
+              - **Data Sources:** {self.data_sources}
+              - **Timestamp:** {datetime.now().isoformat()}
+
+              ## Current Infrastructure State
+
+              ### Drift Analysis
+              - **Total Resources:** {drift_summary.get('total_resources', 'N/A')}
+              - **Drifted Resources:** {drift_summary.get('drifted_resources', 'N/A')}
+              - **Drift Percentage:** {drift_summary.get('drift_percentage', 'N/A')}%
+- **Critical Issues:** {drift_summary.get('critical_issues', 0)}
+- **Major Issues:** {drift_summary.get('major_issues', 0)}
+
+### Security Posture
+- **Total Findings:** {security_summary.get('total_findings', 'N/A')}
+- **Critical Issues:** {security_summary.get('critical', 0)}
+- **High Issues:** {security_summary.get('high', 0)}
+- **Medium Issues:** {security_summary.get('medium', 0)}
+- **Risk Level:** {data.get('security', {}).get('audit', {}).get('risk_level', 'Unknown')}
+
+### Kubernetes Cluster
+- **Cluster Name:** {k8s_info.get('name', 'Unknown')}
+- **Version:** {k8s_info.get('version', 'Unknown')}
+- **Nodes:** {k8s_info.get('nodes', 'N/A')}
+- **Pods:** {k8s_info.get('pods', 'N/A')}
+- **Namespaces:** {k8s_info.get('namespaces', 'N/A')}
+
+### Compliance Status
+- **Compliance Score:** {compliance_score}%
+- **Status:** {'Passing' if compliance_score >= 80 else 'Needs Attention' if compliance_score >= 60 else 'Critical'}
+
+## Analysis Focus
+"""
+
+                  # Add specific analysis requirements based on type
+                  if self.analysis_type == "comprehensive":
+                      prompt += """
+Provide a comprehensive analysis covering all aspects of the infrastructure:
+
+1. **Security Assessment**
+   - Critical vulnerabilities and immediate remediation steps
+   - Security posture improvements and best practices
+   - Threat landscape analysis based on current findings
+
+2. **Performance Optimization**
+   - Resource utilization analysis and scaling recommendations
+   - Performance bottlenecks and optimization opportunities
+   - Capacity planning suggestions
+
+3. **Cost Optimization**
+   - Resource over-provisioning identification
+   - Cost reduction opportunities without compromising security
+   - ROI calculations for proposed changes
+
+4. **Drift Management**
+   - Root cause analysis of configuration drift
+   - Automated remediation strategies
+   - Preventive measures for future drift
+
+5. **Compliance & Governance**
+   - Compliance gap analysis
+   - Policy recommendations
+   - Audit trail improvements
+
+6. **Strategic Recommendations**
+   - Short-term (0-30 days), medium-term (30-90 days), and long-term (90+ days) roadmap
+   - Implementation priorities and resource requirements
+   - Success metrics and KPIs
+"""
+                  elif self.analysis_type == "security-focused":
+                      prompt += """
+Focus on security analysis and recommendations:
+
+1. **Threat Assessment**
+   - Current threat landscape based on findings
+   - Vulnerability prioritization
+   - Attack surface analysis
+
+2. **Security Controls**
+   - Gap analysis in current security measures
+   - Recommendations for additional controls
+   - Implementation roadmap
+
+3. **Incident Response**
+   - Readiness assessment
+   - Response procedure improvements
+   - Lessons learned from current findings
+
+4. **Security Posture**
+   - Overall security health assessment
+   - Trend analysis and predictions
+   - Maturity model evaluation
+"""
+                  elif self.analysis_type == "performance-focused":
+                      prompt += """
+Focus on performance optimization:
+
+1. **Resource Analysis**
+   - Current utilization patterns
+   - Bottleneck identification
+   - Scaling analysis
+
+2. **Performance Metrics**
+   - Current performance baseline
+   - Performance gaps
+   - Improvement targets
+
+3. **Optimization Strategies**
+   - Immediate performance wins
+   - Medium-term optimizations
+   - Long-term performance planning
+
+4. **Monitoring & Alerting**
+   - Current monitoring effectiveness
+   - Alerting improvements
+   - Proactive monitoring setup
+"""
+                  elif self.analysis_type == "cost-optimization":
+                      prompt += """
+Focus on cost optimization:
+
+1. **Cost Analysis**
+   - Current cost breakdown
+   - Cost drivers identification
+   - Optimization opportunities
+
+2. **Resource Optimization**
+   - Over-provisioned resources
+   - Underutilized infrastructure
+   - Rightsizing recommendations
+
+3. **Cost Saving Strategies**
+   - Immediate cost savings
+   - Medium-term cost reductions
+   - Long-term cost efficiency
+
+4. **ROI Analysis**
+   - Cost vs. benefit analysis
+   - Implementation costs
+   - Expected savings timeline
+"""
+
+                  prompt += f"""
+
+## Expected Output Format
+Provide your analysis in a structured markdown format with:
+
+### Executive Summary
+- Key findings in bullet points
+- Critical issues requiring immediate attention
+- Overall infrastructure health assessment
+
+### Detailed Analysis
+- Detailed breakdown of each finding category
+- Root cause analysis
+- Impact assessment
+
+### Recommendations
+- Prioritized action items
+- Implementation steps
+- Resource requirements
+- Timeline estimates
+
+### Success Metrics
+- KPIs for measuring improvement
+- Monitoring recommendations
+- Success criteria
+
+Please provide actionable, specific, and prioritized recommendations based on the current infrastructure state and analysis focus.
+"""
+
+                  return prompt
+
+              def analyze_with_claude(self, prompt):
+                  """Analyze data using Claude AI"""
+                  try:
+                      response = self.anthropic_client.messages.create(
+                          model="${{ env.CLAUDE_MODEL }}",
+                          max_tokens=4000,
+                          temperature=0.1,
+                          messages=[
+                              {
+                                  "role": "user",
+                                  "content": prompt
+                              }
+                          ]
+                      )
+                      return response.content[0].text
+                  except Exception as e:
+                      return f"# AI Analysis Error\n\nCould not perform AI analysis: {str(e)}"
+
+              def generate_analysis_report(self, analysis_text):
+                  """Generate comprehensive analysis report"""
+
+                  # Create structured report
+                  report = {
+                      "metadata": {
+                          "analysis_id": hashlib.sha256(f"{datetime.now().isoformat()}_{self.analysis_type}".encode()).hexdigest()[:16],
+                          "timestamp": datetime.now().isoformat(),
+                          "analysis_type": self.analysis_type,
+                          "data_sources": self.data_sources,
+                          "repository": "${{ github.repository }}",
+                          "run_id": "${{ github.run_id }}",
+                          "trigger": "${{ github.event_name }}"
+                      },
+                      "analysis": analysis_text,
+                      "findings": {
+                          "security_issues": 0,
+                          "performance_issues": 0,
+                          "cost_opportunities": 0,
+                          "compliance_gaps": 0
+                      },
+                      "recommendations": [],
+                      "priority": "medium"
+                  }
+
+                  # Extract some basic metrics from the analysis
+                  if "critical" in analysis_text.lower():
+                      report["priority"] = "critical"
+                  elif "high" in analysis_text.lower():
+                      report["priority"] = "high"
+
+                  return report
+
+              def run_analysis(self):
+                  """Run complete AI analysis pipeline"""
+                  print("🚀 Starting AI infrastructure analysis...")
+
+                  # Load data
+                  print("📊 Loading infrastructure data...")
+                  data = self.load_data()
+
+                  # Create analysis prompt
+                  print("🤖 Creating analysis prompt...")
+                  prompt = self.create_analysis_prompt(data)
+
+                  # Run AI analysis
+                  print("🧠 Running AI analysis...")
+                  analysis_text = self.analyze_with_claude(prompt)
+
+                  # Generate report
+                  print("📋 Generating analysis report...")
+                  report = self.generate_analysis_report(analysis_text)
+
+                  # Save reports
+                  with open("reports/ai-analysis.json", "w") as f:
+                      json.dump(report, f, indent=2, default=str)
+
+                  with open("reports/ai-analysis.md", "w") as f:
+                      f.write(f"# AI Infrastructure Analysis\n\n{analysis_text}")
+
+                  print("✅ AI analysis complete")
+                  return report
+
+          # Run the analysis
+          analyzer = AIInfrastructureAnalyzer()
+          report = analyzer.run_analysis()
+
+          print(f"Analysis complete. Priority: {report['priority']}")
+          EOF
+
+      - name: Upload AI Analysis Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: ai-analysis-results
+          path: |
+            reports/ai-analysis.json
+            reports/ai-analysis.md
+          retention-days: 30
+
+      - name: Create Analysis Issue
+        if: ${{ github.event.inputs.create_issue != 'false' && success() }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "📋 Creating AI analysis issue..."
+
+          python3 << 'EOF'
+          import json
+          import os
+          from pathlib import Path
+
+          try:
+            with open("reports/ai-analysis.json") as f:
+              report = json.load(f)
+
+            with open("reports/ai-analysis.md") as f:
+              analysis_content = f.read()
+
+            # Create issue
+            issue_title = f"🤖 AI Analysis: {report['metadata']['analysis_type'].title()} for Infrastructure"
+
+            issue_body = f"""## AI Infrastructure Analysis Report
+
+**Analysis ID:** {report['metadata']['analysis_id']}
+**Timestamp:** {report['metadata']['timestamp']}
+**Analysis Type:** {report['metadata']['analysis_type']}
+**Priority:** {report['priority'].upper()}
+**Repository:** {report['metadata']['repository']}
+
+{analysis_content}
+
+---
+
+*This analysis was automatically generated by the AI Infrastructure Analysis workflow*
+
+**Metadata:**
+- Run ID: {report['metadata']['run_id']}
+- Trigger: {report['metadata']['trigger']}
+- Data Sources: {report['metadata']['data_sources']}
+"""
+
+            # Create issue using GitHub CLI
+            result = os.system(f'gh issue create --title "{issue_title}" --body "{issue_body}" --label "ai,analysis,{report["priority"]}"')
+
+            if result == 0:
+              print("✅ AI analysis issue created successfully")
+            else:
+              print("⚠️  Could not create AI analysis issue")
+
+          except Exception as e:
+            print(f"⚠️  Error creating AI analysis issue: {e}")
+          EOF
+
+  executive-summary:
+    name: Generate Executive Summary
+    runs-on: ubuntu-latest
+    needs: ai-analysis
+    if: ${{ github.event.inputs.generate_report != 'false' }}
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Download AI analysis results
+        uses: actions/download-artifact@v3
+        with:
+          name: ai-analysis-results
+          path: reports/
+
+      - name: Generate executive summary
+        run: |
+          echo "📊 Generating executive summary..."
+
+          python3 << 'EOF'
+          import json
+          from pathlib import Path
+          from datetime import datetime
+
+          # Load analysis data
+          analysis_data = {}
+
+          if Path("reports/ai-analysis.json").exists():
+            with open("reports/ai-analysis.json") as f:
+              analysis_data = json.load(f)
+
+          # Create executive summary
+          executive_summary = {
+            "generated_at": datetime.now().isoformat(),
+            "repository": "${{ github.repository }}",
+            "analysis_metadata": analysis_data.get("metadata", {}),
+            "priority": analysis_data.get("priority", "medium"),
+            "key_findings": [],
+            "critical_actions": [],
+            "recommendations": [],
+            "next_steps": []
+          }
+
+          # Extract key information (simplified version)
+          analysis_text = ""
+          if Path("reports/ai-analysis.md").exists():
+            with open("reports/ai-analysis.md") as f:
+              analysis_text = f.read()
+
+          # Simple keyword extraction for executive summary
+          if "critical" in analysis_text.lower():
+            executive_summary["key_findings"].append("Critical infrastructure issues requiring immediate attention")
+
+          if "security" in analysis_text.lower():
+            executive_summary["key_findings"].append("Security vulnerabilities identified")
+
+          if "performance" in analysis_text.lower():
+            executive_summary["key_findings"].append("Performance optimization opportunities")
+
+          if "cost" in analysis_text.lower():
+            executive_summary["key_findings"].append("Cost optimization opportunities identified")
+
+          # Add critical actions
+          executive_summary["critical_actions"] = [
+            "Review detailed AI analysis report",
+            "Address critical issues identified",
+            "Implement recommended security improvements",
+            "Plan performance optimization initiatives"
+          ]
+
+          # Save executive summary
+          with open("reports/executive-summary.json", "w") as f:
+            json.dump(executive_summary, f, indent=2)
+
+          # Create markdown version
+          markdown_summary = f"""# Executive Summary
+
+**Generated:** {executive_summary['generated_at']}
+**Repository:** {executive_summary['repository']}
+**Priority:** {executive_summary['priority'].upper()}
+
+## Key Findings
+"""
+
+          for finding in executive_summary["key_findings"]:
+            markdown_summary += f"- {finding}\n"
+
+          markdown_summary += """
+## Critical Actions
+
+### Immediate (0-7 days)
+"""
+
+          for action in executive_summary["critical_actions"]:
+            markdown_summary += f"- {action}\n"
+
+          markdown_summary += """
+
+## Next Steps
+
+1. **Review detailed analysis** - Examine the full AI analysis report for detailed findings
+2. **Prioritize actions** - Focus on critical and high-priority recommendations
+3. **Implement changes** - Execute recommended improvements
+4. **Monitor progress** - Track implementation and measure results
+
+---
+
+*For detailed analysis, see the full AI analysis report.*
+"""
+
+          with open("reports/executive-summary.md", "w") as f:
+            f.write(markdown_summary)
+
+          print("✅ Executive summary generated")
+          EOF
+
+      - name: Upload executive summary
+        uses: actions/upload-artifact@v3
+        with:
+          name: executive-summary
+          path: |
+            reports/executive-summary.json
+            reports/executive-summary.md
+          retention-days: 30
+
+  notification:
+    name: Send Notifications
+    runs-on: ubuntu-latest
+    needs: [ai-analysis, executive-summary]
+    if: always()
+    timeout-minutes: 5
+
+    steps:
+      - name: Download reports
+        uses: actions/download-artifact@v3
+        with:
+          name: ai-analysis-results
+          path: reports/
+
+      - name: Download executive summary
+        uses: actions/download-artifact@v3
+        with:
+          name: executive-summary
+          path: reports/
+
+      - name: Send Slack notification
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+        if: ${{ env.SLACK_WEBHOOK_URL != '' }}
+        run: |
+          echo "📢 Sending Slack notification..."
+
+          python3 << 'EOF'
+          import json
+          import os
+          import requests
+          from pathlib import Path
+
+          try:
+            # Load analysis data
+            priority = "medium"
+            if Path("reports/ai-analysis.json").exists():
+              with open("reports/ai-analysis.json") as f:
+                analysis = json.load(f)
+                priority = analysis.get("priority", "medium")
+
+            # Create message
+            color = {
+              "critical": "danger",
+              "high": "warning",
+              "medium": "good",
+              "low": "#808080"
+            }.get(priority, "good")
+
+            message = {
+              "text": f"🤖 AI Infrastructure Analysis Complete - Priority: {priority.upper()}",
+              "attachments": [{
+                "color": color,
+                "fields": [
+                  {"title": "Repository", "value": "${{ github.repository }}", "short": True},
+                  {"title": "Analysis Type", "value": "${{ github.event.inputs.analysis_type || 'comprehensive' }}", "short": True},
+                  {"title": "Priority", "value": priority.upper(), "short": True},
+                  {"title": "View Details", "value": f"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": False}
+                ]
+              }]
+            }
+
+            response = requests.post(os.environ["SLACK_WEBHOOK_URL"], json=message)
+            if response.status_code == 200:
+              print("✅ Slack notification sent")
+            else:
+              print(f"⚠️  Slack notification failed: {response.text}")
+
+          except Exception as e:
+            print(f"⚠️  Could not send Slack notification: {e}")
+          EOF
+
+      - name: Workflow completion summary
+        run: |
+          echo "🎉 AI Analysis workflow completed successfully!"
+          echo "📊 Analysis type: ${{ github.event.inputs.analysis_type || 'comprehensive' }}"
+          echo "📋 Reports generated:"
+          echo "   - AI Analysis: reports/ai-analysis.md"
+          echo "   - Executive Summary: reports/executive-summary.md"
+          echo "🔗 View results: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
