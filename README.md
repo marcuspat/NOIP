@@ -3,6 +3,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Node.js 18+](https://img.shields.io/badge/node-18+-green.svg)](https://nodejs.org/)
+[![GitHub Release](https://img.shields.io/github/release/marcuspat/NOIP.svg)](https://github.com/marcuspat/NOIP/releases)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/marcuspat/NOIP/actions)
+[![Security Score](https://img.shields.io/badge/security-A-brightgreen.svg)](https://github.com/marcuspat/NOIP/security)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Chat on GitHub](https://img.shields.io/badge/chat-on%20github-blue.svg)](https://github.com/marcuspat/NOIP/discussions)
 
 🚀 **Enterprise-Grade Infrastructure Intelligence Platform** that combines automated discovery, security scanning, AI analysis, and beautiful dashboards.
 
