@@ -1,12 +1,16 @@
-#!/bin/bash
+# ============================================
+# CLAUDE-FLOW v2.5.0 ALPHA 130 ALIASES
+# Performance: 100-600x speedup with SDK integration
+# ============================================
 
 # ============================================
-# CLAUDE-FLOW v2.0.0 ALPHA ALIASES
+# CLAUDE-FLOW v2.5.0 ALPHA 130 ALIASES
+# Performance: 100-600x speedup with SDK integration
 # ============================================
 
 # === Core Context Wrapper Commands ===
 alias cf="./cf-with-context.sh"
-alias cf-swarm="./cf-with-context.sh swarm"
+alias cf-swarm="./cf-with-context.sh swarm" 
 alias cf-hive="./cf-with-context.sh hive-mind spawn"
 
 # === Claude Code Direct Access ===
@@ -15,8 +19,6 @@ alias dsp="claude --dangerously-skip-permissions"
 
 # === Initialization & Setup ===
 alias cf-init="npx claude-flow@alpha init --force"
-alias cf-init-verify="npx claude-flow@alpha init --verify --pair --github-enhanced"
-alias cf-init-project="npx claude-flow@alpha init --force --project-name"
 alias cf-init-nexus="npx claude-flow@alpha init --flow-nexus"
 
 # === Hive-Mind Operations ===
@@ -24,31 +26,35 @@ alias cf-spawn="npx claude-flow@alpha hive-mind spawn"
 alias cf-wizard="npx claude-flow@alpha hive-mind wizard"
 alias cf-resume="npx claude-flow@alpha hive-mind resume"
 alias cf-status="npx claude-flow@alpha hive-mind status"
-alias cf-sessions="npx claude-flow@alpha hive-mind sessions"
-alias cf-upgrade="npx claude-flow@alpha hive-mind upgrade"
-alias cf-github-hive="npx claude-flow@alpha hive-mind spawn --github-enhanced --agents 13 --claude"
 
 # === Swarm Operations ===
 alias cf-continue="npx claude-flow@alpha swarm --continue-session"
 alias cf-swarm-temp="npx claude-flow@alpha swarm --temp"
 alias cf-swarm-namespace="npx claude-flow@alpha swarm --namespace"
+alias cf-swarm-init="npx claude-flow@alpha swarm init"
 
 # === Memory Management ===
 alias cf-memory-stats="npx claude-flow@alpha memory stats"
 alias cf-memory-list="npx claude-flow@alpha memory list"
 alias cf-memory-query="npx claude-flow@alpha memory query"
-alias cf-memory-recent="npx claude-flow@alpha memory query --recent --limit 5"
+alias cf-memory-recent="npx claude-flow@alpha memory query --recent"
 alias cf-memory-clear="npx claude-flow@alpha memory clear"
 alias cf-memory-export="npx claude-flow@alpha memory export"
 alias cf-memory-import="npx claude-flow@alpha memory import"
 
-# === Neural Operations ===
+# === Neural Operations (SAFLA) ===
+alias cf-neural-init="npx claude-flow@alpha neural init"
+alias cf-neural-init-force="npx claude-flow@alpha neural init --force"
+alias cf-neural-init-target="npx claude-flow@alpha neural init --target"
 alias cf-neural-train="npx claude-flow@alpha neural train"
 alias cf-neural-predict="npx claude-flow@alpha neural predict"
 alias cf-neural-status="npx claude-flow@alpha neural status"
 alias cf-neural-models="npx claude-flow@alpha neural models"
 
 # === Goal Planning (GOAP) ===
+alias cf-goal-init="npx claude-flow@alpha goal init"
+alias cf-goal-init-force="npx claude-flow@alpha goal init --force"
+alias cf-goal-init-target="npx claude-flow@alpha goal init --target"
 alias cf-goal-plan="npx claude-flow@alpha goal plan"
 alias cf-goal-execute="npx claude-flow@alpha goal execute"
 alias cf-goal-status="npx claude-flow@alpha goal status"
@@ -86,6 +92,24 @@ alias cf-benchmark="npx claude-flow@alpha benchmark"
 alias cf-analyze="npx claude-flow@alpha analyze"
 alias cf-optimize="npx claude-flow@alpha optimize"
 alias cf-metrics="npx claude-flow@alpha metrics"
+
+# === Benchmarking System ===
+alias cf-swarm-bench="swarm-bench"
+alias cf-bench-run="swarm-bench run"
+alias cf-bench-load="swarm-bench load-test"
+alias cf-bench-swe="swarm-bench swe-bench official"
+alias cf-bench-multi="swarm-bench swe-bench multi-mode"
+alias cf-bench-compare="swarm-bench compare"
+alias cf-bench-monitor="swarm-bench monitor --dashboard"
+alias cf-bench-diagnose="swarm-bench diagnose"
+alias cf-bench-analyze="swarm-bench analyze-errors"
+alias cf-bench-optimize="swarm-bench optimize"
+
+# === Hive-Mind Configuration ===
+alias cf-hive-init="claude-flow hive init"
+alias cf-hive-monitor="claude-flow hive monitor"
+alias cf-hive-health="claude-flow hive health"
+alias cf-hive-config="claude-flow hive config set"
 
 # === Verification & Testing ===
 alias cf-verify="npx claude-flow@alpha verify"
@@ -127,6 +151,7 @@ alias cf-docs="echo 'Visit: https://github.com/ruvnet/claude-flow/wiki'"
 alias cf-examples="echo 'Visit: https://github.com/ruvnet/claude-flow/tree/main/examples'"
 
 # === Utility Functions ===
+
 # Quick task with automatic Claude integration
 cf-task() {
     npx claude-flow@alpha swarm "$1" --claude
@@ -157,28 +182,218 @@ cf-session() {
     esac
 }
 
-echo "✅ Claude-Flow v2.0.0 Alpha aliases loaded!"
-echo "📚 Type 'cf-help' for documentation or 'cf-docs' for wiki"
-echo "🚀 Quick start: 'cf-init' then 'cf-swarm \"your task\"'"
+# Hive initialization with topology
+cf-hive-topology() {
+    local topology=$1
+    shift
+    claude-flow hive init --topology "$topology" "$@"
+}
 
+# Quick benchmark comparison
+cf-bench-quick() {
+    swarm-bench run --strategy development,optimization --mode centralized,distributed --agents 5
+}
 
+# Quick load test
+cf-load-test() {
+    local agents=${1:-20}
+    local tasks=${2:-200}
+    swarm-bench load-test --agents "$agents" --tasks "$tasks"
+}
+
+# ============================================
+# AGENTIC-FLOW ALIASES
+# Multi-Model Router with Cost Optimization
+# ============================================
+
+# === Core Context Wrapper Commands ===
+alias af="./af-with-context.sh"
+alias agentic-flow="npx agentic-flow"
+
+# === Agent Execution ===
+alias af-run="npx agentic-flow --agent"
+alias af-stream="npx agentic-flow --stream"
+alias af-parallel="npx agentic-flow"  # Uses TOPIC, DIFF, DATASET env vars
+
+# === Model Optimization ===
+alias af-optimize="npx agentic-flow --optimize"
+alias af-optimize-cost="npx agentic-flow --optimize --priority cost"
+alias af-optimize-quality="npx agentic-flow --optimize --priority quality"
+alias af-optimize-speed="npx agentic-flow --optimize --priority speed"
+alias af-optimize-privacy="npx agentic-flow --optimize --priority privacy"
+
+# === Provider Selection ===
+alias af-openrouter="npx agentic-flow --model"  # Use with OpenRouter models
+alias af-gemini="npx agentic-flow --provider gemini"
+alias af-onnx="npx agentic-flow --provider onnx"
+alias af-anthropic="npx agentic-flow --provider anthropic"
+
+# === MCP Server Management ===
+alias af-mcp-start="npx agentic-flow mcp start"
+alias af-mcp-stop="npx agentic-flow mcp stop"
+alias af-mcp-status="npx agentic-flow mcp status"
+alias af-mcp-list="npx agentic-flow mcp list"
+
+# === Custom MCP Servers (NEW v1.2.1) ===
+alias af-mcp-add="npx agentic-flow mcp add"
+alias af-mcp-remove="npx agentic-flow mcp remove"
+alias af-mcp-enable="npx agentic-flow mcp enable"
+alias af-mcp-disable="npx agentic-flow mcp disable"
+alias af-mcp-test="npx agentic-flow mcp test"
+alias af-mcp-export="npx agentic-flow mcp export"
+alias af-mcp-import="npx agentic-flow mcp import"
+
+# === Specific MCP Servers ===
+alias af-mcp-claude="npx agentic-flow mcp start claude-flow"
+alias af-mcp-nexus="npx agentic-flow mcp start flow-nexus"
+alias af-mcp-payments="npx agentic-flow mcp start agentic-payments"
+
+# === Agent Types (150+ Agents) ===
+alias af-coder="npx agentic-flow --agent coder"
+alias af-reviewer="npx agentic-flow --agent reviewer"
+alias af-tester="npx agentic-flow --agent tester"
+alias af-researcher="npx agentic-flow --agent researcher"
+alias af-planner="npx agentic-flow --agent planner"
+alias af-backend="npx agentic-flow --agent backend-dev"
+alias af-mobile="npx agentic-flow --agent mobile-dev"
+alias af-ml="npx agentic-flow --agent ml-developer"
+alias af-architect="npx agentic-flow --agent system-architect"
+alias af-cicd="npx agentic-flow --agent cicd-engineer"
+alias af-docs="npx agentic-flow --agent api-docs"
+alias af-perf="npx agentic-flow --agent perf-analyzer"
+
+# === GitHub Integration Agents ===
+alias af-pr="npx agentic-flow --agent pr-manager"
+alias af-code-review="npx agentic-flow --agent code-review-swarm"
+alias af-issue="npx agentic-flow --agent issue-tracker"
+alias af-release="npx agentic-flow --agent release-manager"
+
+# === Swarm Coordinators ===
+alias af-hierarchical="npx agentic-flow --agent hierarchical-coordinator"
+alias af-mesh="npx agentic-flow --agent mesh-coordinator"
+alias af-adaptive="npx agentic-flow --agent adaptive-coordinator"
+alias af-swarm-memory="npx agentic-flow --agent swarm-memory-manager"
+
+# === Docker Deployment ===
+alias af-docker-build="docker build -f deployment/Dockerfile -t agentic-flow ."
+alias af-docker-run="docker run --rm -e ANTHROPIC_API_KEY=\$ANTHROPIC_API_KEY agentic-flow"
+
+# === Information & Help ===
+alias af-list="npx agentic-flow --list"
+alias af-help="npx agentic-flow --help"
+alias af-version="npx agentic-flow --version"
+
+# === Environment Setup ===
+alias af-env-anthropic="export ANTHROPIC_API_KEY="
+alias af-env-openrouter="export OPENROUTER_API_KEY="
+alias af-env-gemini="export GOOGLE_GEMINI_API_KEY="
+
+# === Quick Commands (Shortcuts) ===
+alias afr="af-run"                      # Quick agent run
+alias afs="af-stream"                   # Quick streaming run
+alias afo="af-optimize"                 # Quick optimization
+alias afm="af-mcp-list"                 # Quick MCP list
+alias afc="af-coder"                    # Quick coder agent
+alias afrev="af-reviewer"               # Quick reviewer agent
+alias aft="af-tester"                   # Quick tester agent
+
+# === Utility Functions ===
+
+# Quick agent task with streaming
+af-task() {
+    npx agentic-flow --agent "$1" --task "$2" --stream
+}
+
+# Quick optimized task
+af-opt-task() {
+    npx agentic-flow --agent "$1" --task "$2" --optimize
+}
+
+# Quick cost-optimized task
+af-cheap() {
+    npx agentic-flow --agent "$1" --task "$2" --optimize --priority cost
+}
+
+# Quick privacy-focused task (local ONNX)
+af-private() {
+    npx agentic-flow --agent "$1" --task "$2" --provider onnx --local-only
+}
+
+# Run with specific OpenRouter model
+af-openai() {
+    local model=${1:-"meta-llama/llama-3.1-8b-instruct"}
+    shift
+    npx agentic-flow --model "$model" "$@"
+}
+
+# Run with Gemini
+af-gemini-task() {
+    npx agentic-flow --agent "$1" --task "$2" --provider gemini
+}
+
+# Multi-agent swarm
+af-swarm() {
+    export TOPIC="$1"
+    export DIFF="$2"
+    export DATASET="$3"
+    npx agentic-flow
+}
+
+# Add custom MCP server (Claude Desktop style)
+af-add-mcp() {
+    local name=$1
+    local command=$2
+    npx agentic-flow mcp add "$name" "$command"
+}
+
+# Quick benchmark comparison
+af-benchmark() {
+    echo "Running benchmark: $1"
+    npx agentic-flow --agent tester --task "$1" --optimize
+}
 
 # Source the updated bashrc
 source ~/.bashrc
 
-echo "🎉 Claude-Flow v2.0.0 aliases have been installed!"
-echo "✨ New features available:"
-echo "  • Flow Nexus Cloud: cf-nexus-*"
-echo "  • Neural operations: cf-neural-*"
-echo "  • Memory management: cf-memory-*"
-echo "  • GitHub integration: cf-github-*"
-echo "  • Hooks system: cf-hooks-*"
-echo "  • SPARC methodology: cf-sparc-*"
 echo ""
-echo "🔄 Run 'source ~/.bashrc' to activate the aliases"
-echo "Setup completed successfully!"
+echo "============================================"
+echo "🎉 TURBO FLOW SETUP COMPLETE!"
+echo "============================================"
+echo ""
+echo "✅ Claude-Flow v2.5.0 Alpha 130 installed!"
+echo "🚀 Performance: 100-600x speedup with Claude Code SDK integration"
+echo "📚 Type 'cf-help' for documentation or 'cf-docs' for wiki"
+echo "🎯 Quick start: 'cf-init' then 'cf-swarm \"your task\"'"
+echo ""
+echo "✨ Claude Flow Core Commands:"
+echo "  • Init: cf-init, cf-init-nexus"
+echo "  • Hive: cf-spawn, cf-wizard, cf-resume, cf-status"
+echo "  • Swarm: cf-swarm, cf-continue"
+echo "  • Memory: cf-memory-stats, cf-memory-list, cf-memory-query"
+echo "  • Neural: cf-neural-init (+ --force, --target)"
+echo "  • GOAP: cf-goal-init (+ --force, --target)"
+echo "  • GitHub: cf-github-init"
+echo "  • Benchmark: cf-bench-run, cf-bench-load, cf-bench-compare"
+echo ""
+echo "============================================"
+echo "✅ Agentic Flow installed!"
+echo "🤖 150+ specialized agents available"
+echo "💰 Multi-model router with 99% cost savings"
+echo "🔒 ONNX local inference for privacy"
+echo "📚 Type 'af-help' for documentation or 'af-list' for agents"
+echo ""
+echo "✨ Agentic Flow Quick Start:"
+echo "  af-coder --task 'Build REST API' --stream"
+echo "  af-optimize --agent reviewer --task 'Review code' --priority cost"
+echo "  af-private --agent researcher --task 'Analyze sensitive data'"
+echo "  af-mcp-add weather 'npx @modelcontextprotocol/server-weather'"
+echo ""
+echo "🔑 Set API keys:"
+echo "  export ANTHROPIC_API_KEY=sk-ant-..."
+echo "  export OPENROUTER_API_KEY=sk-or-v1-..."
+echo "  export GOOGLE_GEMINI_API_KEY=xxxxx"
+echo ""
+echo "============================================"
+echo "🔄 Run 'source ~/.bashrc' to activate all aliases"
 echo "🎯 Environment is now 100% production-ready!"
-echo "✅ TypeScript ES module configuration fixed"
-echo "✅ Playwright tests configured with proper imports"
-echo "✅ DSP alias configured"
-echo "✅ Claude Flow wrapper fixed for interactive commands"
+echo "============================================"

@@ -1,0 +1,91 @@
+---
+# Pod Security Policies for NOIP Platform
+# Enforce security best practices for pod deployment
+
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: noip-platform-psp
+  namespace: noip-production
+  labels:
+    app: noip-platform
+    component: security
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'docker/default,runtime/default'
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: 'runtime/default'
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+  runAsUser:
+    rule: 'MustRunAsNonRoot'
+  seLinux:
+    rule: 'RunAsAny'
+  fsGroup:
+    rule: 'RunAsAny'
+  readOnlyRootFilesystem: true
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 2000
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: noip-platform-sa
+  namespace: noip-production
+  labels:
+    app: noip-platform
+    component: security
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: noip-platform-role
+  namespace: noip-production
+  labels:
+    app: noip-platform
+    component: rbac
+rules:
+- apiGroups: ['policy']
+  resources: ['podsecuritypolicies']
+  verbs: ['use']
+  resourceNames:
+  - noip-platform-psp
+- apiGroups: ['']
+  resources: ['configmaps']
+  verbs: ['get', 'list', 'watch']
+- apiGroups: ['']
+  resources: ['secrets']
+  verbs: ['get', 'list', 'watch']
+- apiGroups: ['']
+  resources: ['pods']
+  verbs: ['get', 'list', 'watch']
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: noip-platform-rolebinding
+  namespace: noip-production
+  labels:
+    app: noip-platform
+    component: rbac
+subjects:
+- kind: ServiceAccount
+  name: noip-platform-sa
+  namespace: noip-production
+roleRef:
+  kind: Role
+  name: noip-platform-role
+  apiGroup: rbac.authorization.k8s.io

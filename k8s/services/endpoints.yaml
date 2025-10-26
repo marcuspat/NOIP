@@ -1,0 +1,66 @@
+---
+# NOIP Platform Endpoints Configuration
+# Manual endpoint configuration for external services
+
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: noip-platform-external-api
+  namespace: noip-production
+  labels:
+    app: noip-platform
+    component: external-endpoint
+  annotations:
+    description: "External API Endpoint Configuration"
+subsets:
+- addresses:
+  - ip: 10.0.1.100
+    hostname: api-1.external.com
+  - ip: 10.0.1.101
+    hostname: api-2.external.com
+  ports:
+  - name: https
+    port: 443
+    protocol: TCP
+
+---
+# External Database Endpoint (if using external managed database)
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: external-mongodb
+  namespace: noip-production
+  labels:
+    app: mongodb
+    component: external-endpoint
+  annotations:
+    description: "External MongoDB Endpoint"
+subsets:
+- addresses:
+  - ip: 10.0.2.50
+    hostname: mongodb-external.company.com
+  ports:
+  - name: mongodb
+    port: 27017
+    protocol: TCP
+
+---
+# External Redis Endpoint (if using external managed Redis)
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: external-redis
+  namespace: noip-production
+  labels:
+    app: redis
+    component: external-endpoint
+  annotations:
+    description: "External Redis Endpoint"
+subsets:
+- addresses:
+  - ip: 10.0.2.60
+    hostname: redis-external.company.com
+  ports:
+  - name: redis
+    port: 6379
+    protocol: TCP

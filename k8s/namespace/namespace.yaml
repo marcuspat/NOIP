@@ -1,0 +1,49 @@
+---
+# NOIP Platform Namespace Configuration
+# Production namespace with resource quotas and security policies
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: noip-production
+  labels:
+    name: noip-production
+    environment: production
+    project: noip
+    security-level: high
+  annotations:
+    description: "NOIP Platform Production Environment"
+    contact: "noip-team@company.com"
+    created-by: "container-orchestration-specialist"
+spec:
+  finalizers:
+  - kubernetes
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: noip-staging
+  labels:
+    name: noip-staging
+    environment: staging
+    project: noip
+    security-level: medium
+  annotations:
+    description: "NOIP Platform Staging Environment"
+    contact: "noip-team@company.com"
+    created-by: "container-orchestration-specialist"
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: noip-monitoring
+  labels:
+    name: noip-monitoring
+    environment: production
+    project: noip
+    purpose: monitoring
+  annotations:
+    description: "NOIP Platform Monitoring Stack"
+    contact: "noip-team@company.com"

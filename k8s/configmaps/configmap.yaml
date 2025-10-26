@@ -1,0 +1,160 @@
+---
+# NOIP Platform Configuration
+# Environment-specific configuration management
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: noip-platform-config
+  namespace: noip-production
+  labels:
+    app: noip-platform
+    component: configuration
+  annotations:
+    description: "NOIP Platform Configuration"
+    version: "1.0.0"
+data:
+  # Application Configuration
+  app.name: "NOIP Platform"
+  app.version: "1.0.0"
+  app.environment: "production"
+
+  # Server Configuration
+  server.port: "3000"
+  server.host: "0.0.0.0"
+
+  # CORS Configuration
+  cors-origin: "https://noip.company.com,https://api.noip.company.com"
+  cors-credentials: "true"
+  cors-methods: "GET,POST,PUT,DELETE,OPTIONS"
+  cors-headers: "Content-Type,Authorization,X-Requested-With"
+
+  # Logging Configuration
+  log-level: "info"
+  log-format: "json"
+  log-max-files: "10"
+  log-max-size: "100m"
+
+  # Rate Limiting Configuration
+  rate-limit-window-ms: "900000"
+  rate-limit-max: "100"
+
+  # Security Configuration
+  session-timeout: "3600"
+  max-login-attempts: "5"
+  lockout-duration: "900"
+
+  # Database Configuration
+  mongodb-database: "noip_prod"
+  mongodb-options: "retryWrites=true&w=majority"
+
+  # Redis Configuration
+  redis-db: "0"
+  redis-key-prefix: "noip:"
+
+  # Monitoring Configuration
+  metrics-enabled: "true"
+  metrics-path: "/metrics"
+  metrics-port: "9090"
+
+  # Tracing Configuration
+  tracing-enabled: "true"
+  tracing-service-name: "noip-platform"
+  tracing-sample-rate: "0.1"
+
+  # Feature Flags
+  feature-security-scan: "true"
+  feature-ai-analysis: "true"
+  feature-dashboard: "true"
+
+  # External Services
+  email-service-url: "https://email.company.com/api"
+  ai-service-url: "https://ai.company.com/api"
+
+  # Timeouts and Limits
+  request-timeout: "30000"
+  upload-max-size: "10485760"
+
+  # Health Check Configuration
+  health-check-interval: "30"
+  health-check-timeout: "10"
+  health-check-retries: "3"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: noip-platform-staging-config
+  namespace: noip-staging
+  labels:
+    app: noip-platform
+    component: configuration
+  annotations:
+    description: "NOIP Platform Staging Configuration"
+    version: "1.0.0"
+data:
+  # Application Configuration
+  app.name: "NOIP Platform"
+  app.version: "1.0.0"
+  app.environment: "staging"
+
+  # Server Configuration
+  server.port: "3000"
+  server.host: "0.0.0.0"
+
+  # CORS Configuration
+  cors-origin: "https://staging.noip.company.com,https://api-staging.noip.company.com"
+  cors-credentials: "true"
+  cors-methods: "GET,POST,PUT,DELETE,OPTIONS"
+  cors-headers: "Content-Type,Authorization,X-Requested-With"
+
+  # Logging Configuration
+  log-level: "debug"
+  log-format: "json"
+  log-max-files: "5"
+  log-max-size: "50m"
+
+  # Rate Limiting Configuration
+  rate-limit-window-ms: "900000"
+  rate-limit-max: "200"
+
+  # Security Configuration
+  session-timeout: "7200"
+  max-login-attempts: "10"
+  lockout-duration: "600"
+
+  # Database Configuration
+  mongodb-database: "noip_staging"
+  mongodb-options: "retryWrites=true&w=majority"
+
+  # Redis Configuration
+  redis-db: "1"
+  redis-key-prefix: "noip:staging:"
+
+  # Monitoring Configuration
+  metrics-enabled: "true"
+  metrics-path: "/metrics"
+  metrics-port: "9090"
+
+  # Tracing Configuration
+  tracing-enabled: "true"
+  tracing-service-name: "noip-platform-staging"
+  tracing-sample-rate: "0.5"
+
+  # Feature Flags
+  feature-security-scan: "true"
+  feature-ai-analysis: "true"
+  feature-dashboard: "true"
+
+  # External Services
+  email-service-url: "https://staging.email.company.com/api"
+  ai-service-url: "https://staging.ai.company.com/api"
+
+  # Timeouts and Limits
+  request-timeout: "60000"
+  upload-max-size: "20971520"
+
+  # Health Check Configuration
+  health-check-interval: "15"
+  health-check-timeout: "5"
+  health-check-retries: "3"

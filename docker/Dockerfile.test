@@ -1,0 +1,50 @@
+# NOIP Platform - Test Dockerfile
+# Optimized for testing with test database and coverage reporting
+
+FROM node:18-alpine AS test
+LABEL maintainer="NOIP Platform Team" \
+      version="1.0.0-test" \
+      description="NOIP Platform - Testing Build"
+
+# Install test dependencies
+RUN apk add --no-cache \
+        curl \
+        chromium \
+        nss \
+        freetype \
+        freetype-dev \
+        harfbuzz \
+        ca-certificates \
+        ttf-freefont
+
+# Create app user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+COPY jest.config.* ./
+
+# Install all dependencies
+RUN npm install
+
+# Copy source code
+COPY --chown=nodejs:nodejs . .
+
+# Switch to app user
+USER nodejs
+
+# Environment variables
+ENV NODE_ENV=test \
+    CI=true \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
+# Expose port for test server
+EXPOSE 3000
+
+# Test command with coverage
+CMD ["npm", "run", "test:coverage"]

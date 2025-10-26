@@ -1,0 +1,395 @@
+---
+# NOIP Platform Ingress Configuration
+# External access with TLS termination and path-based routing
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: noip-platform-ingress
+  namespace: noip-production
+  labels:
+    app: noip-platform
+    component: ingress
+    environment: production
+  annotations:
+    description: "NOIP Platform Main Ingress"
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/enable-modsecurity: "true"
+    nginx.ingress.kubernetes.io/modsecurity-snippet: |
+      SecRuleEngine On
+      SecRequestBodyAccess On
+      SecRequestBodyLimit 13107200
+      SecRequestBodyNoFilesLimit 131072
+      SecRequestBodyInMemoryLimit 131072
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/custom-http-errors: "404,500,502,503"
+    nginx.ingress.kubernetes.io/default-backend: "noip-platform-service"
+spec:
+  tls:
+  - hosts:
+    - noip.company.com
+    - api.noip.company.com
+    - grafana.noip.company.com
+    secretName: noip-platform-tls
+  rules:
+  # Main Application
+  - host: noip.company.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: noip-platform-service
+            port:
+              number: 80
+  # API Endpoints
+  - host: api.noip.company.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: noip-platform-api-service
+            port:
+              number: 80
+      # API versioning
+      - path: /api/v1(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: noip-platform-service
+            port:
+              number: 80
+      - path: /api/v2(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: noip-platform-service
+            port:
+              number: 80
+  # Monitoring Access
+  - host: grafana.noip.company.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana-service
+            port:
+              number: 3000
+
+---
+# API Gateway Ingress for External API Access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: noip-api-gateway
+  namespace: noip-production
+  labels:
+    app: noip-platform
+    component: api-gateway
+    environment: production
+  annotations:
+    description: "NOIP Platform API Gateway"
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Content-Type, Authorization, X-Requested-With"
+    nginx.ingress.kubernetes.io/rate-limit: "200"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-API-Version "v1.0.0" always;
+      add_header X-Response-Time $request_time always;
+spec:
+  tls:
+  - hosts:
+    - api-gateway.noip.company.com
+    secretName: noip-api-gateway-tls
+  rules:
+  - host: api-gateway.noip.company.com
+    http:
+      paths:
+      # Authentication endpoints
+      - path: /auth(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: noip-platform-service
+            port:
+              number: 80
+      # Discovery endpoints
+      - path: /discovery(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: noip-platform-service
+            port:
+              number: 80
+      # Security endpoints
+      - path: /security(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: noip-platform-service
+            port:
+              number: 80
+      # AI endpoints
+      - path: /ai(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: noip-platform-service
+            port:
+              number: 80
+      # Dashboard endpoints
+      - path: /dashboard(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: noip-platform-service
+            port:
+              number: 80
+      # Health and metrics endpoints
+      - path: /health
+        pathType: Exact
+        backend:
+          service:
+            name: noip-platform-service
+            port:
+              number: 80
+      - path: /metrics
+        pathType: Exact
+        backend:
+          service:
+            name: noip-platform-service
+            port:
+              number: 9090
+
+---
+# Internal Services Ingress (for internal access)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: noip-internal-services
+  namespace: noip-production
+  labels:
+    app: noip-platform
+    component: internal-ingress
+    environment: production
+  annotations:
+    description: "NOIP Platform Internal Services"
+    kubernetes.io/ingress.class: "nginx-internal"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/enable-modsecurity: "false"
+spec:
+  rules:
+  # Internal monitoring access
+  - host: prometheus.internal
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus-service
+            port:
+              number: 9090
+  - host: alertmanager.internal
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: alertmanager-service
+            port:
+              number: 9093
+  # Database management (internal only)
+  - host: mongodb.internal
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: mongodb-service
+            port:
+              number: 27017
+  - host: redis.internal
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: redis-service
+            port:
+              number: 6379
+
+---
+# Load Balancer Service for External Access
+apiVersion: v1
+kind: Service
+metadata:
+  name: noip-platform-lb
+  namespace: noip-production
+  labels:
+    app: noip-platform
+    component: load-balancer
+    environment: production
+  annotations:
+    description: "NOIP Platform Load Balancer"
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "HTTP"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/health"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "30"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-timeout: "5"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold: "2"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold: "3"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  sessionAffinity: None
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  - name: https
+    port: 443
+    targetPort: 80
+    protocol: TCP
+  selector:
+    app: noip-platform
+    component: application
+
+---
+# Network Policy for Ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: noip-platform-ingress-policy
+  namespace: noip-production
+  labels:
+    app: noip-platform
+    component: network-policy
+  annotations:
+    description: "Network policy for ingress traffic"
+spec:
+  podSelector:
+    matchLabels:
+      app: noip-platform
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow traffic from ingress controllers
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 3000
+    - protocol: TCP
+      port: 9090
+  # Allow traffic from monitoring namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: noip-monitoring
+    ports:
+    - protocol: TCP
+      port: 3000
+    - protocol: TCP
+      port: 9090
+
+---
+# Certificate Management
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+  labels:
+    app: noip-platform
+    component: certificate-management
+  annotations:
+    description: "Let's Encrypt Production Certificate Issuer"
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@company.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+      selector:
+        dnsNames:
+        - noip.company.com
+        - api.noip.company.com
+        - grafana.noip.company.com
+        - api-gateway.noip.company.com
+
+---
+# Certificate for Main Domain
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: noip-platform-cert
+  namespace: noip-production
+  labels:
+    app: noip-platform
+    component: certificate
+  annotations:
+    description: "NOIP Platform TLS Certificate"
+spec:
+  secretName: noip-platform-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+  - noip.company.com
+  - api.noip.company.com
+  - grafana.noip.company.com
+  - www.noip.company.com
+
+---
+# Certificate for API Gateway
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: noip-api-gateway-cert
+  namespace: noip-production
+  labels:
+    app: noip-platform
+    component: certificate
+  annotations:
+    description: "NOIP API Gateway TLS Certificate"
+spec:
+  secretName: noip-api-gateway-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+  - api-gateway.noip.company.com

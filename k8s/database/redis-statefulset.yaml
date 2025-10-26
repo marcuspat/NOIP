@@ -1,0 +1,420 @@
+---
+# Redis StatefulSet Configuration
+# Production-ready Redis with persistence and clustering
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: noip-production
+  labels:
+    app: redis
+    component: database
+    version: "7"
+  annotations:
+    description: "Redis Cluster StatefulSet"
+    kubernetes.io/change-cause: "Initial Redis deployment"
+spec:
+  serviceName: redis-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+      component: database
+  template:
+    metadata:
+      labels:
+        app: redis
+        component: database
+        version: "7"
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: noip-platform-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 2000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+      - name: init-redis
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          set -e
+          echo "Initializing Redis..."
+          # Ensure proper permissions
+          chown -R 1000:2000 /data
+          # Create necessary directories
+          mkdir -p /data/redis /data/redis-config
+          chmod 755 /data/redis
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        securityContext:
+          runAsUser: 0
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        imagePullPolicy: Always
+        ports:
+        - name: redis
+          containerPort: 6379
+          protocol: TCP
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: noip-platform-secrets
+              key: redis-password
+        - name: REDIS_REPLICATION_MODE
+          value: "master"
+        - name: REDIS_CONFIG_FILE
+          value: "/etc/redis/redis.conf"
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        - --requirepass
+        - $(REDIS_PASSWORD)
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        - name: redis-config
+          mountPath: /etc/redis
+          readOnly: true
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - -a
+            - $(REDIS_PASSWORD)
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - -a
+            - $(REDIS_PASSWORD)
+            - ping
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "redis-cli -a $REDIS_PASSWORD shutdown save"]
+      - name: redis-exporter
+        image: oliver006/redis_exporter:latest
+        imagePullPolicy: Always
+        ports:
+        - name: metrics
+          containerPort: 9121
+          protocol: TCP
+        env:
+        - name: REDIS_ADDR
+          value: "redis://localhost:6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: noip-platform-secrets
+              key: redis-password
+        - name: WEB_LISTEN_ADDRESS
+          value: "0.0.0.0:9121"
+        - name: LOG_FORMAT
+          value: "txt"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: metrics
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: metrics
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+      volumes:
+      - name: redis-config
+        configMap:
+          name: redis-config
+      volumeClaimTemplates:
+      - metadata:
+          name: redis-data
+          labels:
+            app: redis
+            component: database
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          storageClassName: "fast-ssd"
+          resources:
+            requests:
+              storage: 10Gi
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+
+---
+# Redis Sentinel for High Availability (Optional)
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-sentinel
+  namespace: noip-production
+  labels:
+    app: redis-sentinel
+    component: sentinel
+  annotations:
+    description: "Redis Sentinel for High Availability"
+spec:
+  serviceName: redis-sentinel
+  replicas: 3
+  selector:
+    matchLabels:
+      app: redis-sentinel
+      component: sentinel
+  template:
+    metadata:
+      labels:
+        app: redis-sentinel
+        component: sentinel
+        version: "7"
+        environment: production
+    spec:
+      serviceAccountName: noip-platform-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 2000
+        fsGroup: 2000
+      containers:
+      - name: redis-sentinel
+        image: redis:7-alpine
+        imagePullPolicy: Always
+        ports:
+        - name: sentinel
+          containerPort: 26379
+          protocol: TCP
+        env:
+        - name: REDIS_SENTINEL_QUORUM
+          value: "2"
+        - name: REDIS_SENTINEL_DOWN_AFTER
+          value: "5000"
+        - name: REDIS_SENTINEL_FAILOVER_TIMEOUT
+          value: "10000"
+        - name: REDIS_MASTER_NAME
+          value: "mymaster"
+        - name: REDIS_MASTER_IP
+          value: "redis-service"
+        - name: REDIS_MASTER_PORT
+          value: "6379"
+        command:
+        - redis-sentinel
+        - /etc/redis/sentinel.conf
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        volumeMounts:
+        - name: redis-sentinel-config
+          mountPath: /etc/redis
+          readOnly: true
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - -p
+            - "26379"
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - -p
+            - "26379"
+            - ping
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+      volumes:
+      - name: redis-sentinel-config
+        configMap:
+          name: redis-sentinel-config
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+
+---
+# Redis Configuration ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: noip-production
+  labels:
+    app: redis
+    component: configuration
+data:
+  redis.conf: |
+    # Redis Configuration
+
+    # Network
+    bind 0.0.0.0
+    port 6379
+    protected-mode yes
+
+    # Security
+    requirepass ${REDIS_PASSWORD}
+
+    # Persistence
+    save 900 1
+    save 300 10
+    save 60 10000
+    stop-writes-on-bgsave-error yes
+    rdbcompression yes
+    rdbchecksum yes
+    dbfilename dump.rdb
+    dir /data
+
+    # AOF (Append Only File)
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+
+    # Memory Management
+    maxmemory 512mb
+    maxmemory-policy allkeys-lru
+
+    # Logging
+    loglevel notice
+    logfile ""
+
+    # Performance
+    timeout 300
+    tcp-keepalive 300
+    tcp-backlog 511
+
+    # Clients
+    maxclients 10000
+
+    # Advanced
+    hash-max-ziplist-entries 512
+    hash-max-ziplist-value 64
+    list-max-ziplist-size -2
+    list-compress-depth 0
+    set-max-intset-entries 512
+    zset-max-ziplist-entries 128
+    zset-max-ziplist-value 64
+    hll-sparse-max-bytes 3000
+
+    # Slow Log
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+
+    # Notifications
+    notify-keyspace-events ""
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-sentinel-config
+  namespace: noip-production
+  labels:
+    app: redis-sentinel
+    component: configuration
+data:
+  sentinel.conf: |
+    # Redis Sentinel Configuration
+
+    # Basic Configuration
+    port 26379
+    sentinel announce-ip redis-sentinel-0.redis-sentinel.noip-production.svc.cluster.local
+
+    # Master Configuration
+    sentinel monitor mymaster redis-service 6379 2
+    sentinel down-after-milliseconds mymaster 5000
+    sentinel failover-timeout mymaster 10000
+    sentinel parallel-syncs mymaster 1
+
+    # Security
+    sentinel auth-pass mymaster ${REDIS_PASSWORD}
+
+    # Logging
+    loglevel notice
+    logfile ""
+
+    # Configuration
+    sentinel config-epoch mymaster 0
+    sentinel leader-epoch mymaster 0
+
+    # Network
+    bind 0.0.0.0
+    protected-mode no
+
+    # Failover
+    sentinel deny-scripts-reconfig yes
+    sentinel notification-script mymaster /etc/redis/notify.sh
+    sentinel client-reconfig-script mymaster /etc/redis/reconfig.sh

@@ -1,0 +1,362 @@
+---
+# MongoDB StatefulSet Configuration
+# Production-ready MongoDB with replication and persistence
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: noip-production
+  labels:
+    app: mongodb
+    component: database
+    version: "6.0"
+  annotations:
+    description: "MongoDB Replicated StatefulSet"
+    kubernetes.io/change-cause: "Initial MongoDB deployment"
+spec:
+  serviceName: mongodb-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mongodb
+      component: database
+  template:
+    metadata:
+      labels:
+        app: mongodb
+        component: database
+        version: "6.0"
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9216"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: noip-platform-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 2000
+        fsGroup: 2000
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+      - name: init-mongodb
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          set -e
+          echo "Initializing MongoDB..."
+          # Ensure proper permissions
+          chown -R 1000:2000 /data/db
+          # Wait for other replicas
+          echo "Waiting for MongoDB replicas..."
+          sleep 10
+        volumeMounts:
+        - name: mongodb-data
+          mountPath: /data/db
+        securityContext:
+          runAsUser: 0
+      containers:
+      - name: mongodb
+        image: mongo:6.0
+        imagePullPolicy: Always
+        ports:
+        - name: mongodb
+          containerPort: 27017
+          protocol: TCP
+        env:
+        - name: MONGO_INITDB_ROOT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: noip-platform-secrets
+              key: mongodb-username
+        - name: MONGO_INITDB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: noip-platform-secrets
+              key: mongodb-password
+        - name: MONGO_REPLICA_SET_NAME
+          value: "rs0"
+        - name: MONGO_INITDB_DATABASE
+          value: "noip_prod"
+        command:
+        - mongod
+        - --replSet
+        - rs0
+        - --bind_ip_all
+        - --auth
+        - --dbpath
+        - /data/db
+        - --journal
+        - --slowms
+        - "100"
+        - --profile
+        - "1"
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        volumeMounts:
+        - name: mongodb-data
+          mountPath: /data/db
+        - name: mongodb-config
+          mountPath: /data/configdb
+        - name: mongodb-init
+          mountPath: /docker-entrypoint-initdb.d
+          readOnly: true
+        livenessProbe:
+          exec:
+            command:
+            - mongosh
+            - --eval
+            - "db.adminCommand('ping')"
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - mongosh
+            - --eval
+            - "db.adminCommand('ping')"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "mongosh --eval 'db.adminCommand({stepDown: 60, force: true})'"]
+      - name: mongodb-exporter
+        image: percona/mongodb_exporter:latest
+        imagePullPolicy: Always
+        ports:
+        - name: metrics
+          containerPort: 9216
+          protocol: TCP
+        env:
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: noip-platform-secrets
+              key: mongodb-uri
+        - name: WEB_LISTEN_ADDRESS
+          value: "0.0.0.0:9216"
+        - name: LOG_LEVEL
+          value: "info"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: metrics
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: metrics
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+      volumes:
+      - name: mongodb-init
+        configMap:
+          name: mongodb-init-config
+      volumeClaimTemplates:
+      - metadata:
+          name: mongodb-data
+          labels:
+            app: mongodb
+            component: database
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          storageClassName: "fast-ssd"
+          resources:
+            requests:
+              storage: 20Gi
+      - metadata:
+          name: mongodb-config
+          labels:
+            app: mongodb
+            component: database
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          storageClassName: "fast-ssd"
+          resources:
+            requests:
+              storage: 5Gi
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 60
+      dnsPolicy: ClusterFirst
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - mongodb
+              topologyKey: kubernetes.io/hostname
+
+---
+# MongoDB Replica Set Initialization Job
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mongodb-init-replica
+  namespace: noip-production
+  labels:
+    app: mongodb
+    component: replica-init
+  annotations:
+    description: "Initialize MongoDB Replica Set"
+spec:
+  template:
+    metadata:
+      labels:
+        app: mongodb
+        component: replica-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: mongo-init
+        image: mongo:6.0
+        command:
+        - mongosh
+        - --eval
+        - |
+          rs.initiate({
+            _id: "rs0",
+            version: 1,
+            members: [
+              { _id: 0, host: "mongodb-0.mongodb-headless.noip-production.svc.cluster.local:27017" },
+              { _id: 1, host: "mongodb-1.mongodb-headless.noip-production.svc.cluster.local:27017" },
+              { _id: 2, host: "mongodb-2.mongodb-headless.noip-production.svc.cluster.local:27017" }
+            ]
+          });
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+
+---
+# MongoDB Configuration ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongodb-init-config
+  namespace: noip-production
+  labels:
+    app: mongodb
+    component: configuration
+data:
+  init-replica.js: |
+    // Initialize MongoDB replica set
+    rs.initiate({
+      _id: "rs0",
+      version: 1,
+      members: [
+        { _id: 0, host: "mongodb-0.mongodb-headless:27017", priority: 2 },
+        { _id: 1, host: "mongodb-1.mongodb-headless:27017", priority: 1 },
+        { _id: 2, host: "mongodb-2.mongodb-headless:27017", priority: 1 }
+      ]
+    });
+
+  init-db.js: |
+    // Initialize application database
+    db = db.getSiblingDB('noip_prod');
+
+    // Create application user
+    db.createUser({
+      user: 'noip_app',
+      pwd: 'app_password_here',
+      roles: [
+        { role: 'readWrite', db: 'noip_prod' }
+      ]
+    });
+
+    // Create collections with indexes
+    db.createCollection('users');
+    db.users.createIndex({ email: 1 }, { unique: true });
+    db.users.createIndex({ created_at: 1 });
+
+    db.createCollection('security_events');
+    db.security_events.createIndex({ timestamp: 1 });
+    db.security_events.createIndex({ severity: 1 });
+
+    db.createCollection('audit_logs');
+    db.audit_logs.createIndex({ timestamp: 1 });
+    db.audit_logs.createIndex({ user_id: 1 });
+
+  mongod.conf: |
+    # MongoDB Configuration
+    storage:
+      dbPath: /data/db
+      journal:
+        enabled: true
+      wiredTiger:
+        engineConfig:
+          cacheSizeGB: 1
+        collectionConfig:
+          blockCompressor: snappy
+
+    systemLog:
+      destination: file
+      logAppend: true
+      path: /var/log/mongodb/mongod.log
+      logRotate: rename
+
+    net:
+      port: 27017
+      bindIp: 0.0.0.0
+
+    replication:
+      replSetName: rs0
+
+    security:
+      authorization: enabled
+
+    operationProfiling:
+      slowOpThresholdMs: 100
+      mode: slowOp
+
+    setParameter:
+      enableMajorityReadConcern: false

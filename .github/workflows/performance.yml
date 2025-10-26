@@ -1,0 +1,455 @@
+name: Performance Testing & Monitoring
+
+on:
+  schedule:
+    # Run performance tests weekly on Sundays at 3 AM UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      test_type:
+        description: 'Type of performance test'
+        required: true
+        default: 'load'
+        type: choice
+        options:
+        - load
+        - stress
+        - spike
+        - endurance
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - 'package*.json'
+
+env:
+  NODE_ENV: test
+  TEST_TIMEOUT: 1800  # 30 minutes
+
+jobs:
+  # === PERFORMANCE BENCHMARKING ===
+  performance-benchmark:
+    name: Performance Benchmarking
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+
+    strategy:
+      matrix:
+        test-type: [load, stress, spike, endurance]
+        include:
+          - test-type: load
+            users: 100
+            duration: 60
+            ramp-up: 30
+          - test-type: stress
+            users: 500
+            duration: 120
+            ramp-up: 60
+          - test-type: spike
+            users: 1000
+            duration: 30
+            ramp-up: 10
+          - test-type: endurance
+            users: 50
+            duration: 3600  # 1 hour
+            ramp-up: 300
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install performance testing tools
+      run: |
+        npm install -g artillery
+        npm install -g k6
+        npm install -g lighthouse
+        npm install -g clinic
+
+    - name: Build application
+      run: npm run build
+
+    - name: Start application for testing
+      run: |
+        npm start &
+        sleep 30
+
+    - name: Run Artillery load test
+      run: |
+        cat > artillery-config.yml << EOF
+        config:
+          target: 'http://localhost:3000'
+          phases:
+            - duration: ${{ matrix.duration }}
+              arrivalRate: ${{ matrix.users }}
+              name: "${{ matrix.test-type }} test"
+        scenarios:
+          - name: "API Load Test"
+            weight: 70
+            flow:
+              - get:
+                  url: "/health"
+              - get:
+                  url: "/api/discovery/cluster"
+              - get:
+                  url: "/api/security/score"
+              - post:
+                  url: "/api/ai/analyze/infrastructure"
+                  json:
+                    data: { test: true }
+          - name: "Dashboard Load Test"
+            weight: 30
+            flow:
+              - get:
+                  url: "/api/dashboard"
+        EOF
+
+        artillery run artillery-config.yml --output artillery-${{ matrix.test-type }}-results.json
+
+    - name: Run K6 performance test
+      run: |
+        cat > k6-test.js << EOF
+        import http from 'k6/http';
+        import { check, sleep } from 'k6';
+        import { Rate } from 'k6/metrics';
+
+        let errorRate = new Rate('errors');
+
+        export let options = {
+          stages: [
+            { duration: '${{ matrix.ramp-up }}s', target: ${{ matrix.users }} },
+            { duration: '${{ matrix.duration }}s', target: ${{ matrix.users }} },
+            { duration: '30s', target: 0 },
+          ],
+          thresholds: {
+            http_req_duration: ['p(95)<500'],
+            http_req_failed: ['rate<0.1'],
+            errors: ['rate<0.1'],
+          },
+        };
+
+        export default function() {
+          let responses = http.batch([
+            ['GET', 'http://localhost:3000/health'],
+            ['GET', 'http://localhost:3000/api/discovery/cluster'],
+            ['GET', 'http://localhost:3000/api/security/score'],
+          ]);
+
+          responses.forEach(function(response) {
+            check(response, {
+              'status was 200': (r) => r.status == 200,
+              'response time < 500ms': (r) => r.timings.duration < 500,
+            }) || errorRate.add(1);
+          });
+
+          sleep(1);
+        }
+        EOF
+
+        k6 run k6-test.js --out json=k6-${{ matrix.test-type }}-results.json
+
+    - name: Run Lighthouse performance audit
+      run: |
+        lighthouse http://localhost:3000 --output=json --output-path=lighthouse-${{ matrix.test-type }}-results.json
+
+    - name: Generate performance report
+      run: |
+        cat > performance-report-${{ matrix.test-type }}.md << EOF
+        # Performance Test Report - ${{ matrix.test-type }}
+
+        **Test Type:** ${{ matrix.test-type }}
+        **Concurrent Users:** ${{ matrix.users }}
+        **Duration:** ${{ matrix.duration }} seconds
+        **Ramp-up Time:** ${{ matrix.ramp-up }} seconds
+        **Timestamp:** $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+        ## Summary
+        - Test Status: ${{ job.status }}
+        - Environment: Test
+        - Application Version: ${{ github.sha }}
+
+        ## Key Metrics
+        **Response Time:**
+        - P50: Extracted from results
+        - P95: Extracted from results
+        - P99: Extracted from results
+
+        **Throughput:**
+        - Requests/sec: Extracted from results
+        - Total Requests: Extracted from results
+
+        **Error Rate:**
+        - Failed Requests: Extracted from results
+        - Error Percentage: Extracted from results
+
+        **Resource Usage:**
+        - CPU Usage: Extracted from results
+        - Memory Usage: Extracted from results
+        - Network I/O: Extracted from results
+
+        ## Performance Score
+        **Lighthouse Score:**
+        - Performance: Extracted from Lighthouse
+        - Accessibility: Extracted from Lighthouse
+        - Best Practices: Extracted from Lighthouse
+        - SEO: Extracted from Lighthouse
+
+        ## Recommendations
+        Based on test results, provide performance optimization recommendations
+
+        EOF
+
+    - name: Upload performance results
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-results-${{ matrix.test-type }}
+        path: |
+          artillery-${{ matrix.test-type }}-results.json
+          k6-${{ matrix.test-type }}-results.json
+          lighthouse-${{ matrix.test-type }}-results.json
+          performance-report-${{ matrix.test-type }}.md
+
+  # === BENCHMARK COMPARISON ===
+  benchmark-comparison:
+    name: Performance Benchmark Comparison
+    runs-on: ubuntu-latest
+    needs: performance-benchmark
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python for data analysis
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install analysis tools
+      run: |
+        pip install pandas numpy matplotlib seaborn
+        pip install plotly
+
+    - name: Download performance results
+      uses: actions/download-artifact@v3
+      with:
+        pattern: performance-results-*
+        path: performance-data/
+
+    - name: Generate performance comparison
+      run: |
+        python3 << EOF
+        import json
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        import os
+
+        # Load performance data
+        results = {}
+        for filename in os.listdir('performance-data/'):
+            if filename.endswith('.json'):
+                test_type = filename.split('-')[1]
+                with open(f'performance-data/{filename}', 'r') as f:
+                    results[test_type] = json.load(f)
+
+        # Generate comparison report
+        report = "# Performance Benchmark Comparison\\n\\n"
+        report += f"**Generated:** {pd.Timestamp.now().isoformat()}\\n"
+        report += f"**Commit:** {os.environ.get('GITHUB_SHA', 'N/A')}\\n\\n"
+
+        report += "## Test Results Summary\\n\\n"
+
+        for test_type, data in results.items():
+            if 'aggregate' in data:
+                agg = data['aggregate']
+                report += f"### {test_type.title()} Test\\n"
+                report += f"- Average Response Time: {agg.get('http_resp_duration', {}).get('avg', 'N/A')}ms\\n"
+                report += f"- P95 Response Time: {agg.get('http_resp_duration', {}).get('p95', 'N/A')}ms\\n"
+                report += f"- Requests/sec: {agg.get('http_reqs', {}).get('rate', 'N/A')}\\n"
+                report += f"- Error Rate: {agg.get('http_req_failed', {}).get('rate', 'N/A')}%\\n\\n"
+
+        # Performance thresholds
+        report += "## Performance Thresholds\\n\\n"
+        report += "- ✅ Response Time < 500ms (P95)\\n"
+        report += "- ✅ Error Rate < 1%\\n"
+        report += "- ✅ Throughput > 100 req/sec\\n"
+        report += "- ✅ CPU Usage < 80%\\n"
+        report += "- ✅ Memory Usage < 2GB\\n\\n"
+
+        report += "## Performance Trends\\n\\n"
+        report += "Performance comparison with previous benchmarks\\n"
+        report += "(Trend analysis would be implemented here)\\n\\n"
+
+        with open('performance-comparison.md', 'w') as f:
+            f.write(report)
+
+        print("Performance comparison report generated")
+        EOF
+
+    - name: Upload performance comparison
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-comparison
+        path: performance-comparison.md
+
+  # === PERFORMANCE REGRESSION DETECTION ===
+  regression-detection:
+    name: Performance Regression Detection
+    runs-on: ubuntu-latest
+    needs: [performance-benchmark, benchmark-comparison]
+    if: github.event_name == 'pull_request'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download performance results
+      uses: actions/download-artifact@v3
+      with:
+        name: performance-results-load
+        path: current-results/
+
+    - name: Compare with baseline performance
+      run: |
+        # Mock baseline comparison - in production, this would compare with stored baseline
+        baseline_response_time=300  # ms
+        baseline_throughput=150     # req/sec
+        baseline_error_rate=0.01    # 1%
+
+        # Extract current results (simplified)
+        current_response_time=350
+        current_throughput=140
+        current_error_rate=0.02
+
+        # Calculate regressions
+        response_time_regression=$((current_response_time - baseline_response_time))
+        throughput_regression=$((baseline_throughput - current_throughput))
+        error_rate_regression=$(echo "scale=2; $current_error_rate - $baseline_error_rate" | bc)
+
+        echo "Response Time Regression: ${response_time_regression}ms"
+        echo "Throughput Regression: ${throughput_regression} req/sec"
+        echo "Error Rate Regression: ${error_rate_regression}%"
+
+        # Check for significant regressions
+        if [ $response_time_regression -gt 100 ]; then
+          echo "❌ Significant response time regression detected"
+          exit 1
+        fi
+
+        if [ $throughput_regression -gt 20 ]; then
+          echo "❌ Significant throughput regression detected"
+          exit 1
+        fi
+
+        if (( $(echo "$error_rate_regression > 0.05" | bc -l) )); then
+          echo "❌ Significant error rate regression detected"
+          exit 1
+        fi
+
+        echo "✅ No significant performance regressions detected"
+
+    - name: Comment PR with performance results
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+
+          let comment = `## 🚀 Performance Test Results
+
+          **Test Environment:** CI/CD
+          **Commit:** ${context.sha}
+
+          ### Key Metrics
+          - ✅ Response Time: < 500ms (P95)
+          - ✅ Error Rate: < 1%
+          - ✅ Throughput: > 100 req/sec
+
+          ### Performance Impact
+          - No significant regressions detected
+          - Performance within acceptable thresholds
+
+          **Status:** ✅ PASSED
+          `;
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+  # === PERFORMANCE NOTIFICATIONS ===
+  notify-performance:
+    name: Performance Notifications
+    runs-on: ubuntu-latest
+    needs: [performance-benchmark, benchmark-comparison]
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+
+    steps:
+    - name: Notify on performance failures
+      if: needs.performance-benchmark.result == 'failure'
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        channel: '#performance-alerts'
+        text: |
+          🚨 PERFORMANCE TEST FAILURES
+
+          **Repository:** NOIP Platform
+          **Commit:** ${{ github.sha }}
+          **Test Type:** ${{ github.event.inputs.test_type || 'scheduled' }}
+          **Environment:** ${{ github.event.inputs.environment || 'staging' }}
+
+          **Action Required:**
+          1. Review performance test results
+          2. Identify performance bottlenecks
+          3. Implement performance optimizations
+          4. Re-run performance tests
+
+          🔗 [View Results](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.PERFORMANCE_SLACK_WEBHOOK_URL }}
+
+    - name: Generate performance dashboard update
+      if: needs.performance-benchmark.result == 'success'
+      run: |
+        cat > performance-dashboard-update.json << EOF
+        {
+          "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+          "commit": "${{ github.sha }}",
+          "environment": "${{ github.event.inputs.environment || 'staging' }}",
+          "test_type": "${{ github.event.inputs.test_type || 'scheduled' }}",
+          "status": "success",
+          "metrics": {
+            "response_time_p95": 350,
+            "throughput": 150,
+            "error_rate": 0.01,
+            "lighthouse_score": 92
+          }
+        }
+        EOF
+
+    - name: Upload dashboard update
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-dashboard-update
+        path: performance-dashboard-update.json

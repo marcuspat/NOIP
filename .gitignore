@@ -1,10 +1,237 @@
 
+
+
+# ============================================
+# DEPENDENCIES
+# ============================================
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+pnpm-lock.yaml
+yarn.lock
+
+# Package manager backup files
+package-lock.json.backup
+yarn.lock.backup
+pnpm-lock.yaml.backup
+
+# ============================================
+# BUILD OUTPUTS
+# ============================================
+# Build directories
+build/
+dist/
+out/
+lib/
+target/
+
+# TypeScript compilation
+*.tsbuildinfo
+
+# ============================================
+# ENVIRONMENT VARIABLES
+# ============================================
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.staging.local
+.env.backup
+
+# ============================================
+# LOGS
+# ============================================
+# Log files
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Application logs
+file-hasher.log
+rag_update.log
+security-testing.log
+
+# ============================================
+# COVERAGE REPORTS
+# ============================================
+# Coverage directories
+coverage/
+.coverage
+.nyc_output/
+junit.xml
+test-results/
+playwright-report/
+test-results.xml
+c8-coverage/
+
+# ============================================
+# IDE & EDITOR FILES
+# ============================================
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim
+*.swp
+*.swo
+*~
+.viminfo
+
+# Emacs
+.emacs.d/
+.elc
+*~
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ============================================
+# OPERATING SYSTEM FILES
+# ============================================
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================================
+# CACHE & TEMPORARY FILES
+# ============================================
+# Cache directories
+.cache/
+.tmp/
+.temp/
+tmp/
+temp/
+.parcel-cache/
+.eslintcache
+
+# Temporary files
+*.tmp
+*.temp
+*.pid
+*.seed
+*.pid.lock
+*.tgz
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ============================================
+# RUNTIME FILES
+# ============================================
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# ============================================
+# DATABASE FILES
+# ============================================
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.sqlite-journal
+*.db-wal
+*.sqlite-wal
+
+# Database backups
+*.sql.gz
+*.dump
+
+# ============================================
+# SECURITY & SENSITIVE FILES
+# ============================================
+# Private keys
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cert
+*.cer
+
+# SSH
+.ssh/
+id_rsa*
+id_ed25519*
+id_ecdsa*
+
+# ============================================
+# TESTING
+# ============================================
+# Test outputs
+test-results/
+playwright-report/
+test-results.xml
+test-results.json
+
+# Test databases
+*.test.db
+*.test.sqlite
+test_data.json
+
+# ============================================
+# CLAUDE FLOW & AGENT FILES
+# ============================================
 # Claude Flow generated files
 .claude/settings.local.json
 .mcp.json
 claude-flow.config.json
+.claude-flow/
 .swarm/
 .hive-mind/
+
+# Development artifacts
+af-with-context.sh
+*.settings.json.backup
+
+# Memory and coordination
+memory/
+coordination/
 memory/claude-flow-data.json
 memory/sessions/*
 !memory/sessions/README.md
@@ -13,13 +240,99 @@ memory/agents/*
 coordination/memory_bank/*
 coordination/subtasks/*
 coordination/orchestration/*
-*.db
-*.db-journal
-*.db-wal
-*.sqlite
-*.sqlite-journal
-*.sqlite-wal
-claude-flow
-claude-flow.bat
-claude-flow.ps1
+
+# Agent specific files
+agents/
 hive-mind-prompt-*.txt
+claude-flow
+claude-flow.wiki
+
+# Additional Claude-related excludes per cleanup requirements
+.claude
+PLANS.md
+CLAUDE.md
+
+# ============================================
+# DEVOPS & CONTAINERS
+# ============================================
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Kubernetes
+*.kubeconfig
+
+# Dev containers
+.devcontainer/
+
+# ============================================
+# BUILD ARTIFACTS
+# ============================================
+# Core dump files
+core.*
+core
+
+# Build artifacts
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# ============================================
+# BACKUP FILES
+# ============================================
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+*.save
+*~
+
+# ============================================
+# MONITORING & METRICS
+# ============================================
+# Monitoring files
+*.metrics
+*.prof
+*.trace
+
+# Performance data
+.perf/
+performance-results/
+
+# ============================================
+# MISCELLANEOUS
+# ============================================
+# Lock files
+*.lock
+
+# History files
+.history/
+
+# Local configuration files
+settings.local.json
+config.local.json
+
+# Temporary editor files
+#*#
+.#*
+
+# ============================================
+# PROJECT SPECIFIC
+# ============================================
+# NOIP-specific patterns
+devpods/*.settings.json
+devpods/*.json.backup
+.github/workflows/*.backup
+
+# Generated documentation
+docs/phase0/
+
+# Report files (keep structure, ignore content)
+reports/*.json
+reports/*.html
+!reports/README.md
+
+# Test inventory
+test_inventory/

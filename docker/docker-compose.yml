@@ -1,0 +1,213 @@
+version: '3.8'
+
+# NOIP Platform - Local Development Environment
+# Complete development stack with databases, monitoring, and security
+
+networks:
+  noip-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  mongodb_config:
+    driver: local
+
+services:
+  # --------------------------------------------------------------------------
+  # Main Application Services
+  # --------------------------------------------------------------------------
+
+  noip-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    container_name: noip-api-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - MONGODB_URI=mongodb://mongodb:27017/noip_dev
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=dev-secret-key-change-in-production
+      - CORS_ORIGIN=http://localhost:3000
+      - LOG_LEVEL=debug
+    volumes:
+      - ../src:/app/src:delegated
+      - ../config:/app/config:delegated
+      - ../logs:/app/logs:delegated
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - noip-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # --------------------------------------------------------------------------
+  # Database Services
+  # --------------------------------------------------------------------------
+
+  mongodb:
+    image: mongo:6.0
+    container_name: noip-mongodb-dev
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=admin123
+      - MONGO_INITDB_DATABASE=noip_dev
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+      - ./mongodb/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - noip-network
+    restart: unless-stopped
+    command: mongod --auth --bind_ip_all
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    container_name: noip-redis-dev
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_PASSWORD=redis123
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      - noip-network
+    restart: unless-stopped
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass redis123
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis123", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --------------------------------------------------------------------------
+  # Monitoring Services
+  # --------------------------------------------------------------------------
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: noip-prometheus-dev
+    ports:
+      - "9090:9090"
+    environment:
+      - PROMETHEUS_RETENTION=7d
+    volumes:
+      - prometheus_data:/prometheus
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/rules:/etc/prometheus/rules:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+    networks:
+      - noip-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: noip-grafana-dev
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - noip-network
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+  # --------------------------------------------------------------------------
+  # Additional Development Tools
+  # --------------------------------------------------------------------------
+
+  mongodb-express:
+    image: mongo-express:latest
+    container_name: noip-mongo-express-dev
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=admin
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=admin123
+      - ME_CONFIG_MONGODB_URL=mongodb://admin:admin123@mongodb:27017/
+    networks:
+      - noip-network
+    restart: unless-stopped
+    depends_on:
+      - mongodb
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: noip-redis-commander-dev
+    ports:
+      - "8082:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379:0:redis123
+    networks:
+      - noip-network
+    restart: unless-stopped
+    depends_on:
+      - redis
+
+  # --------------------------------------------------------------------------
+  # Test Services
+  # --------------------------------------------------------------------------
+
+  test-runner:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    container_name: noip-test-runner
+    environment:
+      - NODE_ENV=test
+      - MONGODB_URI=mongodb://mongodb:27017/noip_test
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=test-secret-key
+    volumes:
+      - ../tests:/app/tests:delegated
+      - ../src:/app/src:delegated
+      - ../reports:/app/reports:delegated
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - noip-network
+    profiles:
+      - test
+    command: ["npm", "run", "test:watch"]

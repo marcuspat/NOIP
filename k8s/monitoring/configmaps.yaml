@@ -1,0 +1,519 @@
+---
+# Prometheus Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: noip-monitoring
+  labels:
+    app: prometheus
+    component: configuration
+data:
+  prometheus.yml: |
+    # Prometheus Configuration
+
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'noip-production'
+        environment: 'production'
+
+    # Alerting
+    alerting:
+      alertmanagers:
+      - static_configs:
+        - targets:
+          - alertmanager-service:9093
+
+    # Rule Files
+    rule_files:
+    - "/etc/prometheus/rules/*.yml"
+
+    # Scrape Configurations
+    scrape_configs:
+    # Prometheus Self-Monitoring
+    - job_name: 'prometheus'
+      static_configs:
+      - targets: ['localhost:9090']
+      scrape_interval: 30s
+      metrics_path: /metrics
+
+    # NOIP Platform Application
+    - job_name: 'noip-platform'
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+          - noip-production
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        action: keep
+        regex: noip-platform-service
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: metrics
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_service_name]
+        target_label: service
+      scrape_interval: 30s
+      metrics_path: /metrics
+
+    # MongoDB Monitoring
+    - job_name: 'mongodb'
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+          - noip-production
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        action: keep
+        regex: mongodb-service
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: metrics
+      scrape_interval: 30s
+      metrics_path: /metrics
+
+    # Redis Monitoring
+    - job_name: 'redis'
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+          - noip-production
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        action: keep
+        regex: redis-service
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: metrics
+      scrape_interval: 30s
+      metrics_path: /metrics
+
+    # Kubernetes API Server
+    - job_name: 'kubernetes-apiservers'
+      kubernetes_sd_configs:
+      - role: endpoints
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: default;kubernetes;https
+      scrape_interval: 30s
+
+    # Kubernetes Nodes
+    - job_name: 'kubernetes-nodes'
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      scrape_interval: 30s
+
+    # Kubernetes Pods
+    - job_name: 'kubernetes-pods'
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name
+      scrape_interval: 30s
+
+  prometheus-rules.yml: |
+    # Prometheus Alerting Rules
+
+    groups:
+    - name: noip-platform.rules
+      rules:
+      # Application Health
+      - alert: NOIPPlatformDown
+        expr: up{job="noip-platform"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "NOIP Platform is down"
+          description: "NOIP Platform has been down for more than 1 minute."
+
+      - alert: NOIPPlatformHighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on NOIP Platform"
+          description: "Error rate is {{ $value }} errors per second."
+
+      - alert: NOIPPlatformHighResponseTime
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High response time on NOIP Platform"
+          description: "95th percentile response time is {{ $value }} seconds."
+
+      - alert: NOIPPlatformHighMemoryUsage
+        expr: (container_memory_usage_bytes{name="noip-platform"} / container_spec_memory_limit_bytes) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on NOIP Platform"
+          description: "Memory usage is above 90%."
+
+      - alert: NOIPPlatformHighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{name="noip-platform"}[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on NOIP Platform"
+          description: "CPU usage is above 80%."
+
+    - name: database.rules
+      rules:
+      # MongoDB Health
+      - alert: MongoDBDown
+        expr: up{job="mongodb"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MongoDB is down"
+          description: "MongoDB has been down for more than 1 minute."
+
+      - alert: MongoDBHighConnections
+        expr: mongodb_connections{state="current"} > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of MongoDB connections"
+          description: "MongoDB has {{ $value }} active connections."
+
+      - alert: MongoDBReplicationLag
+        expr: mongodb_replset_member_optime_date{state="PRIMARY"} - mongodb_replset_member_optime_date{state="SECONDARY"} > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "MongoDB replication lag"
+          description: "Replication lag is {{ $value }} seconds."
+
+      # Redis Health
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis has been down for more than 1 minute."
+
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Redis memory usage"
+          description: "Redis memory usage is {{ $value | humanizePercentage }}."
+
+      - alert: RedisHighConnectionCount
+        expr: redis_connected_clients > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of Redis connections"
+          description: "Redis has {{ $value }} connected clients."
+
+    - name: kubernetes.rules
+      rules:
+      - alert: KubernetesNodeDown
+        expr: up{job="kubernetes-nodes"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kubernetes node is down"
+          description: "Node {{ $labels.instance }} is down."
+
+      - alert: KubernetesPodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pod is crash looping"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping."
+
+      - alert: KubernetesPodNotReady
+        expr: kube_pod_status_ready{condition="true"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pod is not ready"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is not ready."
+
+---
+# AlertManager Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: noip-monitoring
+  labels:
+    app: alertmanager
+    component: configuration
+data:
+  alertmanager.yml: |
+    # AlertManager Configuration
+
+    global:
+      smtp_smarthost: 'smtp.company.com:587'
+      smtp_from: 'alertmanager@company.com'
+      smtp_auth_username: 'alertmanager@company.com'
+      smtp_auth_password: 'smtp-password'
+
+    # Templates
+    templates:
+    - '/etc/alertmanager/templates/*.tmpl'
+
+    # Route Configuration
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'default'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'critical-alerts'
+        group_wait: 5s
+        repeat_interval: 30m
+      - match:
+          severity: warning
+        receiver: 'warning-alerts'
+        group_wait: 10s
+        repeat_interval: 1h
+
+    # Receivers
+    receivers:
+    - name: 'default'
+      email_configs:
+      - to: 'noip-team@company.com'
+        subject: '[NOIP Alert] {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Labels: {{ range .Labels.SortedPairs }}{{ .Name }}={{ .Value }} {{ end }}
+          {{ end }}
+
+    - name: 'critical-alerts'
+      email_configs:
+      - to: 'noip-team@company.com,ops-team@company.com'
+        subject: '[CRITICAL] NOIP Platform Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          CRITICAL ALERT - Immediate attention required!
+
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Severity: {{ .Labels.severity }}
+          Time: {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+          Labels: {{ range .Labels.SortedPairs }}{{ .Name }}={{ .Value }} {{ end }}
+          {{ end }}
+      slack_configs:
+      - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+        channel: '#noip-alerts'
+        title: 'CRITICAL: NOIP Platform Alert'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Severity:* {{ .Labels.severity }}
+          {{ end }}
+
+    - name: 'warning-alerts'
+      email_configs:
+      - to: 'noip-team@company.com'
+        subject: '[WARNING] NOIP Platform Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          {{ range .Alerts }}
+          Alert: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          Severity: {{ .Labels.severity }}
+          Time: {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+          {{ end }}
+
+    # Inhibition Rules
+    inhibit_rules:
+    - source_match:
+        severity: 'critical'
+      target_match:
+        severity: 'warning'
+      equal: ['alertname', 'cluster', 'service']
+
+---
+# Grafana Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: noip-monitoring
+  labels:
+    app: grafana
+    component: configuration
+data:
+  datasources.yml: |
+    # Grafana Datasources Configuration
+
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus-service:9090
+      isDefault: true
+      jsonData:
+        timeInterval: "15s"
+        queryTimeout: "60s"
+        httpMethod: "POST"
+
+    - name: NOIP-Platform-Metrics
+      type: prometheus
+      access: proxy
+      url: http://noip-platform-service:9090
+      jsonData:
+        timeInterval: "30s"
+        queryTimeout: "30s"
+
+  dashboards.yml: |
+    # Grafana Dashboard Provisioning
+
+    apiVersion: 1
+    providers:
+    - name: 'default'
+      orgId: 1
+      folder: ''
+      type: file
+      disableDeletion: false
+      updateIntervalSeconds: 10
+      allowUiUpdates: true
+      options:
+        path: /var/lib/grafana/dashboards
+
+---
+# Grafana Dashboards
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: noip-monitoring
+  labels:
+    app: grafana
+    component: dashboards
+data:
+  noip-platform-overview.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "NOIP Platform Overview",
+        "tags": ["noip", "overview"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Application Status",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "up{job=\"noip-platform\"}",
+                "legendFormat": "{{instance}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "mappings": [
+                  {"options": {"0": {"text": "DOWN", "color": "red"}}, "type": "value"},
+                  {"options": {"1": {"text": "UP", "color": "green"}}, "type": "value"}
+                ]
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(http_requests_total{job=\"noip-platform\"}[5m])",
+                "legendFormat": "{{method}} {{status}}"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Response Time",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"noip-platform\"}[5m]))",
+                "legendFormat": "95th percentile"
+              },
+              {
+                "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{job=\"noip-platform\"}[5m]))",
+                "legendFormat": "50th percentile"
+              }
+            ],
+            "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
+          }
+        ],
+        "time": {"from": "now-1h", "to": "now"},
+        "refresh": "30s"
+      }
+    }
