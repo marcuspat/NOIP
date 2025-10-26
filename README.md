@@ -1,13 +1,28 @@
 # NetOps Intelligence Platform (NOIP)
 
+<div align="center">
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Node.js 18+](https://img.shields.io/badge/node-18+-green.svg)](https://nodejs.org/)
-[![GitHub Release](https://img.shields.io/github/release/marcuspat/NOIP.svg)](https://github.com/marcuspat/NOIP/releases)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/marcuspat/NOIP/actions)
-[![Security Score](https://img.shields.io/badge/security-A-brightgreen.svg)](https://github.com/marcuspat/NOIP/security)
+[![GitHub release](https://img.shields.io/github/release/marcuspat/NOIP.svg)](https://github.com/marcuspat/NOIP/releases)
+[![GitHub stars](https://img.shields.io/github/stars/marcuspat/NOIP.svg?style=social&label=Star)](https://github.com/marcuspat/NOIP)
+[![GitHub forks](https://img.shields.io/github/forks/marcuspat/NOIP.svg?style=social&label=Fork)](https://github.com/marcuspat/NOIP/fork)
+[![Build Status](https://github.com/marcuspat/NOIP/workflows/CI%2FCD/badge.svg)](https://github.com/marcuspat/NOIP/actions)
+[![codecov](https://codecov.io/gh/marcuspat/NOIP/branch/main/graph/badge.svg)](https://codecov.io/gh/marcuspat/NOIP)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=marcuspat_NOIP&metric=security_rating)](https://sonarcloud.io/dashboard?id=marcuspat_NOIP)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=marcuspat_NOIP&metric=alert_status)](https://sonarcloud.io/dashboard?id=marcuspat_NOIP)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-blue.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
+[![Docker](https://img.shields.io/badge/Docker-ready-blue.svg)](https://www.docker.com/)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-compatible-blue.svg)](https://kubernetes.io/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![Chat on GitHub](https://img.shields.io/badge/chat-on%20github-blue.svg)](https://github.com/marcuspat/NOIP/discussions)
+
+**Enterprise-Grade Infrastructure Intelligence Platform**
+*Automated Discovery • Security Scanning • AI Analysis • Beautiful Dashboards*
+
+[**Quick Start**](#-quick-start) • [**Features**](#-features) • [**Documentation**](#-documentation) • [**Installation**](#-installation) • [**Contributing**](#-contributing)
+
+</div>
 
 🚀 **Enterprise-Grade Infrastructure Intelligence Platform** that combines automated discovery, security scanning, AI analysis, and beautiful dashboards.
 
