@@ -1,4 +1,7 @@
-import { PerformanceService, LoadTestConfig } from '../../src/services/performance.service';
+import {
+  PerformanceService,
+  LoadTestConfig,
+} from '../../src/services/performance.service';
 import { config } from '../../src/config';
 
 describe('Performance Service - Load Testing', () => {
@@ -28,9 +31,9 @@ describe('Performance Service - Load Testing', () => {
             method: 'GET',
             endpoint: '/health',
             expectedStatus: 200,
-            timeout: 5000
-          }
-        ]
+            timeout: 5000,
+          },
+        ],
       };
 
       const result = await performanceService.runLoadTest(config);
@@ -59,7 +62,7 @@ describe('Performance Service - Load Testing', () => {
             method: 'GET',
             endpoint: '/health',
             expectedStatus: 200,
-            timeout: 5000
+            timeout: 5000,
           },
           {
             name: 'API Test',
@@ -67,7 +70,7 @@ describe('Performance Service - Load Testing', () => {
             method: 'POST',
             endpoint: '/api/test',
             expectedStatus: 200,
-            timeout: 10000
+            timeout: 10000,
           },
           {
             name: 'Dashboard Load',
@@ -75,9 +78,9 @@ describe('Performance Service - Load Testing', () => {
             method: 'GET',
             endpoint: '/dashboard',
             expectedStatus: 200,
-            timeout: 8000
-          }
-        ]
+            timeout: 8000,
+          },
+        ],
       };
 
       const result = await performanceService.runLoadTest(config);
@@ -103,9 +106,9 @@ describe('Performance Service - Load Testing', () => {
             method: 'GET',
             endpoint: '/api/heavy-load',
             expectedStatus: 200,
-            timeout: 30000
-          }
-        ]
+            timeout: 30000,
+          },
+        ],
       };
 
       const result = await performanceService.runLoadTest(config);
@@ -137,9 +140,9 @@ describe('Performance Service - Load Testing', () => {
             method: 'GET',
             endpoint: '/api/performance-test',
             expectedStatus: 200,
-            timeout: 15000
-          }
-        ]
+            timeout: 15000,
+          },
+        ],
       };
 
       const result = await performanceService.runLoadTest(config);
@@ -220,9 +223,9 @@ describe('Performance Service - Load Testing', () => {
             method: 'GET',
             endpoint: '/health',
             expectedStatus: 200,
-            timeout: 5000
-          }
-        ]
+            timeout: 5000,
+          },
+        ],
       };
 
       await performanceService.runLoadTest(config);
@@ -251,9 +254,9 @@ describe('Performance Service - Load Testing', () => {
             method: 'GET',
             endpoint: '/health',
             expectedStatus: 200,
-            timeout: 5000
-          }
-        ]
+            timeout: 5000,
+          },
+        ],
       };
 
       const result = await performanceService.runLoadTest(config);
@@ -265,7 +268,8 @@ describe('Performance Service - Load Testing', () => {
     });
 
     test('should return null for non-existent test ID', async () => {
-      const nonExistentTest = await performanceService.getTestById('non-existent-id');
+      const nonExistentTest =
+        await performanceService.getTestById('non-existent-id');
       expect(nonExistentTest).toBeNull();
     });
   });
@@ -313,9 +317,9 @@ describe('Performance Service - Load Testing', () => {
             method: 'GET',
             endpoint: '/health',
             expectedStatus: 200,
-            timeout: 5000
-          }
-        ]
+            timeout: 5000,
+          },
+        ],
       };
 
       await performanceService.runLoadTest(config);
@@ -346,15 +350,17 @@ describe('Performance Service - Load Testing', () => {
       const invalidConfig = {
         targetUrl: '', // Invalid empty URL
         concurrentUsers: -1, // Invalid negative number
-        duration: 0 // Invalid zero duration
+        duration: 0, // Invalid zero duration
       } as LoadTestConfig;
 
-      await expect(performanceService.runLoadTest(invalidConfig)).rejects.toThrow();
+      await expect(
+        performanceService.runLoadTest(invalidConfig)
+      ).rejects.toThrow();
     });
 
     test('should handle missing configuration', async () => {
       const incompleteConfig = {
-        targetUrl: 'http://localhost:3000'
+        targetUrl: 'http://localhost:3000',
         // Missing required fields
       } as LoadTestConfig;
 
@@ -380,7 +386,7 @@ describe('Performance Service - Load Testing', () => {
             method: 'GET',
             endpoint: '/api/data',
             expectedStatus: 200,
-            timeout: 5000
+            timeout: 5000,
           },
           {
             name: 'POST Request',
@@ -389,7 +395,7 @@ describe('Performance Service - Load Testing', () => {
             endpoint: '/api/data',
             expectedStatus: 201,
             timeout: 10000,
-            body: { test: 'data' }
+            body: { test: 'data' },
           },
           {
             name: 'PUT Request',
@@ -398,7 +404,7 @@ describe('Performance Service - Load Testing', () => {
             endpoint: '/api/data/1',
             expectedStatus: 200,
             timeout: 10000,
-            body: { test: 'updated' }
+            body: { test: 'updated' },
           },
           {
             name: 'DELETE Request',
@@ -406,9 +412,9 @@ describe('Performance Service - Load Testing', () => {
             method: 'DELETE',
             endpoint: '/api/data/1',
             expectedStatus: 204,
-            timeout: 5000
-          }
-        ]
+            timeout: 5000,
+          },
+        ],
       };
 
       const result = await performanceService.runLoadTest(config);
@@ -432,7 +438,7 @@ describe('Performance Service - Load Testing', () => {
             method: 'GET',
             endpoint: '/api/primary',
             expectedStatus: 200,
-            timeout: 5000
+            timeout: 5000,
           },
           {
             name: 'Secondary Scenario',
@@ -440,9 +446,9 @@ describe('Performance Service - Load Testing', () => {
             method: 'GET',
             endpoint: '/api/secondary',
             expectedStatus: 200,
-            timeout: 5000
-          }
-        ]
+            timeout: 5000,
+          },
+        ],
       };
 
       const result = await performanceService.runLoadTest(config);

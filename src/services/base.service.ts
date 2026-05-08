@@ -31,7 +31,7 @@ export class BaseService {
       return this.createResponse(true, data);
     } catch (error) {
       const message = error instanceof Error ? error.message : errorMessage;
-      return this.createResponse(false, undefined, message);
+      return this.createResponse<T>(false, undefined, message);
     }
   }
 

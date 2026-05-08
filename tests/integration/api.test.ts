@@ -4,9 +4,7 @@ import app from '../../src/app';
 describe('API Integration Tests', () => {
   describe('Health Endpoint', () => {
     it('should return health status', async () => {
-      const response = await request(app)
-        .get('/health')
-        .expect(200);
+      const response = await request(app).get('/health').expect(200);
 
       expect(response.body).toHaveProperty('status', 'healthy');
       expect(response.body).toHaveProperty('timestamp');
@@ -153,9 +151,7 @@ describe('API Integration Tests', () => {
 
   describe('Dashboard API', () => {
     it('should get all dashboards', async () => {
-      const response = await request(app)
-        .get('/api/dashboard')
-        .expect(200);
+      const response = await request(app).get('/api/dashboard').expect(200);
 
       expect(response.body).toHaveProperty('success', true);
       expect(Array.isArray(response.body.data)).toBe(true);
@@ -192,9 +188,7 @@ describe('API Integration Tests', () => {
 
   describe('Error Handling', () => {
     it('should handle 404 for unknown endpoints', async () => {
-      const response = await request(app)
-        .get('/api/unknown')
-        .expect(404);
+      const response = await request(app).get('/api/unknown').expect(404);
 
       expect(response.body).toHaveProperty('error', 'Endpoint not found');
       expect(response.body).toHaveProperty('path');
@@ -213,9 +207,9 @@ describe('API Integration Tests', () => {
 
     it('should handle rate limiting', async () => {
       // Make multiple rapid requests to test rate limiting
-      const promises = Array(10).fill(null).map(() =>
-        request(app).get('/health')
-      );
+      const promises = Array(10)
+        .fill(null)
+        .map(() => request(app).get('/health'));
 
       const responses = await Promise.all(promises);
 

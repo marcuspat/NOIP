@@ -88,7 +88,14 @@ export interface TestError {
 }
 
 export interface Bottleneck {
-  type: 'cpu' | 'memory' | 'network' | 'disk' | 'database' | 'api' | 'application';
+  type:
+    | 'cpu'
+    | 'memory'
+    | 'network'
+    | 'disk'
+    | 'database'
+    | 'api'
+    | 'application';
   severity: 'low' | 'medium' | 'high' | 'critical';
   description: string;
   impact: string;
@@ -124,7 +131,7 @@ export class PerformanceService extends BaseService {
       testId,
       targetUrl: config.targetUrl,
       concurrentUsers: config.concurrentUsers,
-      duration: config.duration
+      duration: config.duration,
     });
 
     try {
@@ -143,7 +150,10 @@ export class PerformanceService extends BaseService {
         testId,
         duration: result.duration,
         totalRequests: result.totalRequests,
-        successRate: (result.successfulRequests / result.totalRequests * 100).toFixed(2) + '%'
+        successRate:
+          ((result.successfulRequests / result.totalRequests) * 100).toFixed(
+            2
+          ) + '%',
       });
 
       return result;
@@ -153,7 +163,10 @@ export class PerformanceService extends BaseService {
     }
   }
 
-  private async executeLoadTest(testId: string, config: LoadTestConfig): Promise<LoadTestResult> {
+  private async executeLoadTest(
+    testId: string,
+    config: LoadTestConfig
+  ): Promise<LoadTestResult> {
     const startTime = Date.now();
     const result: LoadTestResult = {
       testId,
@@ -175,7 +188,7 @@ export class PerformanceService extends BaseService {
       throughput: 0,
       errors: [],
       bottlenecks: [],
-      recommendations: []
+      recommendations: [],
     };
 
     const responseTimes: number[] = [];
@@ -183,7 +196,8 @@ export class PerformanceService extends BaseService {
     let totalBytes = 0;
 
     // Simulate load test execution
-    const totalRequests = config.concurrentUsers * config.requestRate * config.duration;
+    const totalRequests =
+      config.concurrentUsers * config.requestRate * config.duration;
 
     for (let second = 0; second < config.duration; second++) {
       const requestsThisSecond = Math.min(
@@ -196,11 +210,8 @@ export class PerformanceService extends BaseService {
         const requestId = `${testId}_${second}_${i}`;
 
         try {
-          const { responseTime, responseSize, success } = await this.simulateRequest(
-            config.targetUrl,
-            scenario,
-            requestId
-          );
+          const { responseTime, responseSize, success } =
+            await this.simulateRequest(config.targetUrl, scenario, requestId);
 
           responseTimes.push(responseTime);
           totalBytes += responseSize;
@@ -212,19 +223,26 @@ export class PerformanceService extends BaseService {
             this.recordError(result, 'HTTP_ERROR', 'Request failed', second);
           }
 
-          result.minResponseTime = Math.min(result.minResponseTime, responseTime);
-          result.maxResponseTime = Math.max(result.maxResponseTime, responseTime);
-
+          result.minResponseTime = Math.min(
+            result.minResponseTime,
+            responseTime
+          );
+          result.maxResponseTime = Math.max(
+            result.maxResponseTime,
+            responseTime
+          );
         } catch (error) {
           result.failedRequests++;
-          this.recordError(result, 'NETWORK_ERROR', error.message, second);
+          this.recordError(result, 'NETWORK_ERROR', error instanceof Error ? error.message : String(error), second);
         }
 
         result.totalRequests++;
       }
 
       // Small delay to simulate real timing
-      await new Promise(resolve => setTimeout(resolve, 1000 / requestsThisSecond));
+      await new Promise(resolve =>
+        setTimeout(resolve, 1000 / requestsThisSecond)
+      );
     }
 
     const endTime = Date.now();
@@ -283,28 +301,39 @@ export class PerformanceService extends BaseService {
     return { responseTime, responseSize, success };
   }
 
-  private recordError(result: LoadTestResult, type: string, message: string, timestamp: number): void {
+  private recordError(
+    result: LoadTestResult,
+    type: string,
+    message: string,
+    timestamp: number
+  ): void {
     const existingError = result.errors.find(e => e.type === type);
 
     if (existingError) {
       existingError.count++;
-      existingError.percentage = (existingError.count / result.totalRequests) * 100;
+      existingError.percentage =
+        (existingError.count / result.totalRequests) * 100;
     } else {
       result.errors.push({
         type,
         message,
         count: 1,
         percentage: (1 / result.totalRequests) * 100,
-        timestamp: new Date(timestamp * 1000)
+        timestamp: new Date(timestamp * 1000),
       });
     }
   }
 
-  private calculateStatistics(result: LoadTestResult, responseTimes: number[], totalBytes: number): void {
+  private calculateStatistics(
+    result: LoadTestResult,
+    responseTimes: number[],
+    totalBytes: number
+  ): void {
     if (responseTimes.length === 0) return;
 
     // Average response time
-    result.averageResponseTime = responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
+    result.averageResponseTime =
+      responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
 
     // Percentiles
     const sortedTimes = responseTimes.sort((a, b) => a - b);
@@ -322,7 +351,9 @@ export class PerformanceService extends BaseService {
 
   // Bottleneck Analysis
 
-  private async identifyBottlenecks(result: LoadTestResult): Promise<Bottleneck[]> {
+  private async identifyBottlenecks(
+    result: LoadTestResult
+  ): Promise<Bottleneck[]> {
     const bottlenecks: Bottleneck[] = [];
 
     // Response time bottlenecks
@@ -332,8 +363,9 @@ export class PerformanceService extends BaseService {
         severity: result.p95ResponseTime > 2000 ? 'critical' : 'high',
         description: `95th percentile response time is ${result.p95ResponseTime}ms`,
         impact: 'Users experiencing slow response times',
-        recommendation: 'Optimize database queries, implement caching, or scale horizontally',
-        metrics: { p95ResponseTime: result.p95ResponseTime }
+        recommendation:
+          'Optimize database queries, implement caching, or scale horizontally',
+        metrics: { p95ResponseTime: result.p95ResponseTime },
       });
     }
 
@@ -345,8 +377,9 @@ export class PerformanceService extends BaseService {
         severity: errorRate > 5 ? 'critical' : 'medium',
         description: `Error rate is ${errorRate.toFixed(2)}%`,
         impact: 'Users experiencing failed requests',
-        recommendation: 'Investigate error logs, fix application bugs, improve error handling',
-        metrics: { errorRate, totalErrors: result.failedRequests }
+        recommendation:
+          'Investigate error logs, fix application bugs, improve error handling',
+        metrics: { errorRate, totalErrors: result.failedRequests },
       });
     }
 
@@ -357,13 +390,15 @@ export class PerformanceService extends BaseService {
         severity: result.requestsPerSecond < 50 ? 'high' : 'medium',
         description: `Low throughput: ${result.requestsPerSecond.toFixed(2)} requests/second`,
         impact: 'System cannot handle required load',
-        recommendation: 'Scale horizontally, optimize code, implement load balancing',
-        metrics: { throughput: result.requestsPerSecond }
+        recommendation:
+          'Scale horizontally, optimize code, implement load balancing',
+        metrics: { throughput: result.requestsPerSecond },
       });
     }
 
     // Add simulated infrastructure bottlenecks
-    const currentMetrics = this.currentMetrics || await this.getSystemMetrics();
+    const currentMetrics =
+      this.currentMetrics || (await this.getSystemMetrics());
 
     if (currentMetrics.cpu.usage > 80) {
       bottlenecks.push({
@@ -371,8 +406,9 @@ export class PerformanceService extends BaseService {
         severity: currentMetrics.cpu.usage > 90 ? 'critical' : 'high',
         description: `CPU usage at ${currentMetrics.cpu.usage}%`,
         impact: 'System performance degradation',
-        recommendation: 'Scale vertically (more CPU cores) or horizontally (more instances)',
-        metrics: { cpuUsage: currentMetrics.cpu.usage }
+        recommendation:
+          'Scale vertically (more CPU cores) or horizontally (more instances)',
+        metrics: { cpuUsage: currentMetrics.cpu.usage },
       });
     }
 
@@ -382,8 +418,9 @@ export class PerformanceService extends BaseService {
         severity: currentMetrics.memory.percentage > 95 ? 'critical' : 'high',
         description: `Memory usage at ${currentMetrics.memory.percentage}%`,
         impact: 'Risk of out-of-memory errors',
-        recommendation: 'Add more memory, optimize memory usage, implement memory leaks fixes',
-        metrics: { memoryUsage: currentMetrics.memory.percentage }
+        recommendation:
+          'Add more memory, optimize memory usage, implement memory leaks fixes',
+        metrics: { memoryUsage: currentMetrics.memory.percentage },
       });
     }
 
@@ -395,7 +432,9 @@ export class PerformanceService extends BaseService {
 
     // Performance recommendations
     if (result.p95ResponseTime > 500) {
-      recommendations.push('Implement response caching to reduce average response times');
+      recommendations.push(
+        'Implement response caching to reduce average response times'
+      );
       recommendations.push('Consider using a CDN for static assets');
     }
 
@@ -407,13 +446,17 @@ export class PerformanceService extends BaseService {
     // Error handling recommendations
     const errorRate = (result.failedRequests / result.totalRequests) * 100;
     if (errorRate > 0.5) {
-      recommendations.push('Implement comprehensive error logging and monitoring');
+      recommendations.push(
+        'Implement comprehensive error logging and monitoring'
+      );
       recommendations.push('Add circuit breakers for external service calls');
     }
 
     // Infrastructure recommendations
     if (result.config.concurrentUsers > 1000) {
-      recommendations.push('Consider using auto-scaling groups for production workloads');
+      recommendations.push(
+        'Consider using auto-scaling groups for production workloads'
+      );
       recommendations.push('Implement health checks and graceful degradation');
     }
 
@@ -450,42 +493,42 @@ export class PerformanceService extends BaseService {
         loadAverage: [
           0.5 + Math.random() * 2,
           0.6 + Math.random() * 1.5,
-          0.7 + Math.random() * 1
-        ]
+          0.7 + Math.random() * 1,
+        ],
       },
       memory: {
         total: 16384, // 16GB
         used: 8192 + Math.random() * 4096, // 8-12GB used
         free: 4096 + Math.random() * 2048, // 4-6GB free
-        percentage: 50 + Math.random() * 25 // 50-75% usage
+        percentage: 50 + Math.random() * 25, // 50-75% usage
       },
       network: {
         bytesIn: Math.random() * 1000000,
         bytesOut: Math.random() * 1000000,
         packetsIn: Math.floor(Math.random() * 10000),
         packetsOut: Math.floor(Math.random() * 10000),
-        connections: Math.floor(100 + Math.random() * 500)
+        connections: Math.floor(100 + Math.random() * 500),
       },
       disk: {
         total: 1024 * 1024, // 1TB
         used: 512 * 1024 + Math.random() * 256 * 1024, // 512-768GB used
         free: 256 * 1024 + Math.random() * 256 * 1024, // 256-512GB free
         percentage: 50 + Math.random() * 25, // 50-75% usage
-        iops: Math.floor(100 + Math.random() * 900)
+        iops: Math.floor(100 + Math.random() * 900),
       },
       application: {
         activeConnections: Math.floor(50 + Math.random() * 200),
         requestRate: Math.floor(10 + Math.random() * 100),
         responseTime: 50 + Math.random() * 200,
-        errorRate: Math.random() * 5
-      }
+        errorRate: Math.random() * 5,
+      },
     };
   }
 
   // Public API Methods
 
   async getCurrentMetrics(): Promise<PerformanceMetrics> {
-    return this.currentMetrics || await this.getSystemMetrics();
+    return this.currentMetrics || (await this.getSystemMetrics());
   }
 
   async getTestHistory(limit: number = 10): Promise<LoadTestResult[]> {
@@ -510,12 +553,12 @@ export class PerformanceService extends BaseService {
         timestamp: latestTest.startTime,
         requestsPerSecond: latestTest.requestsPerSecond,
         averageResponseTime: latestTest.averageResponseTime,
-        errorRate: (latestTest.failedRequests / latestTest.totalRequests) * 100
+        errorRate: (latestTest.failedRequests / latestTest.totalRequests) * 100,
       },
       currentMetrics,
       testCount: this.testHistory.length,
       bottlenecks: latestTest.bottlenecks.length,
-      recommendations: latestTest.recommendations.length
+      recommendations: latestTest.recommendations.length,
     };
   }
 
@@ -536,7 +579,7 @@ export class PerformanceService extends BaseService {
             method: 'GET',
             endpoint: '/health',
             expectedStatus: 200,
-            timeout: 5000
+            timeout: 5000,
           },
           {
             name: 'Dashboard Load',
@@ -544,7 +587,7 @@ export class PerformanceService extends BaseService {
             method: 'GET',
             endpoint: '/api/dashboard',
             expectedStatus: 200,
-            timeout: 10000
+            timeout: 10000,
           },
           {
             name: 'Infrastructure Scan',
@@ -552,7 +595,7 @@ export class PerformanceService extends BaseService {
             method: 'POST',
             endpoint: '/api/scan',
             expectedStatus: 200,
-            timeout: 30000
+            timeout: 30000,
           },
           {
             name: 'AI Analysis',
@@ -560,7 +603,7 @@ export class PerformanceService extends BaseService {
             method: 'POST',
             endpoint: '/api/ai/analyze',
             expectedStatus: 200,
-            timeout: 15000
+            timeout: 15000,
           },
           {
             name: 'Security Check',
@@ -568,9 +611,9 @@ export class PerformanceService extends BaseService {
             method: 'GET',
             endpoint: '/api/security/status',
             expectedStatus: 200,
-            timeout: 5000
-          }
-        ]
+            timeout: 5000,
+          },
+        ],
       },
       {
         targetUrl: config.baseUrl || 'http://localhost:3000',
@@ -586,7 +629,7 @@ export class PerformanceService extends BaseService {
             method: 'GET',
             endpoint: '/health',
             expectedStatus: 200,
-            timeout: 5000
+            timeout: 5000,
           },
           {
             name: 'Dashboard Load',
@@ -594,7 +637,7 @@ export class PerformanceService extends BaseService {
             method: 'GET',
             endpoint: '/api/dashboard',
             expectedStatus: 200,
-            timeout: 10000
+            timeout: 10000,
           },
           {
             name: 'Infrastructure Scan',
@@ -602,7 +645,7 @@ export class PerformanceService extends BaseService {
             method: 'POST',
             endpoint: '/api/scan',
             expectedStatus: 200,
-            timeout: 30000
+            timeout: 30000,
           },
           {
             name: 'AI Analysis',
@@ -610,7 +653,7 @@ export class PerformanceService extends BaseService {
             method: 'POST',
             endpoint: '/api/ai/analyze',
             expectedStatus: 200,
-            timeout: 15000
+            timeout: 15000,
           },
           {
             name: 'Security Check',
@@ -618,9 +661,9 @@ export class PerformanceService extends BaseService {
             method: 'GET',
             endpoint: '/api/security/status',
             expectedStatus: 200,
-            timeout: 5000
-          }
-        ]
+            timeout: 5000,
+          },
+        ],
       },
       {
         targetUrl: config.baseUrl || 'http://localhost:3000',
@@ -636,7 +679,7 @@ export class PerformanceService extends BaseService {
             method: 'GET',
             endpoint: '/health',
             expectedStatus: 200,
-            timeout: 5000
+            timeout: 5000,
           },
           {
             name: 'Dashboard Load',
@@ -644,7 +687,7 @@ export class PerformanceService extends BaseService {
             method: 'GET',
             endpoint: '/api/dashboard',
             expectedStatus: 200,
-            timeout: 10000
+            timeout: 10000,
           },
           {
             name: 'Infrastructure Scan',
@@ -652,7 +695,7 @@ export class PerformanceService extends BaseService {
             method: 'POST',
             endpoint: '/api/scan',
             expectedStatus: 200,
-            timeout: 30000
+            timeout: 30000,
           },
           {
             name: 'AI Analysis',
@@ -660,7 +703,7 @@ export class PerformanceService extends BaseService {
             method: 'POST',
             endpoint: '/api/ai/analyze',
             expectedStatus: 200,
-            timeout: 15000
+            timeout: 15000,
           },
           {
             name: 'Security Check',
@@ -668,18 +711,22 @@ export class PerformanceService extends BaseService {
             method: 'GET',
             endpoint: '/api/security/status',
             expectedStatus: 200,
-            timeout: 5000
-          }
-        ]
-      }
+            timeout: 5000,
+          },
+        ],
+      },
     ];
   }
 
-  async healthCheck(): Promise<{ status: string; monitoring: boolean; testsPerformed: number }> {
+  async healthCheck(): Promise<{
+    status: string;
+    monitoring: boolean;
+    testsPerformed: number;
+  }> {
     return {
       status: 'healthy',
       monitoring: !!this.monitoringInterval,
-      testsPerformed: this.testHistory.length
+      testsPerformed: this.testHistory.length,
     };
   }
 

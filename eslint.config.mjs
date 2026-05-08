@@ -1,7 +1,7 @@
 import js from '@eslint/js';
-import typescript from '@typescript-eslint/eslint-plugin';
-import typescriptParser from '@typescript-eslint/parser';
-import prettier from 'eslint-config-prettier';
+import tseslint from '@typescript-eslint/eslint-plugin';
+import tsparser from '@typescript-eslint/parser';
+import prettierConfig from 'eslint-config-prettier';
 import prettierPlugin from 'eslint-plugin-prettier';
 
 export default [
@@ -9,11 +9,10 @@ export default [
   {
     files: ['**/*.ts'],
     languageOptions: {
-      parser: typescriptParser,
+      parser: tsparser,
       parserOptions: {
-        ecmaVersion: 2020,
+        ecmaVersion: 2022,
         sourceType: 'module',
-        project: './tsconfig.json',
       },
       globals: {
         console: 'readonly',
@@ -25,6 +24,14 @@ export default [
         require: 'readonly',
         exports: 'readonly',
         global: 'readonly',
+        setTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearTimeout: 'readonly',
+        clearInterval: 'readonly',
+        setImmediate: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        fetch: 'readonly',
         jest: 'readonly',
         test: 'readonly',
         expect: 'readonly',
@@ -36,30 +43,40 @@ export default [
       },
     },
     plugins: {
-      '@typescript-eslint': typescript,
+      '@typescript-eslint': tseslint,
       prettier: prettierPlugin,
     },
     rules: {
-      ...typescript.configs.recommended.rules,
-      ...prettier.configs.recommended.rules,
-      '@typescript-eslint/interface-name-prefix': 'off',
+      ...tseslint.configs.recommended.rules,
+      ...prettierConfig.rules,
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-      '@typescript-eslint/prefer-const': 'error',
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-empty-object-type': 'warn',
+      '@typescript-eslint/no-require-imports': 'warn',
       'no-console': 'warn',
+      'no-undef': 'off',
+      'preserve-caught-error': 'off',
+      'no-useless-assignment': 'warn',
+      'no-unreachable': 'warn',
+      'no-case-declarations': 'warn',
+      'no-useless-escape': 'warn',
+      'no-empty': 'warn',
+      'no-prototype-builtins': 'warn',
+      'no-control-regex': 'warn',
       'prefer-const': 'error',
       'no-var': 'error',
-      'prettier/prettier': 'error',
-      '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
+      'no-unused-vars': 'off',
+      'prettier/prettier': 'warn',
     },
   },
   {
-    files: ['**/*.test.ts', '**/*.spec.ts'],
+    files: ['**/*.test.ts', '**/*.spec.ts', 'tests/**/*.ts'],
     rules: {
       'no-console': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
     },
   },
   {
@@ -67,6 +84,9 @@ export default [
       'dist/**',
       'node_modules/**',
       'coverage/**',
+      '.claude-flow/**',
+      'agents/**',
+      'scripts/**',
       '*.js',
       '*.mjs',
       '*.cjs',

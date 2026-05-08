@@ -18,11 +18,15 @@ export class AuditMiddleware {
   constructor(config?: Partial<AuditConfig>) {
     this.config = {
       logLevel: config?.logLevel || 'detailed',
-      excludePaths: config?.excludePaths || ['/health', '/metrics', '/favicon.ico'],
+      excludePaths: config?.excludePaths || [
+        '/health',
+        '/metrics',
+        '/favicon.ico',
+      ],
       includeHeaders: config?.includeHeaders || false,
       includeBody: config?.includeBody || true,
       sanitizeBody: config?.sanitizeBody !== false,
-      maxBodySize: config?.maxBodySize || 10240 // 10KB
+      maxBodySize: config?.maxBodySize || 10240, // 10KB
     };
   }
 
@@ -38,22 +42,30 @@ export class AuditMiddleware {
     }
 
     // Store original res.end to intercept response
-    const originalEnd = res.end;
+    const originalEnd = res.end.bind(res);
     let responseBody: any;
 
-    res.end = function(this: Response, ...args: any[]) {
+    (res as unknown as { end: (...args: any[]) => Response }).end = function (
+      this: Response,
+      ...args: any[]
+    ): Response {
       // Capture response body if needed
       if (args[0]) {
         responseBody = args[0];
       }
 
       // Call original end
-      originalEnd.apply(this, args);
+      const result = (originalEnd as (...a: any[]) => Response).apply(
+        this,
+        args
+      );
 
       // Create audit entry after response is sent
       setImmediate(() => {
         createAuditEntry(req, res, responseBody);
       });
+
+      return result;
     };
 
     next();
@@ -67,7 +79,7 @@ export class AuditMiddleware {
         action,
         resource,
         resourceId: req.params.id || req.body?.id,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
       next();
@@ -81,7 +93,7 @@ export class AuditMiddleware {
       (req as any).securityEventContext = {
         type: eventType,
         description,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
       next();
@@ -89,13 +101,16 @@ export class AuditMiddleware {
   };
 
   // Data access audit middleware
-  auditDataAccess = (operation: 'read' | 'write' | 'delete', resourceType: string) => {
+  auditDataAccess = (
+    operation: 'read' | 'write' | 'delete',
+    resourceType: string
+  ) => {
     return (req: Request, res: Response, next: NextFunction): void => {
       (req as any).dataAccessContext = {
         operation,
         resourceType,
         resourceIds: this.extractResourceIds(req),
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
       next();
@@ -110,7 +125,7 @@ export class AuditMiddleware {
         targetResource,
         targetId: req.params.id || req.body?.userId,
         adminId: (req as any).user?._id,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
       next();
@@ -128,7 +143,7 @@ export class AuditMiddleware {
         originalValues,
         newValues: req.body,
         userId: (req as any).user?._id,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
       next();
@@ -144,8 +159,8 @@ export class AuditMiddleware {
           username: req.body?.username || req.body?.email,
           ipAddress: this.getClientIP(req),
           userAgent: req.headers['user-agent'],
-          timestamp: new Date()
-        }
+          timestamp: new Date(),
+        },
       };
 
       next();
@@ -160,7 +175,7 @@ export class AuditMiddleware {
         sessionId: (req as any).session?.sessionId,
         userId: (req as any).user?._id,
         deviceInfo: this.extractDeviceInfo(req),
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
       next();
@@ -177,7 +192,7 @@ export class AuditMiddleware {
           apiKeyHash: this.hashApiKey(apiKey),
           endpoint: req.path,
           method: req.method,
-          timestamp: new Date()
+          timestamp: new Date(),
         };
       }
 
@@ -190,7 +205,7 @@ export class AuditMiddleware {
     return (req: Request, res: Response, next: NextFunction): void => {
       (req as any).customAuditContext = {
         ...auditData,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
 
       next();
@@ -233,14 +248,13 @@ export class AuditMiddleware {
       }
 
       const total = await AuditLogModel.countDocuments(query);
-      const logs = await AuditLogModel
-        .find(query)
+      const logs = await AuditLogModel.find(query)
         .sort({ timestamp: -1 })
         .limit(filters.limit || 100)
         .skip(filters.offset || 0)
         .exec();
 
-      return { logs, total };
+      return { logs: logs as unknown as AuditLog[], total };
     } catch (error) {
       logger.error('Failed to get audit logs', { error, filters });
       throw error;
@@ -248,22 +262,24 @@ export class AuditMiddleware {
   }
 
   // Search audit logs
-  async searchAuditLogs(searchQuery: string, filters: any = {}): Promise<AuditLog[]> {
+  async searchAuditLogs(
+    searchQuery: string,
+    filters: any = {}
+  ): Promise<AuditLog[]> {
     try {
       const query = {
         ...filters,
         $or: [
           { action: { $regex: searchQuery, $options: 'i' } },
           { resource: { $regex: searchQuery, $options: 'i' } },
-          { 'details.message': { $regex: searchQuery, $options: 'i' } }
-        ]
+          { 'details.message': { $regex: searchQuery, $options: 'i' } },
+        ],
       };
 
-      return await AuditLogModel
-        .find(query)
+      return (await AuditLogModel.find(query)
         .sort({ timestamp: -1 })
         .limit(100)
-        .exec();
+        .exec()) as unknown as AuditLog[];
     } catch (error) {
       logger.error('Failed to search audit logs', { error, searchQuery });
       throw error;
@@ -271,7 +287,10 @@ export class AuditMiddleware {
   }
 
   // Export audit logs
-  async exportAuditLogs(filters: any, format: 'json' | 'csv' = 'json'): Promise<string> {
+  async exportAuditLogs(
+    filters: any,
+    format: 'json' | 'csv' = 'json'
+  ): Promise<string> {
     try {
       const logs = await this.getAuditLogs({ ...filters, limit: 10000 });
 
@@ -289,14 +308,16 @@ export class AuditMiddleware {
   // Cleanup old audit logs
   async cleanupOldLogs(daysToKeep: number = 365): Promise<number> {
     try {
-      const cutoffDate = new Date(Date.now() - daysToKeep * 24 * 60 * 60 * 1000);
+      const cutoffDate = new Date(
+        Date.now() - daysToKeep * 24 * 60 * 60 * 1000
+      );
       const result = await AuditLogModel.deleteMany({
-        timestamp: { $lt: cutoffDate }
+        timestamp: { $lt: cutoffDate },
       });
 
       logger.info('Audit log cleanup completed', {
         deletedCount: result.deletedCount,
-        cutoffDate
+        cutoffDate,
       });
 
       return result.deletedCount;
@@ -338,7 +359,7 @@ export class AuditMiddleware {
       userAgent: req.headers['user-agent'],
       ipAddress: this.getClientIP(req),
       platform: req.headers['sec-ch-ua-platform'],
-      browser: req.headers['sec-ch-ua']
+      browser: req.headers['sec-ch-ua'],
     };
   }
 
@@ -349,11 +370,13 @@ export class AuditMiddleware {
   }
 
   private getClientIP(req: Request): string {
-    return req.ip ||
-           req.connection.remoteAddress ||
-           req.socket.remoteAddress ||
-           (req.connection as any)?.socket?.remoteAddress ||
-           '127.0.0.1';
+    return (
+      req.ip ||
+      req.connection.remoteAddress ||
+      req.socket.remoteAddress ||
+      (req.connection as any)?.socket?.remoteAddress ||
+      '127.0.0.1'
+    );
   }
 
   private hashApiKey(apiKey: string): string {
@@ -378,7 +401,7 @@ export class AuditMiddleware {
       'auth',
       'authorization',
       'csrf',
-      'session'
+      'session',
     ];
 
     const sanitized = { ...body };
@@ -416,7 +439,7 @@ export class AuditMiddleware {
       'resourceId',
       'ipAddress',
       'userAgent',
-      'details'
+      'details',
     ];
 
     const csvRows = [headers.join(',')];
@@ -430,7 +453,7 @@ export class AuditMiddleware {
         log.resourceId || '',
         log.ipAddress,
         `"${log.userAgent}"`,
-        `"${JSON.stringify(log.details).replace(/"/g, '""')}"`
+        `"${JSON.stringify(log.details).replace(/"/g, '""')}"`,
       ];
       csvRows.push(row.join(','));
     }
@@ -440,7 +463,11 @@ export class AuditMiddleware {
 }
 
 // Helper function to create audit entry
-async function createAuditEntry(req: Request, res: Response, responseBody: any): Promise<void> {
+async function createAuditEntry(
+  req: Request,
+  res: Response,
+  responseBody: any
+): Promise<void> {
   try {
     const auditMiddleware = new AuditMiddleware();
 
@@ -453,11 +480,11 @@ async function createAuditEntry(req: Request, res: Response, responseBody: any):
         statusCode: res.statusCode,
         responseTime: Date.now() - (req as any).startTime,
         userAgent: req.headers['user-agent'],
-        ipAddress: auditMiddleware['getClientIP'](req)
+        ipAddress: auditMiddleware['getClientIP'](req),
       },
       ipAddress: auditMiddleware['getClientIP'](req),
       userAgent: req.headers['user-agent'] || 'unknown',
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
     // Add user context if available
@@ -487,7 +514,8 @@ async function createAuditEntry(req: Request, res: Response, responseBody: any):
     if (responseBody && typeof responseBody === 'string') {
       try {
         const parsedBody = JSON.parse(responseBody);
-        auditLog.details!.responseBody = auditMiddleware['truncateBody'](parsedBody);
+        auditLog.details!.responseBody =
+          auditMiddleware['truncateBody'](parsedBody);
       } catch (error) {
         // Response body is not JSON, skip it
       }
@@ -503,7 +531,7 @@ async function createAuditEntry(req: Request, res: Response, responseBody: any):
       'failedAuthContext',
       'sessionManagementContext',
       'apiKeyUsageContext',
-      'customAuditContext'
+      'customAuditContext',
     ];
 
     for (const context of contexts) {
@@ -519,7 +547,11 @@ async function createAuditEntry(req: Request, res: Response, responseBody: any):
 }
 
 // Middleware to add start time to request
-export const addRequestTiming = (req: Request, res: Response, next: NextFunction): void => {
+export const addRequestTiming = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
   (req as any).startTime = Date.now();
   next();
 };

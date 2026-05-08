@@ -129,29 +129,31 @@ test.describe('NOIP Platform E2E Tests', () => {
   test('should handle large payloads', async ({ page }) => {
     // Create a large payload for AI analysis
     const largeData = {
-      resources: Array(100).fill(null).map((_, i) => ({
-        id: `resource-${i}`,
-        type: 'Pod',
-        namespace: `namespace-${i % 10}`,
-        spec: {
-          containers: [
-            {
-              name: 'container',
-              image: 'nginx:latest',
-              resources: {
-                requests: {
-                  cpu: '100m',
-                  memory: '128Mi',
-                },
-                limits: {
-                  cpu: '500m',
-                  memory: '512Mi',
+      resources: Array(100)
+        .fill(null)
+        .map((_, i) => ({
+          id: `resource-${i}`,
+          type: 'Pod',
+          namespace: `namespace-${i % 10}`,
+          spec: {
+            containers: [
+              {
+                name: 'container',
+                image: 'nginx:latest',
+                resources: {
+                  requests: {
+                    cpu: '100m',
+                    memory: '128Mi',
+                  },
+                  limits: {
+                    cpu: '500m',
+                    memory: '512Mi',
+                  },
                 },
               },
-            },
-          ],
-        },
-      })),
+            ],
+          },
+        })),
     };
 
     // Make POST request with large payload
@@ -175,14 +177,16 @@ test.describe('NOIP Platform E2E Tests', () => {
     expect(headers?.['x-xss-protection']).toBeDefined();
   });
 
-  test('should handle WebSocket connections (if implemented)', async ({ page }) => {
+  test('should handle WebSocket connections (if implemented)', async ({
+    page,
+  }) => {
     // This test would be for real-time WebSocket functionality
     // For now, we'll test that the server handles WebSocket upgrade requests
 
     const response = await page.request.get('/health', {
       headers: {
-        'Upgrade': 'websocket',
-        'Connection': 'Upgrade',
+        Upgrade: 'websocket',
+        Connection: 'Upgrade',
       },
     });
 
