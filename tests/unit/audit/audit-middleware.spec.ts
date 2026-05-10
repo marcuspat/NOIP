@@ -1,13 +1,26 @@
 import express, { type Express } from 'express';
 import request from 'supertest';
 
-import { FixedClock } from '../../../src/shared/kernel';
+import {
+  FixedClock,
+  InMemoryEventBus,
+  type DomainEvent,
+  type EventBus,
+} from '../../../src/shared/kernel';
 import { HashChainAppender } from '../../../src/services/audit/hash-chain-appender.service';
 import {
   auditMiddleware,
   NON_AUDITED_PATHS,
 } from '../../../src/middleware/audit.middleware';
 import { InMemoryAuditCollection, CapturingLogger } from './_stubs';
+
+class RecordingBus extends InMemoryEventBus {
+  public readonly events: Array<DomainEvent<unknown>> = [];
+  override publish<T>(event: DomainEvent<T>): void {
+    this.events.push(event as DomainEvent<unknown>);
+    super.publish(event);
+  }
+}
 
 function buildApp(
   appender: HashChainAppender,
@@ -33,6 +46,24 @@ function buildApp(
   });
   app.get('/api/boom', (_req, res) => {
     res.status(500).json({ error: 'boom' });
+  });
+  return app;
+}
+
+function buildBusApp(bus: EventBus): Express {
+  const app = express();
+  app.use(express.json());
+  app.use(
+    auditMiddleware({
+      bus,
+      clock: new FixedClock(new Date('2026-05-10T00:00:00Z')),
+    })
+  );
+  app.post('/api/users/:id', (req, res) => {
+    res.status(201).json({ id: req.params['id'] });
+  });
+  app.get('/health/live', (_req, res) => {
+    res.json({ status: 'live' });
   });
   return app;
 }
@@ -162,5 +193,42 @@ describe('auditMiddleware', () => {
       'headers'
     ] as Record<string, unknown>;
     expect(headers['authorization']).toBe('<REDACTED:authorization>');
+  });
+
+  // ADR-0018 — bus-based publication.
+
+  it('publishes audit.request on the bus instead of calling append', async () => {
+    const bus = new RecordingBus();
+    const app = buildBusApp(bus);
+
+    await request(app)
+      .post('/api/users/zed')
+      .send({ name: 'alice', password: 'hunter2' })
+      .expect(201);
+    await flush();
+
+    const requests = bus.events.filter(e => e.type === 'audit.request');
+    expect(requests).toHaveLength(1);
+    const evt = requests[0]!;
+    expect(evt.context).toBe('audit');
+    expect(evt.aggregateType).toBe('request');
+    const payload = evt.payload as Record<string, unknown> & {
+      action: string;
+      resource: string;
+      details: Record<string, unknown>;
+    };
+    expect(payload.action).toBe('http.post./api/users/zed');
+    expect(payload.resource).toBe('/api/users/zed');
+    const body = payload.details['body'] as Record<string, unknown>;
+    expect(body['password']).toBe('<REDACTED:password>');
+  });
+
+  it('skip-paths still apply when bus mode is on', async () => {
+    const bus = new RecordingBus();
+    const app = buildBusApp(bus);
+
+    await request(app).get('/health/live').expect(200);
+    await flush();
+    expect(bus.events.filter(e => e.type === 'audit.request')).toHaveLength(0);
   });
 });

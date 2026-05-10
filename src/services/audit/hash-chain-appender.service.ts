@@ -16,7 +16,12 @@
 
 import { createHash } from 'crypto';
 
-import type { Clock } from '../../shared/kernel';
+import {
+  compose,
+  type Clock,
+  type DomainEvent,
+  type EventBus,
+} from '../../shared/kernel';
 import type { AuditLogEntry, ActorRef } from '../../models/audit-log.model';
 
 /** Logger surface limited to what this service uses. */
@@ -76,6 +81,13 @@ interface Deps {
   collection: AuditCollection;
   clock: Clock;
   logger: AuditLogger;
+  /**
+   * Optional EventBus. When provided, chain breaks are published as
+   * `audit.chain.broken` DomainEvents in addition to the structured
+   * `logger.error` line. The composition root injects the live bus; tests
+   * may pass a stub or omit it entirely (logger-only path).
+   */
+  eventBus?: EventBus;
 }
 
 /**
@@ -355,9 +367,9 @@ export class HashChainAppender {
     actualHash: string,
     reason: string
   ): void {
-    // Phase 1 wave 3 will publish an `audit.chain.broken` DomainEvent via
-    // the EventBus. For now we emit a structured log line so ops alerting
-    // can pick it up immediately.
+    // Always log first — the structured line is the primary signal for
+    // ops alerting and remains intact when the bus is absent (tests, dry
+    // runs). The DomainEvent below is the new ADR-0018 surface.
     this.deps.logger.error('audit.chain.broken', {
       shard,
       atSequence,
@@ -365,6 +377,32 @@ export class HashChainAppender {
       actualHash,
       reason,
     });
+    if (!this.deps.eventBus) return;
+    try {
+      const event: DomainEvent<{
+        shard: string;
+        atSequence: number;
+        expectedHash: string;
+        actualHash: string;
+        reason: string;
+      }> = compose(
+        {
+          type: 'audit.chain.broken',
+          context: 'audit',
+          aggregateType: 'chain',
+          aggregateId: shard,
+          actor: { type: 'system' },
+          payload: { shard, atSequence, expectedHash, actualHash, reason },
+        },
+        this.deps.clock
+      );
+      this.deps.eventBus.publish(event);
+    } catch (err) {
+      // Don't recurse into append; just log.
+      this.deps.logger.error('failed to publish audit.chain.broken event', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 

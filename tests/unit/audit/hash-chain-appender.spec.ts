@@ -1,4 +1,8 @@
-import { FixedClock } from '../../../src/shared/kernel';
+import {
+  FixedClock,
+  InMemoryEventBus,
+  type DomainEvent,
+} from '../../../src/shared/kernel';
 import {
   HashChainAppender,
   computeEntryHash,
@@ -88,6 +92,49 @@ describe('HashChainAppender', () => {
     expect(report.brokenAtSequence).toBe(2);
     expect(
       logger.events.some(
+        e => e.level === 'error' && e.message === 'audit.chain.broken'
+      )
+    ).toBe(true);
+  });
+
+  it('publishes audit.chain.broken on the EventBus when a bus is wired', async () => {
+    class RecordingBus extends InMemoryEventBus {
+      public readonly events: Array<DomainEvent<unknown>> = [];
+      override publish<T>(event: DomainEvent<T>): void {
+        this.events.push(event as DomainEvent<unknown>);
+        super.publish(event);
+      }
+    }
+    const bus = new RecordingBus();
+    const localCollection = new InMemoryAuditCollection();
+    const localLogger = new CapturingLogger();
+    const localClock = new FixedClock(new Date('2026-05-10T00:00:00Z'));
+    const localAppender = new HashChainAppender({
+      collection: localCollection,
+      clock: localClock,
+      logger: localLogger,
+      eventBus: bus,
+    });
+    for (let i = 0; i < 3; i++) {
+      await localAppender.append(baseEntry({ action: `a-${i}` }));
+    }
+    localCollection.mutateAt(1, e => {
+      (e as { action: string }).action = 'tampered';
+    });
+    await localAppender.verifyRange(DEFAULT_SHARD, 0, 2);
+
+    const broken = bus.events.filter(e => e.type === 'audit.chain.broken');
+    expect(broken.length).toBeGreaterThanOrEqual(1);
+    const payload = broken[0]?.payload as {
+      shard: string;
+      atSequence: number;
+      reason: string;
+    };
+    expect(payload.shard).toBe(DEFAULT_SHARD);
+    expect(payload.atSequence).toBe(1);
+    // Logger error line is preserved as redundancy.
+    expect(
+      localLogger.events.some(
         e => e.level === 'error' && e.message === 'audit.chain.broken'
       )
     ).toBe(true);
