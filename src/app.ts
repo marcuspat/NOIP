@@ -12,6 +12,21 @@ import { AIService } from './services/ai.service';
 import { DashboardService } from './services/dashboard.service';
 import { PerformanceService } from './services/performance.service';
 import { ComplianceService } from './services/compliance.service';
+import {
+  InMemoryEventBus,
+  SystemClock,
+  type EventBus,
+  type Unsubscribe,
+} from './shared/kernel';
+import { AuditLogModel, SecurityEventModel } from './models';
+import {
+  HashChainAppender,
+  type AuditCollection,
+  type AuditLogger,
+} from './services/audit/hash-chain-appender.service';
+import { SecurityEventService } from './services/audit/security-event.service';
+import { installAuditSubscribers } from './services/audit/event-subscribers';
+import { auditMiddleware } from './middleware/audit.middleware';
 
 // Import route handlers
 import performanceRoutes from './routes/performance.routes';
@@ -19,6 +34,86 @@ import complianceRoutes from './routes/compliance.routes';
 import { createHealthRoutes } from './routes/health.routes';
 
 const app = express();
+
+// ---------------------------------------------------------------------------
+// Composition root (ADR-0018 Phase 1 wave 2)
+// ---------------------------------------------------------------------------
+// Exactly one in-process EventBus per pod. IAM producers (JWT manager,
+// AuthService) publish here; the audit subscribers persist the resulting
+// `iam.*`/`security.*`/etc. events into Mongo.
+//
+// Construction order matters:
+//   1. EventBus (no deps).
+//   2. SecurityEventService + HashChainAppender (the audit-side persistors).
+//   3. installAuditSubscribers() — registers handlers against the bus.
+//   4. Middleware/services that publish into the bus pick it up via
+//      `getEventBus()` (or constructor DI in tests).
+const eventClock = new SystemClock();
+const eventBus: EventBus = new InMemoryEventBus(logger);
+
+const auditLogger: AuditLogger = {
+  info: (m, meta) => logger.info(m, meta),
+  warn: (m, meta) => logger.warn(m, meta),
+  error: (m, meta) => logger.error(m, meta),
+};
+
+const auditCollection: AuditCollection = {
+  async findOne(filter, options) {
+    const q = AuditLogModel.findOne(filter);
+    if (options?.sort) q.sort(options.sort);
+    return (await q.lean<unknown>().exec()) as Awaited<
+      ReturnType<AuditCollection['findOne']>
+    >;
+  },
+  async insertOne(entry) {
+    const created = await AuditLogModel.create(entry);
+    return { insertedId: created._id };
+  },
+  async findRange(shard, fromSeq, toSeq) {
+    const docs = await AuditLogModel.find({
+      'chain.shard': shard,
+      'chain.sequence': { $gte: fromSeq, $lte: toSeq },
+    })
+      .sort({ 'chain.sequence': 1 })
+      .lean<unknown[]>()
+      .exec();
+    return docs as Awaited<ReturnType<AuditCollection['findRange']>>;
+  },
+};
+
+const hashChainAppender = new HashChainAppender({
+  collection: auditCollection,
+  clock: eventClock,
+  logger: auditLogger,
+  eventBus,
+});
+
+const securityEventService = new SecurityEventService({
+  store: SecurityEventModel as unknown as ConstructorParameters<
+    typeof SecurityEventService
+  >[0]['store'],
+  logger: auditLogger,
+});
+
+const auditSubscriberHandles: Unsubscribe[] = installAuditSubscribers({
+  bus: eventBus,
+  securityEvents: securityEventService,
+  appender: hashChainAppender,
+  logger: auditLogger,
+});
+
+/** Accessors so other modules (controllers, tests) can grab the live bus. */
+export function getEventBus(): EventBus {
+  return eventBus;
+}
+
+export function getHashChainAppender(): HashChainAppender {
+  return hashChainAppender;
+}
+
+export function getSecurityEventService(): SecurityEventService {
+  return securityEventService;
+}
 
 // Initialize services
 const discoveryService = new DiscoveryService();
@@ -116,6 +211,12 @@ if (config.app.environment !== 'test') {
     })
   );
 }
+
+// Audit middleware: publishes `audit.request` events; the audit
+// subscriber persists them via `HashChainAppender`. Mounted after
+// parsers so `req.body` is populated when the sanitiser runs, and
+// after `morgan` so request logs and audit entries align.
+app.use(auditMiddleware({ bus: eventBus, clock: eventClock }));
 
 // API Routes
 app.use('/api/discovery', createDiscoveryRoutes(discoveryService));
@@ -432,6 +533,16 @@ process.on('SIGTERM', async () => {
   logger.info('Received SIGTERM, shutting down gracefully');
   shuttingDown = true;
 
+  // Detach audit subscribers so any in-flight publishes during teardown
+  // don't try to hit a torn-down Mongo connection.
+  for (const unsubscribe of auditSubscriberHandles) {
+    try {
+      unsubscribe();
+    } catch (err) {
+      logger.warn('Failed to unsubscribe audit handler', { err });
+    }
+  }
+
   await Promise.all([discoveryService.stop(), securityService.stop()]);
 
   process.exit(0);
@@ -440,6 +551,14 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   logger.info('Received SIGINT, shutting down gracefully');
   shuttingDown = true;
+
+  for (const unsubscribe of auditSubscriberHandles) {
+    try {
+      unsubscribe();
+    } catch (err) {
+      logger.warn('Failed to unsubscribe audit handler', { err });
+    }
+  }
 
   await Promise.all([discoveryService.stop(), securityService.stop()]);
 
