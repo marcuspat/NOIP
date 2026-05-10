@@ -14,11 +14,10 @@ import {
 } from './contexts/discovery/api';
 import discoveryRoutes from './contexts/discovery/http/routes';
 import { InMemoryRawKubernetesClient } from './contexts/discovery/infrastructure/kubernetes/in-memory-raw-client';
-import { SecurityService } from './services/security.service';
+import { composeSecurity } from './contexts/security/api';
 import { AIService } from './services/ai.service';
 import { DashboardService } from './services/dashboard.service';
 import { PerformanceService } from './services/performance.service';
-import { ComplianceService } from './services/compliance.service';
 import {
   InMemoryEventBus,
   SystemClock,
@@ -59,7 +58,6 @@ import { createBucketLimiter } from './middleware/rate-limit-redis';
 
 // Import route handlers
 import performanceRoutes from './routes/performance.routes';
-import complianceRoutes from './routes/compliance.routes';
 import { createHealthRoutes } from './routes/health.routes';
 
 const app = express();
@@ -239,13 +237,40 @@ const composedDiscovery = composeDiscovery({
 });
 const discoveryService = composedDiscovery.service;
 const discoveryScheduler = composedDiscovery.scheduler;
+const discoveryPublicApi = composedDiscovery.publicApi;
+
+// ---------------------------------------------------------------------------
+// Security & Compliance context (DDD-07 Phase 3 wireup)
+// ---------------------------------------------------------------------------
+// The composed bundle owns repos, scanner, scoring service, the scan
+// orchestrator (which subscribes to discovery.cluster.scanned and
+// discovery.drift.detected), and both HTTP routers. The composition
+// root holds the unsubscribe handles and tears them down on SIGTERM.
+const composedSecurity = composeSecurity({
+  bus: eventBus,
+  clock: eventClock,
+  logger: auditLogger,
+  discovery: {
+    getLatestSnapshot: async scope => {
+      const snap = await discoveryPublicApi.getLatestSnapshot(scope);
+      return {
+        id: snap.id,
+        clusterId: snap.clusterId,
+        hash: snap.hash,
+        takenAt: snap.takenAt,
+        records: snap.records,
+      };
+    },
+  },
+});
+const securityService = composedSecurity.service;
+const complianceService = composedSecurity.compliance;
+const securitySubscriptions = composedSecurity.subscriptions;
 
 // Initialize services
-const securityService = new SecurityService();
 const aiService = new AIService();
 const dashboardService = new DashboardService();
 const performanceService = new PerformanceService();
-const complianceService = new ComplianceService();
 
 // Middleware
 app.use(helmet());
@@ -367,11 +392,11 @@ app.use(auditMiddleware({ bus: eventBus, clock: eventClock }));
 
 // API Routes
 app.use('/api/discovery', discoveryRoutes(discoveryService));
-app.use('/api/security', createSecurityRoutes(securityService));
+app.use('/api/security', composedSecurity.routers.security);
 app.use('/api/ai', createAIRoutes(aiService));
 app.use('/api/dashboard', createDashboardRoutes(dashboardService));
 app.use('/api/performance', performanceRoutes);
-app.use('/api/compliance', complianceRoutes);
+app.use('/api/compliance', composedSecurity.routers.compliance);
 
 // Error handling middleware
 app.use(
@@ -404,76 +429,9 @@ app.use('/{*splat}', (req, res) => {
 // Route creators
 // Note: createDiscoveryRoutes was removed in Phase 2 — the discovery
 // router lives at `src/contexts/discovery/http/routes.ts` and is mounted
-// directly above. The legacy /cluster, /resources, /namespaces, /nodes
-// paths are preserved as aliases inside that module so the existing
-// integration suite keeps passing.
-function createSecurityRoutes(service: SecurityService): express.Router {
-  const router = express.Router();
-
-  router.get('/scan', async (req, res) => {
-    try {
-      const { resources } = req.body;
-      const results = await service.scanResources(resources || []);
-      res.json({ success: true, data: results });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  router.get('/scan/pods', async (_req, res) => {
-    try {
-      const results = await service.scanPodSecurity();
-      res.json({ success: true, data: results });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  router.get('/scan/network', async (_req, res) => {
-    try {
-      const results = await service.scanNetworkPolicies();
-      res.json({ success: true, data: results });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  router.get('/score', async (_req, res) => {
-    try {
-      const score = await service.getSecurityScore();
-      res.json({ success: true, data: { score } });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  router.get('/recommendations', async (_req, res) => {
-    try {
-      const recommendations = await service.getSecurityRecommendations();
-      res.json({ success: true, data: recommendations });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  return router;
-}
-
+// directly above. createSecurityRoutes / complianceRoutes were removed
+// in Phase 3 — both routers now live under
+// `src/contexts/security/http/` and are produced by `composeSecurity`.
 function createAIRoutes(service: AIService): express.Router {
   const router = express.Router();
 
@@ -607,6 +565,16 @@ async function initializeServices() {
       complianceService.initialize(),
     ]);
 
+    // Phase 3: ensure SecurityPolicy rows exist for every builtin
+    // check. Idempotent — runs once per pod boot.
+    try {
+      await securityService.seedBuiltinPolicies();
+    } catch (err) {
+      logger.warn('failed to seed builtin security policies', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     // Discovery scheduler — kicks off the periodic scan loop.
     // Disabled when DISCOVERY_SERVICE_ENABLED=false so unit tests and
     // local dev don't hammer the apiserver.
@@ -652,11 +620,13 @@ async function gracefulShutdown(signal: string): Promise<void> {
   logger.info(`Received ${signal}, shutting down gracefully`);
   shuttingDown = true;
 
-  // Detach audit + permission-invalidation subscribers so any in-flight
-  // publishes during teardown don't try to hit a torn-down Mongo connection.
+  // Detach audit + permission-invalidation + security subscribers so
+  // any in-flight publishes during teardown don't try to hit a
+  // torn-down Mongo connection.
   for (const unsubscribe of [
     ...auditSubscriberHandles,
     ...permissionInvalidationHandles,
+    ...securitySubscriptions,
   ]) {
     try {
       unsubscribe();
