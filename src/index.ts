@@ -5,7 +5,7 @@ export { startServer, initializeServices } from './app';
 // Export services
 export { DiscoveryService } from './services/discovery.service';
 export { SecurityService } from './contexts/security/api';
-export { AIService } from './services/ai.service';
+export { AIService } from './contexts/ai/api';
 export { DashboardService } from './services/dashboard.service';
 
 // Export types
