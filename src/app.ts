@@ -15,7 +15,7 @@ import {
 import discoveryRoutes from './contexts/discovery/http/routes';
 import { InMemoryRawKubernetesClient } from './contexts/discovery/infrastructure/kubernetes/in-memory-raw-client';
 import { composeSecurity } from './contexts/security/api';
-import { AIService } from './services/ai.service';
+import { composeAI } from './contexts/ai/api';
 import { DashboardService } from './services/dashboard.service';
 import { PerformanceService } from './services/performance.service';
 import {
@@ -267,8 +267,38 @@ const securityService = composedSecurity.service;
 const complianceService = composedSecurity.compliance;
 const securitySubscriptions = composedSecurity.subscriptions;
 
+// ---------------------------------------------------------------------------
+// AI Analysis context (DDD-08 Phase 4 wireup)
+// ---------------------------------------------------------------------------
+// composeAI wires the AI service, orchestrator (subscribes to
+// security.scan.completed / security.finding.opened /
+// compliance.report.generated / discovery.cluster.scanned), feedback
+// service, public API barrel, and HTTP router. The composition root
+// holds the unsubscribe handles and tears them down on SIGTERM.
+//
+// Provider configuration:
+//   - LLM client: AnthropicAdapter falls back to stub mode when
+//     AI_API_KEY is empty, so dev/test pods don't need network access.
+//   - RAG store: InMemoryRagStore by default; set RAG_PROVIDER=chroma
+//     to switch to ChromaAdapter (the adapter speaks Chroma's HTTP API
+//     directly, so no `@chroma-core/chromadb` dep is required).
+//   - Ingestion: NoOpIngestionBridge by default; the PythonRagBridge
+//     spawns scripts/update_rag.py when configured.
+const composedAI = composeAI({
+  bus: eventBus,
+  clock: eventClock,
+  logger: auditLogger,
+  redis: redisClient as unknown as NonNullable<
+    Parameters<typeof composeAI>[0]['redis']
+  >,
+  discovery: discoveryPublicApi,
+  security: composedSecurity.publicApi,
+  compliance: composedSecurity.compliancePublicApi,
+});
+const aiService = composedAI.service;
+const aiSubscriptions = composedAI.subscriptions;
+
 // Initialize services
-const aiService = new AIService();
 const dashboardService = new DashboardService();
 const performanceService = new PerformanceService();
 
@@ -393,7 +423,7 @@ app.use(auditMiddleware({ bus: eventBus, clock: eventClock }));
 // API Routes
 app.use('/api/discovery', discoveryRoutes(discoveryService));
 app.use('/api/security', composedSecurity.routers.security);
-app.use('/api/ai', createAIRoutes(aiService));
+app.use('/api/ai', composedAI.router);
 app.use('/api/dashboard', createDashboardRoutes(dashboardService));
 app.use('/api/performance', performanceRoutes);
 app.use('/api/compliance', composedSecurity.routers.compliance);
@@ -432,50 +462,8 @@ app.use('/{*splat}', (req, res) => {
 // directly above. createSecurityRoutes / complianceRoutes were removed
 // in Phase 3 — both routers now live under
 // `src/contexts/security/http/` and are produced by `composeSecurity`.
-function createAIRoutes(service: AIService): express.Router {
-  const router = express.Router();
-
-  router.post('/analyze/infrastructure', async (req, res) => {
-    try {
-      const { data } = req.body;
-      const result = await service.analyzeInfrastructure(data);
-      res.json({ success: true, data: result });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  router.post('/analyze/security', async (req, res) => {
-    try {
-      const { scanResults } = req.body;
-      const result = await service.analyzeSecurity(scanResults);
-      res.json({ success: true, data: result });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  router.post('/analyze/compliance', async (req, res) => {
-    try {
-      const { resources } = req.body;
-      const result = await service.analyzeCompliance(resources);
-      res.json({ success: true, data: result });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  return router;
-}
+// createAIRoutes was removed in Phase 4 — the AI router lives at
+// `src/contexts/ai/http/routes.ts` and is produced by `composeAI`.
 
 function createDashboardRoutes(service: DashboardService): express.Router {
   const router = express.Router();
@@ -559,7 +547,6 @@ async function initializeServices() {
     await Promise.all([
       discoveryService.initialize(),
       securityService.initialize(),
-      aiService.initialize(),
       dashboardService.initialize(),
       performanceService.initialize(),
       complianceService.initialize(),
@@ -627,6 +614,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
     ...auditSubscriberHandles,
     ...permissionInvalidationHandles,
     ...securitySubscriptions,
+    ...aiSubscriptions,
   ]) {
     try {
       unsubscribe();
