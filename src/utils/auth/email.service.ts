@@ -17,19 +17,19 @@ export class EmailService {
   constructor() {
     this.fromEmail = config.app.environment === 'production'
       ? 'noreply@noip.platform'
-      : process.env.EMAIL_FROM || 'noreply@noip.local';
+      : process.env['EMAIL_FROM'] || 'noreply@noip.local';
     this.fromName = 'NOIP Platform';
 
     this.transporter = nodemailer.createTransporter({
-      host: process.env.SMTP_HOST || 'localhost',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',
+      host: process.env['SMTP_HOST'] || 'localhost',
+      port: parseInt(process.env['SMTP_PORT'] || '587'),
+      secure: process.env['SMTP_SECURE'] === 'true',
       auth: {
-        user: process.env.SMTP_USER || '',
-        pass: process.env.SMTP_PASS || ''
+        user: process.env['SMTP_USER'] || '',
+        pass: process.env['SMTP_PASS'] || ''
       },
       tls: {
-        rejectUnauthorized: process.env.SMTP_REJECT_UNAUTHORIZED !== 'false'
+        rejectUnauthorized: process.env['SMTP_REJECT_UNAUTHORIZED'] !== 'false'
       }
     });
 
@@ -157,9 +157,9 @@ export class EmailService {
 
   private getBaseUrl(): string {
     if (config.app.environment === 'production') {
-      return process.env.BASE_URL || 'https://noip.platform';
+      return process.env['BASE_URL'] || 'https://noip.platform';
     } else {
-      return process.env.BASE_URL || 'http://localhost:3000';
+      return process.env['BASE_URL'] || 'http://localhost:3000';
     }
   }
 

@@ -26,12 +26,14 @@ export class PasswordService {
 
   async hashPassword(password: string): Promise<string> {
     try {
+      // argon2 v0.44+ no longer exposes a `saltLength` option; the library
+      // generates a 16-byte salt internally if no `salt` Buffer is supplied,
+      // which matches what we want here.
       const hash = await argon2.hash(password, {
         type: argon2.argon2id,
         memoryCost: 65536, // 64 MB
         timeCost: 3,
         parallelism: 4,
-        saltLength: 16,
         hashLength: 32
       });
 

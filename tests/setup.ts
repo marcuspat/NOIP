@@ -1,7 +1,7 @@
 import { config } from '../src/config';
 
 // Set test environment
-process.env.NODE_ENV = 'test';
+process.env['NODE_ENV'] = 'test';
 
 // Override config for testing
 config.app.environment = 'test';
