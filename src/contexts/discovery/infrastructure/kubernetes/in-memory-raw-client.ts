@@ -59,7 +59,7 @@ export class InMemoryRawKubernetesClient implements RawKubernetesClient {
   }): Promise<RawListPage> {
     const items = this.seed.byKind.get(args.kind.kind) ?? [];
     const filtered = args.namespace
-      ? items.filter((i) => i.metadata?.namespace === args.namespace)
+      ? items.filter(i => i.metadata?.namespace === args.namespace)
       : items;
     return { items: filtered };
   }

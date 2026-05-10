@@ -13,6 +13,7 @@ import {
   type RawKubernetesClient,
 } from './contexts/discovery/api';
 import discoveryRoutes from './contexts/discovery/http/routes';
+import { InMemoryRawKubernetesClient } from './contexts/discovery/infrastructure/kubernetes/in-memory-raw-client';
 import { SecurityService } from './services/security.service';
 import { AIService } from './services/ai.service';
 import { DashboardService } from './services/dashboard.service';
@@ -217,16 +218,9 @@ function buildKubeRawClient(): RawKubernetesClient {
       inCluster: process.env['K8S_IN_CLUSTER'] === 'true',
     });
   } catch (err) {
-    logger.warn(
-      'Falling back to in-memory kube client (no kubeconfig found)',
-      { err: err instanceof Error ? err.message : String(err) }
-    );
-    // Lazy require so an environment without k8s config doesn't pay
-    // the import cost of the real client constructor failure.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { InMemoryRawKubernetesClient } = require(
-      './contexts/discovery/infrastructure/kubernetes/in-memory-raw-client'
-    ) as typeof import('./contexts/discovery/infrastructure/kubernetes/in-memory-raw-client');
+    logger.warn('Falling back to in-memory kube client (no kubeconfig found)', {
+      err: err instanceof Error ? err.message : String(err),
+    });
     return new InMemoryRawKubernetesClient();
   }
 }

@@ -40,6 +40,6 @@ export class MongooseDriftReportRepository implements DriftReportRepository {
       .limit(limit)
       .lean<DriftReportPersistence[]>()
       .exec();
-    return docs.map((d) => DriftReport.fromPersistence(d));
+    return docs.map(d => DriftReport.fromPersistence(d));
   }
 }

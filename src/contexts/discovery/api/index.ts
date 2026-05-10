@@ -139,17 +139,18 @@ export function composeDiscovery(
     discoveryService: service,
     clusters: async () => {
       const list = await clusters.findEnabled();
-      return list.map((c) => ({ id: c.id, enabled: c.enabled }));
+      return list.map(c => ({ id: c.id, enabled: c.enabled }));
     },
     clock: deps.clock,
     logger: deps.logger,
   });
 
   const publicApi: DiscoveryPublicApi = {
-    getLatestSnapshot: (scope) => service.getLatestSnapshot(scope.clusterId),
+    getLatestSnapshot: scope => service.getLatestSnapshot(scope.clusterId),
     listSnapshots: (scope, range) =>
       service.listSnapshots(scope.clusterId, range),
-    getResource: (clusterId, ref, at) => service.getResource(clusterId, ref, at),
+    getResource: (clusterId, ref, at) =>
+      service.getResource(clusterId, ref, at),
     compareSnapshots: (prev, curr) => service.compareSnapshots(prev, curr),
   };
 

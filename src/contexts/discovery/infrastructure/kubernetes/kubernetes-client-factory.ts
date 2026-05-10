@@ -46,12 +46,12 @@ interface KubeListResp<T> {
  * legacy HTTP type carried; everything else is dropped.
  */
 function nodeToView(n: V1Node): NodeInfoView {
-  const status = n.status?.conditions?.find((c) => c.type === 'Ready');
+  const status = n.status?.conditions?.find(c => c.type === 'Ready');
   const labels = n.metadata?.labels ?? {};
   const roles: string[] = Object.keys(labels)
-    .filter((k) => k.startsWith('node-role.kubernetes.io/'))
-    .map((k) => k.substring('node-role.kubernetes.io/'.length))
-    .filter((s) => s.length > 0);
+    .filter(k => k.startsWith('node-role.kubernetes.io/'))
+    .map(k => k.substring('node-role.kubernetes.io/'.length))
+    .filter(s => s.length > 0);
   return {
     name: n.metadata?.name ?? 'unknown',
     status: status?.status === 'True' ? 'Ready' : 'NotReady',
@@ -82,7 +82,9 @@ export class KubernetesClientFactory implements RawKubernetesClient {
    * Loads kube config and constructs a factory. Throws if no
    * configuration can be discovered.
    */
-  static fromConfig(opts: KubernetesClientFactoryOptions = {}): KubernetesClientFactory {
+  static fromConfig(
+    opts: KubernetesClientFactoryOptions = {}
+  ): KubernetesClientFactory {
     const kc = new KubeConfig();
     if (opts.kubeconfigPath) {
       kc.loadFromFile(opts.kubeconfigPath);
@@ -164,7 +166,8 @@ export class KubernetesClientFactory implements RawKubernetesClient {
             labelSelector,
             limit
           );
-      list = resp.body as KubeListResp<V1Service> as KubeListResp<RawKubeObject>;
+      list =
+        resp.body as KubeListResp<V1Service> as KubeListResp<RawKubeObject>;
     } else if (kind.kind === 'ConfigMap') {
       const resp = namespace
         ? await this.core.listNamespacedConfigMap(
@@ -183,7 +186,8 @@ export class KubernetesClientFactory implements RawKubernetesClient {
             labelSelector,
             limit
           );
-      list = resp.body as KubeListResp<V1ConfigMap> as KubeListResp<RawKubeObject>;
+      list =
+        resp.body as KubeListResp<V1ConfigMap> as KubeListResp<RawKubeObject>;
     } else if (kind.kind === 'Namespace') {
       const resp = await this.core.listNamespace(
         undefined,
@@ -193,7 +197,8 @@ export class KubernetesClientFactory implements RawKubernetesClient {
         labelSelector,
         limit
       );
-      list = resp.body as KubeListResp<V1Namespace> as KubeListResp<RawKubeObject>;
+      list =
+        resp.body as KubeListResp<V1Namespace> as KubeListResp<RawKubeObject>;
     } else if (kind.kind === 'Node') {
       const resp = await this.core.listNode(
         undefined,
@@ -222,7 +227,8 @@ export class KubernetesClientFactory implements RawKubernetesClient {
             labelSelector,
             limit
           );
-      list = resp.body as KubeListResp<V1Deployment> as KubeListResp<RawKubeObject>;
+      list =
+        resp.body as KubeListResp<V1Deployment> as KubeListResp<RawKubeObject>;
     } else if (kind.kind === 'StatefulSet') {
       const resp = namespace
         ? await this.apps.listNamespacedStatefulSet(
@@ -241,7 +247,8 @@ export class KubernetesClientFactory implements RawKubernetesClient {
             labelSelector,
             limit
           );
-      list = resp.body as KubeListResp<V1StatefulSet> as KubeListResp<RawKubeObject>;
+      list =
+        resp.body as KubeListResp<V1StatefulSet> as KubeListResp<RawKubeObject>;
     } else if (kind.kind === 'DaemonSet') {
       const resp = namespace
         ? await this.apps.listNamespacedDaemonSet(
@@ -260,7 +267,8 @@ export class KubernetesClientFactory implements RawKubernetesClient {
             labelSelector,
             limit
           );
-      list = resp.body as KubeListResp<V1DaemonSet> as KubeListResp<RawKubeObject>;
+      list =
+        resp.body as KubeListResp<V1DaemonSet> as KubeListResp<RawKubeObject>;
     } else {
       // Unknown kind — empty page.
       return { items: [] };
@@ -268,7 +276,7 @@ export class KubernetesClientFactory implements RawKubernetesClient {
 
     // Each item in the kube response gains the kind/apiVersion from the
     // request context — kube responses sometimes omit them on items.
-    const items = list.items.map((it) => ({
+    const items = list.items.map(it => ({
       apiVersion: it.apiVersion ?? kind.apiVersion,
       kind: it.kind ?? kind.kind,
       metadata: it.metadata ?? {},
@@ -289,11 +297,13 @@ export class KubernetesClientFactory implements RawKubernetesClient {
     // Version is exposed via `/version`; the kube client doesn't have a
     // first-class binding so we cheat through the underlying axios.
     // Best-effort — fall back to '' when unavailable.
-    let version = '';
+    const version = '';
     try {
-      const versionApi = (this.core as unknown as {
-        basePath: string;
-      }).basePath;
+      const versionApi = (
+        this.core as unknown as {
+          basePath: string;
+        }
+      ).basePath;
       // No-op placeholder; this will be wired through axios in a
       // follow-up. For now leave version blank rather than failing.
       void versionApi;
@@ -310,7 +320,7 @@ export class KubernetesClientFactory implements RawKubernetesClient {
   async listNamespaces(): Promise<string[]> {
     const resp = await this.core.listNamespace();
     return (resp.body.items ?? [])
-      .map((n) => n.metadata?.name)
+      .map(n => n.metadata?.name)
       .filter((n): n is string => typeof n === 'string');
   }
 

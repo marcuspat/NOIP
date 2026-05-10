@@ -25,10 +25,7 @@ import type {
 } from './value-objects';
 
 interface SeverityRule {
-  match: (
-    op: JSONPatchOp,
-    record: KubernetesResourceRecord | null
-  ) => boolean;
+  match: (op: JSONPatchOp, record: KubernetesResourceRecord | null) => boolean;
   severity: Severity;
   rationale: string;
 }
@@ -278,11 +275,8 @@ export class DriftCalculator {
         kind: 'deleted',
         ref: recordRef(prevRec),
         patch: [{ op: 'remove', path: '' }],
-        severity: severityFor(
-          { op: 'remove', path: '' },
-          prevRec,
-          this.rules
-        ).severity,
+        severity: severityFor({ op: 'remove', path: '' }, prevRec, this.rules)
+          .severity,
       };
       changes.push(change);
     }

@@ -41,7 +41,7 @@ export class MongooseClusterScanRepository implements ClusterScanRepository {
       .limit(limit)
       .lean<ClusterScanPersistence[]>()
       .exec();
-    return docs.map((d) => ClusterScan.fromPersistence(d));
+    return docs.map(d => ClusterScan.fromPersistence(d));
   }
 
   async findLatest(clusterId: ClusterId): Promise<ClusterScan | null> {

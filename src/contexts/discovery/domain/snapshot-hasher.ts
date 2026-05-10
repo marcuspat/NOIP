@@ -14,10 +14,7 @@
 // kept for the unit-test harness because it's easier to reason about.
 
 import { createHash } from 'crypto';
-import type {
-  ContentHash,
-  KubernetesResourceRecord,
-} from './value-objects';
+import type { ContentHash, KubernetesResourceRecord } from './value-objects';
 import { asContentHash } from './value-objects';
 
 /**
@@ -42,7 +39,7 @@ export function canonicalStringify(value: unknown): string {
   }
   if (t === 'string' || t === 'boolean') return JSON.stringify(value);
   if (Array.isArray(value)) {
-    const inner = value.map((v) => canonicalStringify(v)).join(',');
+    const inner = value.map(v => canonicalStringify(v)).join(',');
     return `[${inner}]`;
   }
   if (t === 'object') {
@@ -85,8 +82,10 @@ export class SnapshotHasher {
    * threshold for switching to the streaming path is configurable so
    * tests can exercise both branches.
    */
-  hash(records: KubernetesResourceRecord[], opts?: { streamingThreshold?: number }):
-    ContentHash {
+  hash(
+    records: KubernetesResourceRecord[],
+    opts?: { streamingThreshold?: number }
+  ): ContentHash {
     const threshold = opts?.streamingThreshold ?? 100_000;
     const sorted = [...records].sort(compareRecords);
     if (sorted.length >= threshold) {

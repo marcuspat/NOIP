@@ -83,10 +83,9 @@ export class Cluster {
       throw new ValidationError('cluster name is required');
     }
     if (!spec.endpoint || !/^https?:\/\//i.test(spec.endpoint)) {
-      throw new ValidationError(
-        'cluster endpoint must be a http(s) URL',
-        { endpoint: spec.endpoint }
-      );
+      throw new ValidationError('cluster endpoint must be a http(s) URL', {
+        endpoint: spec.endpoint,
+      });
     }
     if (!spec.credentials || !spec.credentials.ref) {
       throw new ValidationError('cluster credentials reference is required');
@@ -186,10 +185,9 @@ export class Cluster {
    */
   markScanned(at: Instant): void {
     if (!this._enabled) {
-      throw new ValidationError(
-        'cannot mark scan on a disabled cluster',
-        { clusterId: this._id }
-      );
+      throw new ValidationError('cannot mark scan on a disabled cluster', {
+        clusterId: this._id,
+      });
     }
     if (this._lastScanAt === null || at >= this._lastScanAt) {
       this._lastScanAt = at;

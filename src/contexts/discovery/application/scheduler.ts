@@ -132,7 +132,7 @@ export class DiscoveryScheduler {
     this.logger.info('DiscoveryScheduler.tick complete', {
       startedAt,
       total: clusters.length,
-      ok: results.filter((r) => r.ok).length,
+      ok: results.filter(r => r.ok).length,
     });
     return results;
   }

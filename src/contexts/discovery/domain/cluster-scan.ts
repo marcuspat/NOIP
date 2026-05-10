@@ -274,7 +274,8 @@ export class ClusterScan {
       id: doc.id as ScanId,
       clusterId: doc.clusterId as ClusterId,
       startedAt: doc.startedAt as Instant,
-      completedAt: doc.completedAt === null ? null : (doc.completedAt as Instant),
+      completedAt:
+        doc.completedAt === null ? null : (doc.completedAt as Instant),
       status: doc.status,
       error: doc.error,
       counts: doc.counts,

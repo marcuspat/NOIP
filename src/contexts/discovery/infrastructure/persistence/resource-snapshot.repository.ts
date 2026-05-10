@@ -9,14 +9,9 @@
 //     reuse the existing snapshot id and skip the insert.
 
 import type { Model } from 'mongoose';
-import type {
-  ClusterId,
-  SnapshotId,
-} from '../../../../shared/kernel';
+import type { ClusterId, SnapshotId } from '../../../../shared/kernel';
 import { ResourceSnapshot } from '../../domain/resource-snapshot';
-import type {
-  ResourceSnapshotPersistence,
-} from '../../domain/resource-snapshot';
+import type { ResourceSnapshotPersistence } from '../../domain/resource-snapshot';
 import type {
   ContentHash,
   KubernetesResourceRecord,
@@ -120,10 +115,15 @@ export class MongooseResourceSnapshotRepository
       .limit(limit)
       .select({ id: 1, clusterId: 1, takenAt: 1, hash: 1, counts: 1 })
       .lean<
-        Array<Pick<ResourceSnapshotPersistence, 'id' | 'clusterId' | 'takenAt' | 'hash' | 'counts'>>
+        Array<
+          Pick<
+            ResourceSnapshotPersistence,
+            'id' | 'clusterId' | 'takenAt' | 'hash' | 'counts'
+          >
+        >
       >()
       .exec();
-    return docs.map((d) => ({
+    return docs.map(d => ({
       id: d.id as SnapshotId,
       clusterId: d.clusterId as ClusterId,
       takenAt: new Date(d.takenAt),

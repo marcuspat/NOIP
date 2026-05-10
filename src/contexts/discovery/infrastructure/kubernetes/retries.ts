@@ -20,7 +20,7 @@ export interface RetryDeps {
 }
 
 const defaultSleep = (ms: number): Promise<void> =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
+  new Promise<void>(resolve => setTimeout(resolve, ms));
 
 /**
  * Inspects an error to decide retryability. Treats common shapes:

@@ -31,7 +31,10 @@ export class MongooseClusterRepository implements ClusterRepository {
   }
 
   async findById(id: ClusterId): Promise<Cluster | null> {
-    const doc = await this.model.findOne({ id }).lean<ClusterPersistence>().exec();
+    const doc = await this.model
+      .findOne({ id })
+      .lean<ClusterPersistence>()
+      .exec();
     return doc ? Cluster.fromPersistence(doc) : null;
   }
 
@@ -41,7 +44,7 @@ export class MongooseClusterRepository implements ClusterRepository {
       .sort({ registeredAt: -1 })
       .lean<ClusterPersistence[]>()
       .exec();
-    return docs.map((d) => Cluster.fromPersistence(d));
+    return docs.map(d => Cluster.fromPersistence(d));
   }
 
   async findEnabled(): Promise<Cluster[]> {
@@ -50,7 +53,7 @@ export class MongooseClusterRepository implements ClusterRepository {
       .sort({ registeredAt: -1 })
       .lean<ClusterPersistence[]>()
       .exec();
-    return docs.map((d) => Cluster.fromPersistence(d));
+    return docs.map(d => Cluster.fromPersistence(d));
   }
 
   async delete(id: ClusterId): Promise<boolean> {

@@ -233,7 +233,12 @@ export class DiscoveryService {
       scan.fail(partialError, this.clock);
       await this.scans.save(scan);
       this.bus.publishMany(scan.drainEvents());
-      return { scanId: scan.id, snapshotId: null, driftId: null, status: 'failed' };
+      return {
+        scanId: scan.id,
+        snapshotId: null,
+        driftId: null,
+        status: 'failed',
+      };
     }
 
     // Build the snapshot. The hash determines whether we reuse an
@@ -263,7 +268,7 @@ export class DiscoveryService {
       2
     );
     let driftId: string | null = null;
-    const previous = previousList.find((s) => s.id !== snapshot.id);
+    const previous = previousList.find(s => s.id !== snapshot.id);
     if (previous) {
       const prevSnap = await this.snapshots.findById(previous.id);
       if (prevSnap) {

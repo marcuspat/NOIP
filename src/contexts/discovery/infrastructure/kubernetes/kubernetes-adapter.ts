@@ -204,8 +204,8 @@ function filterKinds(
   whitelist?: string[]
 ): KindRef[] {
   if (!whitelist || whitelist.length === 0) return [...kinds];
-  const set = new Set(whitelist.map((k) => k.toLowerCase()));
-  return kinds.filter((k) => set.has(k.kind.toLowerCase()));
+  const set = new Set(whitelist.map(k => k.toLowerCase()));
+  return kinds.filter(k => set.has(k.kind.toLowerCase()));
 }
 
 export class KubernetesAdapter implements KubernetesClient {

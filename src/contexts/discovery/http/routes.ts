@@ -90,7 +90,7 @@ export function discoveryRoutes(
       const clusters = await service.listClusters();
       ok(
         res,
-        clusters.map((c) => c.toPersistence())
+        clusters.map(c => c.toPersistence())
       );
     } catch (err) {
       fail(res, err);
@@ -109,10 +109,9 @@ export function discoveryRoutes(
         credentials === null ||
         typeof (credentials as { ref?: unknown }).ref !== 'string'
       ) {
-        throw new ValidationError(
-          'credentials.ref is required',
-          { received: credentials }
-        );
+        throw new ValidationError('credentials.ref is required', {
+          received: credentials,
+        });
       }
       const cluster = await service.registerCluster({
         name,
@@ -200,27 +199,24 @@ export function discoveryRoutes(
   // ---------------------------------------------------------------------------
   // Resources / namespaces / nodes (per-cluster forms)
   // ---------------------------------------------------------------------------
-  router.get(
-    '/clusters/:id/resources',
-    async (req: Request, res: Response) => {
-      try {
-        const namespace =
-          typeof req.query['namespace'] === 'string'
-            ? req.query['namespace']
-            : undefined;
-        // We always serve the latest snapshot; richer filtering
-        // (kind, label) is added in Phase 5.
-        const id = parseClusterId(req.params['id'] ?? '');
-        const snap = await service.getLatestSnapshot(id);
-        const records = snap.records.filter((r) =>
-          namespace === undefined ? true : r.namespace === namespace
-        );
-        ok(res, records);
-      } catch (err) {
-        fail(res, err);
-      }
+  router.get('/clusters/:id/resources', async (req: Request, res: Response) => {
+    try {
+      const namespace =
+        typeof req.query['namespace'] === 'string'
+          ? req.query['namespace']
+          : undefined;
+      // We always serve the latest snapshot; richer filtering
+      // (kind, label) is added in Phase 5.
+      const id = parseClusterId(req.params['id'] ?? '');
+      const snap = await service.getLatestSnapshot(id);
+      const records = snap.records.filter(r =>
+        namespace === undefined ? true : r.namespace === namespace
+      );
+      ok(res, records);
+    } catch (err) {
+      fail(res, err);
     }
-  );
+  });
 
   router.get(
     '/clusters/:id/namespaces',
@@ -252,7 +248,7 @@ export function discoveryRoutes(
       const list = await service.listDriftReports(id);
       ok(
         res,
-        list.map((d) => d.toPersistence())
+        list.map(d => d.toPersistence())
       );
     } catch (err) {
       fail(res, err);
@@ -292,7 +288,7 @@ export function discoveryRoutes(
         // The legacy contract used `metadata.{name,namespace,labels,annotations}`,
         // so we re-shape the new domain record onto it for backwards
         // compatibility. We do NOT touch the canonical surface.
-        const projected = records.map((r) => ({
+        const projected = records.map(r => ({
           apiVersion: r.apiVersion,
           kind: r.kind,
           metadata: {
@@ -331,14 +327,21 @@ export function discoveryRoutes(
 
   // Catch-all error handler so a non-domain-error exception still
   // gets the canonical envelope.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  router.use((err: unknown, _req: Request, res: Response, _next: express.NextFunction) => {
-    if (isDomainError(err)) {
+
+  router.use(
+    (
+      err: unknown,
+      _req: Request,
+      res: Response,
+      _next: express.NextFunction
+    ) => {
+      if (isDomainError(err)) {
+        fail(res, err);
+        return;
+      }
       fail(res, err);
-      return;
     }
-    fail(res, err);
-  });
+  );
 
   return router;
 }
