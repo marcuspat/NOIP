@@ -7,13 +7,13 @@ work lands.
 **Phase 1 (this document)** establishes a green build baseline. Phases 2+
 will close the gaps below.
 
-## Verification gates after Phase 1
+## Verification gates after Phase 2
 
 | Gate | Status | Command |
 |---|---|---|
 | `tsc --noEmit` (strict-ish, see below) | **0 errors** | `npm run typecheck` |
-| ESLint | **0 errors, 261 warnings** | `npm run lint:check` |
-| Unit tests (`tests/unit/**`) | **17/17 pass** | `npx jest --testPathPatterns='tests/unit'` |
+| ESLint | **0 errors, 267 warnings** | `npm run lint:check` |
+| Unit tests (`tests/unit/**`) | **82/82 pass** (was 17 in Phase 1) | `npx jest --testPathPatterns='tests/unit'` |
 | Integration tests | **blocked — needs network for `mongodb-memory-server`** | n/a |
 | E2E tests (Playwright) | **not run** — needs deployed env | n/a |
 | Real benchmarks | **not run** — needs production-like deploy | n/a |
@@ -67,9 +67,12 @@ Redis-backed session-revocation lookup in the auth hot path (today the
 session check goes to Mongo).
 
 ### ADR-0006 — Stateless JWT + refresh-token rotation
-**🟡** Access/refresh issuance in `src/services/auth.service.ts`.
-Refresh-rotation is wired. **Replay-detection** (revoke whole session on
-reuse of an old refresh) is **not yet implemented** — Phase 2.
+**✅** Access/refresh issuance in `src/services/auth.service.ts`.
+Refresh-rotation wired. **Replay-detection** (Phase 2): every refresh
+token now carries a `jti`; the session aggregate (`session.model.ts`)
+records the *current* valid jti. On `refreshToken()`, a presented jti
+that no longer matches revokes the session and emits a
+`REFRESH_TOKEN_REPLAY` security event.
 
 ### ADR-0007 — Argon2id password hashing
 **✅** `argon2 ^0.44` used in `src/utils/auth/password.service.ts` with
@@ -88,21 +91,32 @@ and "warn when backup codes <3" UX are **not wired**.
 allow-listed keys) is **not implemented yet** — Phase 2.
 
 ### ADR-0010 — Anthropic Claude as AI provider
-**🟡** `src/services/ai.service.ts` calls `https://api.anthropic.com` with
-the `anthropic-version` header. **Redaction** of secret-shaped fields in
-prompts is **partial** — needs a centralised `redact()` helper and unit
-tests asserting key-name allow-list.
+**✅** `src/services/ai.service.ts` calls `https://api.anthropic.com` with
+the `anthropic-version` header. **Redaction** is now centralised in
+`src/utils/redact.ts` and applied to every prompt before it leaves the
+process; the audit middleware also runs `redact()` on every persisted
+request/response body. Coverage: 32 unit tests in
+`tests/unit/utils/redact.test.ts`.
 
 ### ADR-0011 — AgentDB / ReasoningBank adapter pattern
-**🔴** Interfaces are described in the ADR and DDD doc; **no adapter
-interfaces or mock implementations exist in code yet.** Phase 2: define
-`IAgentDB`, `IReasoningBank`, `ILLMClient` in `src/services/ai/ports.ts`
-and inject mock implementations via the existing `AIService`.
+**🟡 → 🟢** Ports defined in `src/services/ai/ports.ts`
+(`IAgentDB`, `IReasoningBank`, `ILLMClient`). Mock adapters in
+`src/services/ai/{mock-agentdb,mock-reasoning-bank,mock-llm}.adapter.ts`
+with 19 passing unit tests. `AIService` accepts an optional
+`AIServicePorts` constructor argument; when an `ILLMClient` is injected,
+the axios direct path is bypassed (so tests run without network). The
+*legacy* in-class `AgentDBAdapter` / `ReasoningBank` interfaces are
+still present and still used by the existing learning paths — Phase 3
+will fully migrate `AIService` onto the new ports and delete the inline
+adapters.
 
 ### ADR-0012 — Modular monolith with explicit bounded contexts
-**✅** Source layout matches the eight bounded contexts. Lint rule
-`no-restricted-imports` to prevent cross-context model imports is **not yet
-configured** — Phase 2.
+**✅** Source layout matches the eight bounded contexts.
+`no-restricted-imports` lint rule (Phase 2):
+- Controllers may not import from `src/models` (**error**).
+- Services may not import another context's model (**warn** today;
+  Phase 3 will tighten to error once cross-context calls have been
+  migrated to service interfaces).
 
 ### ADR-0013 — Framework-agnostic compliance control model
 **🔴** `ComplianceService` exists but operates on framework-specific
@@ -116,9 +130,15 @@ in-memory store today. Redis-backed sorted-set sliding window described in
 the ADR is **not wired**. Phase 2: swap in `rate-limit-redis` store.
 
 ### ADR-0015 — Structured logging with Winston + correlation IDs
-**🟡** Winston logger configured (`src/utils/logger.ts`). **Correlation-id
-middleware via `AsyncLocalStorage` is missing.** Today, requests are not
-correlated across log lines from the same call.
+**✅** Winston logger configured (`src/utils/logger.ts`). Phase 2:
+`src/utils/request-context.ts` exposes `runWithContext` /
+`getContext` over `AsyncLocalStorage`;
+`src/middleware/correlation.middleware.ts` wraps every request with a
+`RequestContext { correlationId, routePath, startedAt }`. The Winston
+logger has a `correlationFormat` step that injects `correlationId`,
+`userId`, `sessionId` into every log entry that fires inside a request
+scope. Correlation-id is also echoed on the response as
+`X-Correlation-Id`.
 
 ### ADR-0016 — Container security
 **✅** `docker/Dockerfile` (existing) covers multi-stage build, non-root
@@ -142,46 +162,64 @@ tests exist but need a deployed app. Coverage thresholds (80%) configured
 but not enforced today.
 
 ### ADR-0020 — API versioning under `/api/v1`
-**🔴** Today's routes are mounted under `/api/auth`, `/api/compliance`,
-`/api/performance` — there is **no `/v1` prefix**. Phase 2: change the
-mount point and update clients/docs.
+**✅** Phase 2: routes mounted under `/api/v1` in `src/app.ts`. The old
+unprefixed `/api/*` paths are kept alive for one major-version cycle and
+respond with `Deprecation: true`, `Sunset: <+1y>`, and `Link:
+</api/v1>; rel="successor-version"` headers per RFC 8594 / RFC 9745.
 
 ---
 
-## Remaining work — Phase 2 punch list
+## Phase 2 — done in this iteration
 
-Ordered roughly by leverage (foundational items first):
+1. ✅ **Domain event bus** — `src/utils/event-bus.ts` (14 tests).
+2. ✅ **Correlation-id middleware + AsyncLocalStorage logger
+   integration** — `src/middleware/correlation.middleware.ts`,
+   `src/utils/request-context.ts`, `src/utils/logger.ts`.
+3. ✅ **Refresh-token replay detection** — auth.service +
+   session.model + types updated.
+4. ✅ **`/api/v1` prefix** with deprecation headers on the legacy paths.
+5. ✅ **AgentDB / ReasoningBank / LLM ports + mock adapters** (19 tests).
+   `AIService` opt-in via constructor injection.
+6. ✅ **Centralised redaction helper** — `src/utils/redact.ts` (32
+   tests). Wired into `ai.service.ts` and `audit.middleware.ts`.
+7. ✅ **Lint rule for cross-context model imports** — controllers
+   (error), services (warn pending Phase 3 cleanup).
 
-1. **Domain event bus** (`src/utils/event-bus.ts`) — required by half the
-   ADRs/DDD docs; today there is no in-process event hub.
-2. **Correlation-id middleware** with `AsyncLocalStorage` (ADR-0015).
-3. **Redis-backed rate-limit store** (ADR-0014) and Redis-backed session
-   revocation (ADR-0005, ADR-0006).
-4. **Refresh-token replay detection** (ADR-0006).
-5. **`/api/v1` prefix** + `Deprecation`/`Sunset` header support (ADR-0020).
-6. **AgentDB / ReasoningBank ports + mock adapters** (ADR-0011).
-7. **Conditional-permission evaluator** with allow-listed condition keys
-   (ADR-0009).
-8. **Compliance aggregate set** — `Framework`, `ComplianceControl`,
-   `Evidence`, `Assessment` (ADR-0013, DDD compliance context).
-9. **Discovery aggregate set** — `Cluster`, `Snapshot`, `DriftReport` and
-   the K8s API ACL (DDD discovery context).
-10. **Findings aggregate** + dedup-by-fingerprint (DDD security-ops
-    context).
-11. **Centralised redaction helper** + unit tests (ADR-0010, ADR-0015).
-12. **Lint rule for cross-context model imports** (ADR-0012).
-13. **Tighten tsconfig** back to the strict baseline by progressively
+## Phase 2 — deferred to Phase 3
+
+8. **Redis-backed rate-limit store** (ADR-0014). Today
+   `express-rate-limit` is in-process. Swap in `rate-limit-redis`.
+9. **Redis-backed session revocation lookup** in the auth hot path
+   (ADR-0005/0006). Today the active-session check goes to Mongo.
+10. **`AIService` migration onto the new ports** — fully drop the
+    inline `AgentDBAdapter`/`ReasoningBank` and use the injected
+    `IAgentDB`/`IReasoningBank` exclusively.
+11. **Conditional-permission evaluator** with allow-listed condition
+    keys (ADR-0009).
+12. **Tighten tsconfig** back to the strict baseline by progressively
     fixing call sites.
 
-## Remaining work — Phase 3 punch list
+## Phase 3 — domain aggregate work
+
+13. **Compliance aggregate set** — `Framework`, `ComplianceControl`,
+    `Evidence`, `Assessment` (ADR-0013).
+14. **Discovery aggregate set** — `Cluster`, `Snapshot`, `DriftReport`
+    + K8s API ACL.
+15. **Findings aggregate** with dedup-by-fingerprint.
+16. **Cross-context calls migrated through service interfaces** so the
+    Phase 2 lint rule can be ratcheted to error.
+
+## Phase 4 — testing & validation
 
 1. **Integration tests** running against `mongodb-memory-server` (needs
    network access in CI).
 2. **Contract tests** against an OpenAPI document (ADR-0020).
-3. **Security tests**: redaction, RBAC denial coverage, replay defence.
+3. **Security tests**: redaction (have unit coverage; need integration),
+   RBAC denial coverage, refresh-token replay (have unit; need
+   integration).
 4. **Coverage gates** in CI (≥80%).
 
-## Remaining work — Phase 4 punch list
+## Phase 5 — performance & observability
 
 1. **Real benchmarks**: `tests/performance/load-test.js` against a
    deployed instance; record p50/p95/p99 latency.
@@ -191,6 +229,56 @@ Ordered roughly by leverage (foundational items first):
 4. **Optimisation pass** based on measured hotspots.
 
 ---
+
+## What was changed in Phase 2
+
+New modules:
+- `src/utils/event-bus.ts` — in-process domain event bus
+  (`DomainEvent`, `EventEnvelope`, `EventBus.{publish,subscribe,
+  subscribeOnce,unsubscribeAll,metrics}`). Wildcard subs (`iam.*`).
+  Per-handler error isolation with twin counters.
+- `src/utils/redact.ts` — secret-redaction helper. Key-pattern
+  allow-list and value-pattern detectors (PEM, JWT, AWS, GitHub,
+  OpenAI). Cycle-safe via WeakSet, depth-capped at 8.
+- `src/utils/request-context.ts` — `AsyncLocalStorage`-backed
+  RequestContext (correlationId, userId, sessionId, routePath,
+  startedAt) with `runWithContext` / `getContext` /
+  `getCorrelationId` / `updateContext`.
+- `src/middleware/correlation.middleware.ts` — reads/generates
+  correlation-id, sets context, echoes header.
+- `src/services/ai/ports.ts` — `IAgentDB`, `IReasoningBank`,
+  `ILLMClient` interfaces.
+- `src/services/ai/{mock-agentdb,mock-reasoning-bank,mock-llm}.adapter.ts`
+  — testable in-memory implementations.
+- `tests/unit/utils/event-bus.test.ts` — 14 tests.
+- `tests/unit/utils/redact.test.ts` — 32 tests.
+- `tests/unit/services/ai/ports.test.ts` — 19 tests.
+
+Modified:
+- `src/utils/logger.ts` — Winston `correlationFormat` step injects
+  context fields automatically.
+- `src/app.ts` — correlation middleware first; `/api/v1` mount with
+  legacy `/api` carrying RFC 9745 deprecation headers.
+- `src/services/auth.service.ts` — `generateTokens` now returns
+  `refreshTokenJti`; login persists it on the session;
+  `refreshToken` enforces replay defence and emits a
+  `REFRESH_TOKEN_REPLAY` security event on detection.
+- `src/services/ai.service.ts` — accepts `AIServicePorts` constructor
+  arg; both Claude API call sites (`callClaudeAPI`,
+  `callEnhancedClaudeAPI`) prefer the injected `ILLMClient` and apply
+  `redact()` to prompts.
+- `src/middleware/audit.middleware.ts` — `redact()` applied to
+  request and response bodies before persistence.
+- `src/models/session.model.ts` — added `refreshTokenJti` (indexed)
+  and `revokedReason` fields.
+- `src/types/auth.types.ts` — added `REFRESH_TOKEN_REPLAY` and
+  `SUSPICIOUS_ACTIVITY` `SecurityEventType`s; added
+  `refreshTokenJti?` and `revokedReason?` to `UserSession`.
+- `eslint.config.mjs` — `no-restricted-imports` rules: error for
+  controllers importing models, warn for cross-context service-to-
+  model imports.
+
+Tests after Phase 2: **82/82** unit-test pass (was 17/17 in Phase 1).
 
 ## What was changed in Phase 1
 

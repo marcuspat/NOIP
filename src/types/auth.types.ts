@@ -62,6 +62,10 @@ export interface UserSession {
   expiresAt: Date;
   lastActivity: Date;
   mfaVerified: boolean;
+  /** Currently-valid refresh-token jti. Per ADR-0006. */
+  refreshTokenJti?: string;
+  /** Set when isActive flips to false. Audit trail. */
+  revokedReason?: string;
 }
 
 export interface DeviceInfo {
@@ -278,6 +282,8 @@ export enum SecurityEventType {
   PERMISSION_ESCALATION = 'permission_escalation',
   DATA_ACCESS = 'data_access',
   CONFIGURATION_CHANGE = 'configuration_change',
+  SUSPICIOUS_ACTIVITY = 'suspicious_activity',
+  REFRESH_TOKEN_REPLAY = 'refresh_token_replay',
 }
 
 export enum SecurityEventSeverity {

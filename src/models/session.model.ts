@@ -119,6 +119,16 @@ const SessionSchema = new Schema(
       default: 'password',
     },
     securityEvents: [SecurityEventSchema],
+    // Per ADR-0006: track the currently-valid refresh-token jti for the
+    // session. Reuse of a previously-rotated jti (replay) revokes the
+    // entire session.
+    refreshTokenJti: {
+      type: String,
+      index: true,
+    },
+    revokedReason: {
+      type: String,
+    },
     metadata: {
       type: Schema.Types.Mixed,
       default: {},

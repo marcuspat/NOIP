@@ -274,8 +274,10 @@ export class AuthService extends BaseService {
 
       await session.save();
 
-      // Generate JWT tokens
+      // Generate JWT tokens (carries the refresh-token jti for replay defence)
       const tokens = await this.generateTokens(user, sessionId);
+      session.refreshTokenJti = tokens.refreshTokenJti;
+      await session.save();
 
       // Update user last login
       user.lastLogin = new Date();
@@ -339,7 +341,7 @@ export class AuthService extends BaseService {
     return this.unwrapWithErrorHandling(async () => {
       this.logOperation('Refreshing token');
 
-      // Verify refresh token
+      // Verify refresh token signature/exp/aud/iss.
       const payload = await this.jwtManager.verifyToken(
         refreshToken,
         'refresh'
@@ -348,7 +350,12 @@ export class AuthService extends BaseService {
         throw new Error('Invalid refresh token');
       }
 
-      // Check if session exists and is active
+      const presentedJti = (payload as JWTPayload & { jti?: string }).jti;
+      if (!presentedJti) {
+        throw new Error('Refresh token missing jti claim');
+      }
+
+      // Look up the session.
       const session = await SessionModel.findOne({
         userId: payload.sub,
         sessionId: payload.sessionId,
@@ -360,6 +367,31 @@ export class AuthService extends BaseService {
         throw new Error('Session not found or expired');
       }
 
+      // Replay defence (ADR-0006). The session's refreshTokenJti is the
+      // *current* valid jti. If the presented jti doesn't match, the
+      // caller is presenting a previously-rotated token: revoke the
+      // entire session and refuse.
+      if (session.refreshTokenJti && session.refreshTokenJti !== presentedJti) {
+        session.isActive = false;
+        session.revokedReason = 'refresh_token_replay_detected';
+        await session.save();
+
+        await this.createSecurityEvent(
+          SecurityEventType.REFRESH_TOKEN_REPLAY,
+          'Refresh-token replay detected; session revoked',
+          '0.0.0.0',
+          'auth-service',
+          {
+            userId: payload.sub,
+            sessionId: payload.sessionId,
+            presentedJti,
+            currentJti: session.refreshTokenJti,
+          }
+        );
+
+        throw new Error('Refresh token replay detected');
+      }
+
       // Get user
       const user = await UserModel.findById(payload.sub).populate(
         'roles permissions'
@@ -368,11 +400,11 @@ export class AuthService extends BaseService {
         throw new Error('User not found or inactive');
       }
 
-      // Generate new tokens
+      // Rotate: issue new tokens, record new jti as current.
       const tokens = await this.generateTokens(user, payload.sessionId);
-
-      // Update session activity
+      session.refreshTokenJti = tokens.refreshTokenJti;
       await session.updateLastActivity();
+      await session.save();
 
       this.logOperation('Token refreshed successfully', { userId: user._id });
 
@@ -731,7 +763,8 @@ export class AuthService extends BaseService {
   private async generateTokens(
     user: any,
     sessionId: string
-  ): Promise<AuthTokens> {
+  ): Promise<AuthTokens & { refreshTokenJti: string }> {
+    const refreshTokenJti = uuidv4();
     const payload: JWTPayload = {
       sub: user._id.toString(),
       username: user.username,
@@ -750,6 +783,7 @@ export class AuthService extends BaseService {
     const refreshToken = await this.jwtManager.signToken(
       {
         ...payload,
+        jti: refreshTokenJti,
         type: 'refresh',
         exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
       },
@@ -761,6 +795,7 @@ export class AuthService extends BaseService {
       refreshToken,
       expiresIn: 15 * 60, // 15 minutes
       tokenType: 'Bearer',
+      refreshTokenJti,
     };
   }
 

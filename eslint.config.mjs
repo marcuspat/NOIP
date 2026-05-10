@@ -72,11 +72,52 @@ export default [
     },
   },
   {
+    // Controllers must NEVER import from src/models — they must go
+    // through a service. Per ADR-0012 (modular monolith with explicit
+    // bounded contexts).
+    files: ['src/controllers/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['../models', '../models/*', '../../models', '../../models/*'],
+              message:
+                'Controllers must call a service; do not import models directly (ADR-0012).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Services must not reach into another context's model. Today this
+    // is a warning while we finish migrating cross-context calls behind
+    // service interfaces; Phase 3 will turn it into an error.
+    files: ['src/services/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'warn',
+        {
+          patterns: [
+            {
+              group: ['../models', '../models/*', '../../models', '../../models/*'],
+              message:
+                'Prefer calling the owning context\'s service interface (ADR-0012).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['**/*.test.ts', '**/*.spec.ts', 'tests/**/*.ts'],
     rules: {
       'no-console': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
+      'no-restricted-imports': 'off',
     },
   },
   {

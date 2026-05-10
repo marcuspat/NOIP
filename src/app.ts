@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import morgan from 'morgan';
 import { config } from './config';
 import logger from './utils/logger';
+import { correlationMiddleware } from './middleware/correlation.middleware';
 import { DiscoveryService } from './services/discovery.service';
 import { SecurityService } from './services/security.service';
 import { AIService } from './services/ai.service';
@@ -26,6 +27,11 @@ const aiService = new AIService();
 const dashboardService = new DashboardService();
 const performanceService = new PerformanceService();
 const complianceService = new ComplianceService();
+
+// Correlation id MUST come before any logging or auditing middleware so the
+// request lifetime is observable from the very first log line.
+// Per ADR-0015.
+app.use(correlationMiddleware());
 
 // Middleware
 app.use(helmet());
@@ -106,13 +112,32 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// API Routes
-app.use('/api/discovery', createDiscoveryRoutes(discoveryService));
-app.use('/api/security', createSecurityRoutes(securityService));
-app.use('/api/ai', createAIRoutes(aiService));
-app.use('/api/dashboard', createDashboardRoutes(dashboardService));
-app.use('/api/performance', performanceRoutes);
-app.use('/api/compliance', complianceRoutes);
+// API Routes — canonical /api/v1 prefix per ADR-0020.
+const v1 = express.Router();
+v1.use('/discovery', createDiscoveryRoutes(discoveryService));
+v1.use('/security', createSecurityRoutes(securityService));
+v1.use('/ai', createAIRoutes(aiService));
+v1.use('/dashboard', createDashboardRoutes(dashboardService));
+v1.use('/performance', performanceRoutes);
+v1.use('/compliance', complianceRoutes);
+app.use('/api/v1', v1);
+
+// Legacy unprefixed paths kept alive for one major-version cycle. Every
+// response carries Deprecation + Sunset headers per RFC 8594 / RFC 9745.
+const legacy = express.Router();
+legacy.use((_req, res, next) => {
+  res.setHeader('Deprecation', 'true');
+  res.setHeader('Sunset', new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString());
+  res.setHeader('Link', '</api/v1>; rel="successor-version"');
+  next();
+});
+legacy.use('/discovery', createDiscoveryRoutes(discoveryService));
+legacy.use('/security', createSecurityRoutes(securityService));
+legacy.use('/ai', createAIRoutes(aiService));
+legacy.use('/dashboard', createDashboardRoutes(dashboardService));
+legacy.use('/performance', performanceRoutes);
+legacy.use('/compliance', complianceRoutes);
+app.use('/api', legacy);
 
 // Error handling middleware
 app.use(

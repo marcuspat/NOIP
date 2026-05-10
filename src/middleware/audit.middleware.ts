@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { AuditLog, SecurityEventType } from '../types/auth.types';
 import { AuditLogModel, SecurityEventModel } from '../models';
 import logger from '../utils/logger';
+import { redact } from '../utils/redact';
 
 interface AuditConfig {
   logLevel: 'none' | 'basic' | 'detailed' | 'full';
@@ -497,7 +498,9 @@ async function createAuditEntry(
       auditLog.serviceAccountId = (req as any).serviceAccount._id;
     }
 
-    // Add request body if configured
+    // Add request body if configured. Always pass through redact() so
+    // secret-shaped fields never reach the audit collection
+    // (ADR-0010, ADR-0015).
     if (auditMiddleware['config'].includeBody && req.body) {
       let bodyToLog = req.body;
 
@@ -506,16 +509,16 @@ async function createAuditEntry(
       }
 
       bodyToLog = auditMiddleware['truncateBody'](bodyToLog);
-
-      auditLog.details!.requestBody = bodyToLog;
+      auditLog.details!.requestBody = redact(bodyToLog);
     }
 
     // Add response body if configured and not too large
     if (responseBody && typeof responseBody === 'string') {
       try {
         const parsedBody = JSON.parse(responseBody);
-        auditLog.details!.responseBody =
-          auditMiddleware['truncateBody'](parsedBody);
+        auditLog.details!.responseBody = redact(
+          auditMiddleware['truncateBody'](parsedBody)
+        );
       } catch (error) {
         // Response body is not JSON, skip it
       }

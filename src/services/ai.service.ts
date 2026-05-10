@@ -7,6 +7,12 @@ import {
 } from '../types';
 import { config } from '../config';
 import axios from 'axios';
+import { redact } from '../utils/redact';
+import type {
+  IAgentDB,
+  IReasoningBank,
+  ILLMClient,
+} from './ai/ports';
 
 // AgentDB integration for advanced AI capabilities
 interface AgentDBAdapter {
@@ -23,15 +29,33 @@ interface ReasoningBank {
   getMetrics(): Promise<any>;
 }
 
+/**
+ * Optional injection point for ADR-0011 ports. When provided, AIService
+ * uses these instead of its built-in axios path (LLM) and inline adapters
+ * (AgentDB / ReasoningBank). When omitted, the legacy in-class behaviour
+ * is preserved so call sites need no change.
+ */
+export interface AIServicePorts {
+  llm?: ILLMClient;
+  agentDB?: IAgentDB;
+  reasoningBank?: IReasoningBank;
+}
+
 export class AIService extends BaseService {
   private agentDB: AgentDBAdapter | null = null;
   private reasoningBank: ReasoningBank | null = null;
   private contextCache: Map<string, AIContext> = new Map();
   private learningEnabled: boolean = true;
   private contextMemory: AIContext[] = [];
+  private readonly llmPort?: ILLMClient;
+  private readonly agentDBPort?: IAgentDB;
+  private readonly reasoningBankPort?: IReasoningBank;
 
-  constructor() {
+  constructor(ports: AIServicePorts = {}) {
     super('AIService');
+    this.llmPort = ports.llm;
+    this.agentDBPort = ports.agentDB;
+    this.reasoningBankPort = ports.reasoningBank;
   }
 
   async initialize(): Promise<void> {
@@ -299,31 +323,45 @@ export class AIService extends BaseService {
   private async callEnhancedClaudeAPI(
     request: AIAnalysisRequest
   ): Promise<AIAnalysisResult> {
-    // Build enhanced prompt with context and learning
-    const prompt = this.buildEnhancedPrompt(request);
+    // Build enhanced prompt with context and learning, then run it through
+    // the centralised secret redactor before it leaves our process
+    // (ADR-0010, ADR-0015).
+    const rawPrompt = this.buildEnhancedPrompt(request);
+    const prompt = redact(rawPrompt);
 
-    const response = await axios.post(
-      config.services.ai.endpoint + '/v1/messages',
-      {
+    let content: string;
+    if (this.llmPort) {
+      // ADR-0011: ports-based path (used by tests and pluggable providers).
+      const out = await this.llmPort.complete({
+        prompt,
         model: 'claude-3-sonnet-20240229',
-        max_tokens: config.services.ai.maxTokens,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': config.services.ai.apiKey,
-          'anthropic-version': '2023-06-01',
+        maxTokens: config.services.ai.maxTokens,
+      });
+      content = out.text;
+    } else {
+      const response = await axios.post(
+        config.services.ai.endpoint + '/v1/messages',
+        {
+          model: 'claude-3-sonnet-20240229',
+          max_tokens: config.services.ai.maxTokens,
+          messages: [
+            {
+              role: 'user',
+              content: prompt,
+            },
+          ],
         },
-      }
-    );
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': config.services.ai.apiKey,
+            'anthropic-version': '2023-06-01',
+          },
+        }
+      );
 
-    const content = (response.data as any).content[0].text;
+      content = (response.data as any).content[0].text;
+    }
     const result = this.parseEnhancedAIResponse(content, request);
 
     // Store learned pattern if AgentDB is available
@@ -554,7 +592,16 @@ export class AIService extends BaseService {
   private async callClaudeAPI(
     request: AIAnalysisRequest
   ): Promise<AIAnalysisResult> {
-    const prompt = this.buildPrompt(request);
+    const prompt = redact(this.buildPrompt(request));
+
+    if (this.llmPort) {
+      const out = await this.llmPort.complete({
+        prompt,
+        model: 'claude-3-sonnet-20240229',
+        maxTokens: config.services.ai.maxTokens,
+      });
+      return this.parseAIResponse(out.text);
+    }
 
     const response = await axios.post(
       config.services.ai.endpoint + '/v1/messages',
