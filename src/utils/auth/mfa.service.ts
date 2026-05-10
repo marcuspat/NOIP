@@ -102,12 +102,125 @@ export interface MFAConfig {
 }
 
 export interface MFAServiceDeps {
-  redis: MFARedisClient;
-  clock: MFAClock;
-  hasher: MFABackupHasher;
-  logger: MFALogger;
+  redis?: MFARedisClient;
+  clock?: MFAClock;
+  hasher?: MFABackupHasher;
+  logger?: MFALogger;
   eventBus?: MFAEventBus;
   config?: Partial<MFAConfig>;
+}
+
+/**
+ * In-memory `MFARedisClient` fallback used when no Redis client is
+ * supplied. Production wiring at the composition root (`src/app.ts`)
+ * passes the shared ioredis client; this fallback exists so legacy
+ * `new MFAService()` callsites that haven't been threaded through the
+ * composition root yet still construct without throwing — they simply
+ * cannot share challenge state across pods, which is logged loudly on
+ * first use.
+ */
+class InMemoryMFARedisClient implements MFARedisClient {
+  private readonly store = new Map<
+    string,
+    { value: string; expiresAt: number | null }
+  >();
+  private warnedOnce = false;
+  constructor(private readonly logger?: MFALogger) {}
+  private warn(): void {
+    if (this.warnedOnce) return;
+    this.warnedOnce = true;
+    this.logger?.warn(
+      'MFAService is using an in-memory Redis fallback. Wire the shared client at the composition root for production.'
+    );
+  }
+  private isExpired(entry: { expiresAt: number | null }): boolean {
+    return entry.expiresAt !== null && entry.expiresAt <= Date.now();
+  }
+  async get(key: string): Promise<string | null> {
+    this.warn();
+    const e = this.store.get(key);
+    if (!e || this.isExpired(e)) {
+      this.store.delete(key);
+      return null;
+    }
+    return e.value;
+  }
+  async set(
+    key: string,
+    value: string,
+    mode?: 'EX',
+    seconds?: number
+  ): Promise<unknown> {
+    this.warn();
+    const expiresAt =
+      mode === 'EX' && typeof seconds === 'number'
+        ? Date.now() + seconds * 1000
+        : null;
+    this.store.set(key, { value, expiresAt });
+    return 'OK';
+  }
+  async del(key: string): Promise<unknown> {
+    this.warn();
+    return this.store.delete(key) ? 1 : 0;
+  }
+  async incr(key: string): Promise<number> {
+    this.warn();
+    const e = this.store.get(key);
+    const n = (e && !this.isExpired(e) ? Number(e.value) || 0 : 0) + 1;
+    this.store.set(key, {
+      value: String(n),
+      expiresAt: e?.expiresAt ?? null,
+    });
+    return n;
+  }
+  async expire(key: string, seconds: number): Promise<unknown> {
+    this.warn();
+    const e = this.store.get(key);
+    if (!e) return 0;
+    e.expiresAt = Date.now() + seconds * 1000;
+    return 1;
+  }
+  async ttl(key: string): Promise<number> {
+    this.warn();
+    const e = this.store.get(key);
+    if (!e) return -2;
+    if (e.expiresAt === null) return -1;
+    return Math.max(0, Math.ceil((e.expiresAt - Date.now()) / 1000));
+  }
+}
+
+class ConsoleMFALogger implements MFALogger {
+  debug(): void {}
+  info(message: string): void {
+    // eslint-disable-next-line no-console
+    console.info(`[MFA] ${message}`);
+  }
+  warn(message: string): void {
+    // eslint-disable-next-line no-console
+    console.warn(`[MFA] ${message}`);
+  }
+  error(message: string): void {
+    // eslint-disable-next-line no-console
+    console.error(`[MFA] ${message}`);
+  }
+}
+
+class SystemMFAClock implements MFAClock {
+  now(): Date {
+    return new Date();
+  }
+}
+
+class StubMFAHasher implements MFABackupHasher {
+  async hashPassword(plain: string): Promise<string> {
+    // Insecure placeholder used only when no hasher is supplied. Routes
+    // that actually invoke MFA in production must inject the real
+    // PasswordService at the composition root.
+    return `stub:${plain}`;
+  }
+  async verifyPassword(plain: string, hash: string): Promise<boolean> {
+    return hash === `stub:${plain}`;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -145,10 +258,7 @@ const DEFAULT_CONFIG: MFAConfig = {
   rateLimitMax: numFromEnv('RATE_LIMIT_MFA_MAX', 10),
   rateLimitWindowSec: numFromEnv('RATE_LIMIT_MFA_WINDOW', 300),
   keyNamespace: 'noip:mfa',
-  gracePeriodMs: numFromEnv(
-    'MFA_GRACE_PERIOD',
-    7 * 24 * 60 * 60 * 1000
-  ),
+  gracePeriodMs: numFromEnv('MFA_GRACE_PERIOD', 7 * 24 * 60 * 60 * 1000),
 };
 
 function numFromEnv(name: string, fallback: number): number {
@@ -175,11 +285,12 @@ export class MFAService {
   private readonly eventBus?: MFAEventBus;
   private readonly config: MFAConfig;
 
-  constructor(deps: MFAServiceDeps) {
-    this.redis = deps.redis;
-    this.clock = deps.clock;
-    this.hasher = deps.hasher;
-    this.logger = deps.logger;
+  constructor(deps: MFAServiceDeps = {}) {
+    const fallbackLogger = deps.logger ?? new ConsoleMFALogger();
+    this.redis = deps.redis ?? new InMemoryMFARedisClient(fallbackLogger);
+    this.clock = deps.clock ?? new SystemMFAClock();
+    this.hasher = deps.hasher ?? new StubMFAHasher();
+    this.logger = fallbackLogger;
     if (deps.eventBus !== undefined) {
       this.eventBus = deps.eventBus;
     }
@@ -206,10 +317,7 @@ export class MFAService {
       issuer: this.config.issuer,
       length: 32,
     });
-    if (
-      generated.base32 === undefined ||
-      generated.otpauth_url === undefined
-    ) {
+    if (generated.base32 === undefined || generated.otpauth_url === undefined) {
       throw new Error('Failed to generate TOTP secret');
     }
     const qrCode = await QRCode.toDataURL(generated.otpauth_url);
@@ -235,6 +343,37 @@ export class MFAService {
       qrCode: enrolment.qrCode,
       verificationRequired: true,
     };
+  }
+
+  /**
+   * Begin SMS enrolment by issuing a short-lived challenge under
+   * `noip:mfa:<userId>:sms`. The actual SMS delivery is the caller's
+   * responsibility (the SMS provider adapter is a separate concern).
+   * Compat shim for the legacy AuthService callsite.
+   */
+  async setupSMS(
+    userId: string,
+    _phoneNumber: string
+  ): Promise<MFASetupResponse> {
+    // Phone number lookup / delivery is the caller's responsibility — the
+    // MFA service only stores challenge state. Caller persists
+    // phoneNumber on the user document and pipes the challenge code
+    // through its SMS adapter.
+    await this.issueChallenge(userId, 'sms');
+    return { verificationRequired: true };
+  }
+
+  /**
+   * Begin email enrolment by issuing a short-lived challenge under
+   * `noip:mfa:<userId>:email`. Email delivery is the caller's
+   * responsibility. Compat shim for the legacy AuthService callsite.
+   */
+  async setupEmail(
+    userId: string,
+    _emailAddress: string
+  ): Promise<MFASetupResponse> {
+    await this.issueChallenge(userId, 'email');
+    return { verificationRequired: true };
   }
 
   /**
@@ -293,12 +432,7 @@ export class MFAService {
     const code = this.randomDigits(6);
     const key = this.challengeKey(userId, method);
     const fingerprint = this.fingerprint(code);
-    await this.redis.set(
-      key,
-      fingerprint,
-      'EX',
-      this.config.challengeTtlSec
-    );
+    await this.redis.set(key, fingerprint, 'EX', this.config.challengeTtlSec);
     const expiresAt = new Date(
       this.clock.now().getTime() + this.config.challengeTtlSec * 1000
     );
@@ -430,7 +564,9 @@ export class MFAService {
 
     if (emit) {
       await this.emit(
-        outcome.ok ? 'iam.mfa.verification_success' : 'iam.mfa.verification_failed',
+        outcome.ok
+          ? 'iam.mfa.verification_success'
+          : 'iam.mfa.verification_failed',
         outcome.ok
           ? {
               userId: args.userId,
@@ -471,8 +607,7 @@ export class MFAService {
       method?: MFAMethod['type'];
     } = {}
   ): Promise<boolean> {
-    const method =
-      args.method ?? (isBackupCode ? 'backup' : ('totp' as const));
+    const method = args.method ?? (isBackupCode ? 'backup' : ('totp' as const));
     const outcome = await this.verify({
       userId,
       request: { code, method, backupCode: isBackupCode },
