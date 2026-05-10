@@ -88,6 +88,7 @@
     "winston": "^3.18.3"
   },
   "dependencies": {
+    "@kubernetes/client-node": "^0.21.0",
     "@types/argon2": "^0.14.1",
     "@types/mongoose": "^5.11.96",
     "@types/nodemailer": "^7.0.3",
