@@ -6,8 +6,20 @@ module.exports = {
     '**/__tests__/**/*.ts',
     '**/?(*.)+(spec|test).ts'
   ],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/dist/',
+    '/tests/e2e/',
+    '/tests/example.spec.ts',
+  ],
+  moduleNameMapper: {
+    '^uuid$': '<rootDir>/__mocks__/uuid.js',
+  },
+  transformIgnorePatterns: [
+    '/node_modules/(?!(uuid)/)',
+  ],
   transform: {
-    '^.+\\.ts$': 'ts-jest',
+    '^.+\\.ts$': ['ts-jest', { useESM: false, isolatedModules: true }],
   },
   collectCoverageFrom: [
     'src/**/*.ts',

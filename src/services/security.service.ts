@@ -18,7 +18,9 @@ export class SecurityService extends BaseService {
   }
 
   async scanResources(resources: any[]): Promise<SecurityScanResult[]> {
-    this.logOperation('Starting security scan', { resourceCount: resources.length });
+    this.logOperation('Starting security scan', {
+      resourceCount: resources.length,
+    });
 
     const results: SecurityScanResult[] = [];
 
@@ -49,7 +51,8 @@ export class SecurityService extends BaseService {
       severity: 'low',
       category: 'Resource Limits',
       description: 'Pod without resource limits found',
-      recommendation: 'Add CPU and memory limits to prevent resource exhaustion',
+      recommendation:
+        'Add CPU and memory limits to prevent resource exhaustion',
       affectedResources: ['noip-api-pod'],
     });
 
@@ -69,7 +72,8 @@ export class SecurityService extends BaseService {
       severity: 'medium',
       category: 'Pod Security',
       description: 'Pod allows privilege escalation',
-      recommendation: 'Set allowPrivilegeEscalation to false in security context',
+      recommendation:
+        'Set allowPrivilegeEscalation to false in security context',
       affectedResources: ['privileged-pod'],
     });
 
@@ -98,7 +102,8 @@ export class SecurityService extends BaseService {
       severity: 'medium',
       category: 'Network Security',
       description: 'Namespace without network policies',
-      recommendation: 'Implement network policies to restrict pod-to-pod communication',
+      recommendation:
+        'Implement network policies to restrict pod-to-pod communication',
       affectedResources: ['default-namespace'],
     });
 
@@ -150,17 +155,14 @@ export class SecurityService extends BaseService {
       clearInterval(this.scanInterval);
     }
 
-    this.scanInterval = setInterval(
-      async () => {
-        try {
-          this.logOperation('Performing scheduled security scan');
-          // Security scanning logic will be implemented here
-        } catch (error) {
-          this.logOperation('Scheduled security scan failed', error);
-        }
-      },
-      config.services.security.scanInterval
-    );
+    this.scanInterval = setInterval(async () => {
+      try {
+        this.logOperation('Performing scheduled security scan');
+        // Security scanning logic will be implemented here
+      } catch (error) {
+        this.logOperation('Scheduled security scan failed', error);
+      }
+    }, config.services.security.scanInterval);
 
     this.logOperation('Started automatic security scanning', {
       interval: config.services.security.scanInterval,
@@ -175,7 +177,11 @@ export class SecurityService extends BaseService {
     }
   }
 
-  async healthCheck(): Promise<{ status: string; lastScan?: Date; score?: number }> {
+  async healthCheck(): Promise<{
+    status: string;
+    lastScan?: Date;
+    score?: number;
+  }> {
     return {
       status: 'healthy',
       lastScan: new Date(),

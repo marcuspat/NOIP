@@ -49,7 +49,9 @@ describe('SecurityService', () => {
 
       results.forEach(result => {
         expect(result.category).toBe('Pod Security');
-        expect(['low', 'medium', 'high', 'critical']).toContain(result.severity);
+        expect(['low', 'medium', 'high', 'critical']).toContain(
+          result.severity
+        );
       });
     });
   });

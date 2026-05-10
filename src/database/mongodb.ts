@@ -14,7 +14,6 @@ export interface MongoConfig {
   heartbeatFrequencyMS?: number;
   retryWrites?: boolean;
   retryReads?: boolean;
-  bufferMaxEntries?: number;
   bufferCommands?: boolean;
 }
 
@@ -40,7 +39,6 @@ export class MongoDBConnection {
         heartbeatFrequencyMS: config.heartbeatFrequencyMS || 10000,
         retryWrites: config.retryWrites !== false,
         retryReads: config.retryReads !== false,
-        bufferMaxEntries: config.bufferMaxEntries || 0,
         bufferCommands: config.bufferCommands !== false,
         ...config.options,
       },
@@ -129,7 +127,7 @@ export class MongoDBConnection {
       }
 
       // Execute a simple command to test connectivity
-      const adminDb = this.connection!.db.admin();
+      const adminDb = this.connection!.db!.admin();
       const serverStatus = await adminDb.serverStatus();
 
       return {
@@ -161,7 +159,7 @@ export class MongoDBConnection {
         throw new Error('MongoDB not connected');
       }
 
-      const adminDb = this.connection!.db.admin();
+      const adminDb = this.connection!.db!.admin();
       const serverStatus = await adminDb.serverStatus();
 
       return {
@@ -209,7 +207,7 @@ export class MongoDBConnection {
       this.reconnectAttempts = 0;
     });
 
-    this.connection.on('error', (error) => {
+    this.connection.on('error', error => {
       logger.error('MongoDB connection error', error);
       this.isConnected = false;
     });
@@ -227,23 +225,23 @@ export class MongoDBConnection {
     });
 
     // Connection pool events
-    this.connection.on('connectionPoolCreated', (event) => {
+    this.connection.on('connectionPoolCreated', event => {
       logger.debug('MongoDB connection pool created', event);
     });
 
-    this.connection.on('connectionCreated', (event) => {
+    this.connection.on('connectionCreated', event => {
       logger.debug('MongoDB connection created', event);
     });
 
-    this.connection.on('connectionReady', (event) => {
+    this.connection.on('connectionReady', event => {
       logger.debug('MongoDB connection ready', event);
     });
 
-    this.connection.on('connectionClosed', (event) => {
+    this.connection.on('connectionClosed', event => {
       logger.debug('MongoDB connection closed', event);
     });
 
-    this.connection.on('connectionPoolCleared', (event) => {
+    this.connection.on('connectionPoolCleared', event => {
       logger.debug('MongoDB connection pool cleared', event);
     });
   }
@@ -255,13 +253,18 @@ export class MongoDBConnection {
     }
 
     this.reconnectAttempts++;
-    logger.info(`Attempting MongoDB reconnection (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    logger.info(
+      `Attempting MongoDB reconnection (${this.reconnectAttempts}/${this.maxReconnectAttempts})`
+    );
 
     setTimeout(async () => {
       try {
         await this.connect();
       } catch (error) {
-        logger.error(`MongoDB reconnection attempt ${this.reconnectAttempts} failed`, error);
+        logger.error(
+          `MongoDB reconnection attempt ${this.reconnectAttempts} failed`,
+          error
+        );
         this.attemptReconnect();
       }
     }, this.reconnectInterval);
@@ -277,17 +280,23 @@ export class MongoDBConnection {
   }
 
   // Database operations helper methods
-  public async createIndexes(collection: string, indexes: any[]): Promise<void> {
+  public async createIndexes(
+    collection: string,
+    indexes: any[]
+  ): Promise<void> {
     try {
       if (!this.isHealthy()) {
         throw new Error('MongoDB not connected');
       }
 
-      const db = this.connection!.db(this.config.dbName);
+      const db = this.connection!.db!;
       await db.collection(collection).createIndexes(indexes);
       logger.info(`Indexes created for collection: ${collection}`);
     } catch (error) {
-      logger.error(`Failed to create indexes for collection: ${collection}`, error);
+      logger.error(
+        `Failed to create indexes for collection: ${collection}`,
+        error
+      );
       throw error;
     }
   }
@@ -298,7 +307,7 @@ export class MongoDBConnection {
         throw new Error('MongoDB not connected');
       }
 
-      const db = this.connection!.db(this.config.dbName);
+      const db = this.connection!.db!;
       await db.collection(collection).drop();
       logger.info(`Collection dropped: ${collection}`);
     } catch (error) {
@@ -313,8 +322,8 @@ export class MongoDBConnection {
         throw new Error('MongoDB not connected');
       }
 
-      const db = this.connection!.db(this.config.dbName);
-      const stats = await db.collection(collection).stats();
+      const db = this.connection!.db!;
+      const stats = await db.command({ collStats: collection });
       return stats;
     } catch (error) {
       logger.error(`Failed to get stats for collection: ${collection}`, error);
@@ -328,7 +337,7 @@ export class MongoDBConnection {
         throw new Error('MongoDB not connected');
       }
 
-      const db = this.connection!.db(this.config.dbName);
+      const db = this.connection!.db!;
       return await db.command(command);
     } catch (error) {
       logger.error('Failed to run MongoDB command', { command, error });
@@ -366,6 +375,8 @@ export class MongoDBConnection {
 }
 
 // Export default instance factory
-export function createMongoDBConnection(config: MongoConfig): MongoDBConnection {
+export function createMongoDBConnection(
+  config: MongoConfig
+): MongoDBConnection {
   return MongoDBConnection.getInstance(config);
 }

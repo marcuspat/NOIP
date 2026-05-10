@@ -15,14 +15,19 @@ export class DashboardService extends BaseService {
     await this.createDefaultDashboards();
   }
 
-  async createDashboard(config: Omit<DashboardConfig, 'id'>): Promise<DashboardConfig> {
+  async createDashboard(
+    config: Omit<DashboardConfig, 'id'>
+  ): Promise<DashboardConfig> {
     const dashboard: DashboardConfig = {
       id: 'dashboard-' + Date.now(),
       ...config,
     };
 
     this.dashboardConfigs.set(dashboard.id, dashboard);
-    this.logOperation('Created dashboard', { id: dashboard.id, name: dashboard.name });
+    this.logOperation('Created dashboard', {
+      id: dashboard.id,
+      name: dashboard.name,
+    });
 
     return dashboard;
   }
@@ -35,7 +40,10 @@ export class DashboardService extends BaseService {
     return Array.from(this.dashboardConfigs.values());
   }
 
-  async updateDashboard(id: string, updates: Partial<DashboardConfig>): Promise<DashboardConfig | null> {
+  async updateDashboard(
+    id: string,
+    updates: Partial<DashboardConfig>
+  ): Promise<DashboardConfig | null> {
     const existing = this.dashboardConfigs.get(id);
     if (!existing) {
       return null;
@@ -56,7 +64,10 @@ export class DashboardService extends BaseService {
     return deleted;
   }
 
-  async addWidget(dashboardId: string, widget: Omit<DashboardWidget, 'id'>): Promise<DashboardWidget | null> {
+  async addWidget(
+    dashboardId: string,
+    widget: Omit<DashboardWidget, 'id'>
+  ): Promise<DashboardWidget | null> {
     const dashboard = this.dashboardConfigs.get(dashboardId);
     if (!dashboard) {
       return null;
@@ -69,7 +80,10 @@ export class DashboardService extends BaseService {
 
     dashboard.widgets.push(newWidget);
     this.dashboardConfigs.set(dashboardId, dashboard);
-    this.logOperation('Added widget to dashboard', { dashboardId, widgetId: newWidget.id });
+    this.logOperation('Added widget to dashboard', {
+      dashboardId,
+      widgetId: newWidget.id,
+    });
 
     return newWidget;
   }
@@ -86,7 +100,10 @@ export class DashboardService extends BaseService {
 
     if (removed) {
       this.dashboardConfigs.set(dashboardId, dashboard);
-      this.logOperation('Removed widget from dashboard', { dashboardId, widgetId });
+      this.logOperation('Removed widget from dashboard', {
+        dashboardId,
+        widgetId,
+      });
     }
 
     return removed;
@@ -144,7 +161,8 @@ export class DashboardService extends BaseService {
 
     // For demo purposes, generate random data
     const widgetTypes = Object.keys(mockDataGenerators);
-    const randomType = widgetTypes[Math.floor(Math.random() * widgetTypes.length)];
+    const randomType =
+      widgetTypes[Math.floor(Math.random() * widgetTypes.length)];
     return mockDataGenerators[randomType as keyof typeof mockDataGenerators]();
   }
 

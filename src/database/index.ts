@@ -1,4 +1,8 @@
-import { MongoDBConnection, MongoConfig, createMongoDBConnection } from './mongodb';
+import {
+  MongoDBConnection,
+  MongoConfig,
+  createMongoDBConnection,
+} from './mongodb';
 import { RedisManager, RedisConfig, createRedisManager } from './redis';
 import { MigrationManager, Migration } from './migrations/migration';
 import { initialSchemaMigration } from './migrations/001_initial_schema';
@@ -109,9 +113,10 @@ export class DatabaseManager {
         ? await this.redisManager.healthCheck()
         : { status: 'unhealthy', details: { reason: 'Not initialized' } };
 
-      const overall = mongoHealth.status === 'healthy' && redisHealth.status === 'healthy'
-        ? 'healthy'
-        : 'unhealthy';
+      const overall =
+        mongoHealth.status === 'healthy' && redisHealth.status === 'healthy'
+          ? 'healthy'
+          : 'unhealthy';
 
       return {
         mongodb: mongoHealth,
@@ -121,8 +126,18 @@ export class DatabaseManager {
     } catch (error) {
       logger.error('Database health check failed', error);
       return {
-        mongodb: { status: 'error', details: { error: error instanceof Error ? error.message : 'Unknown' } },
-        redis: { status: 'error', details: { error: error instanceof Error ? error.message : 'Unknown' } },
+        mongodb: {
+          status: 'error',
+          details: {
+            error: error instanceof Error ? error.message : 'Unknown',
+          },
+        },
+        redis: {
+          status: 'error',
+          details: {
+            error: error instanceof Error ? error.message : 'Unknown',
+          },
+        },
         overall: 'error',
       };
     }
@@ -220,10 +235,12 @@ export class DatabaseManager {
       maxPoolSize: config.database.mongodb.maxPoolSize || 10,
       minPoolSize: config.database.mongodb.minPoolSize || 1,
       maxIdleTimeMS: config.database.mongodb.maxIdleTimeMS || 30000,
-      serverSelectionTimeoutMS: config.database.mongodb.serverSelectionTimeoutMS || 5000,
+      serverSelectionTimeoutMS:
+        config.database.mongodb.serverSelectionTimeoutMS || 5000,
       socketTimeoutMS: config.database.mongodb.socketTimeoutMS || 45000,
       connectTimeoutMS: config.database.mongodb.connectTimeoutMS || 10000,
-      heartbeatFrequencyMS: config.database.mongodb.heartbeatFrequencyMS || 10000,
+      heartbeatFrequencyMS:
+        config.database.mongodb.heartbeatFrequencyMS || 10000,
       retryWrites: config.database.mongodb.retryWrites !== false,
       retryReads: config.database.mongodb.retryReads !== false,
       options: {
@@ -246,7 +263,7 @@ export class DatabaseManager {
       maxRetriesPerRequest: config.database.redis.maxRetriesPerRequest || 3,
       lazyConnect: config.database.redis.lazyConnect !== false,
       keepAlive: config.database.redis.keepAlive || 30000,
-      family: config.database.redis.family || 4,
+      family: (config.database.redis.family || 4) as 4 | 6,
       connectTimeout: config.database.redis.connectTimeout || 10000,
       commandTimeout: config.database.redis.commandTimeout || 5000,
       maxLoadingTimeout: config.database.redis.maxLoadingTimeout || 5000,
@@ -277,7 +294,9 @@ export class DatabaseManager {
       const result = await this.migrationManager.migrate();
 
       if (result.errors.length > 0) {
-        logger.warn('Migration completed with errors', { errors: result.errors });
+        logger.warn('Migration completed with errors', {
+          errors: result.errors,
+        });
       } else {
         logger.info('All migrations completed successfully', {
           executed: result.executed.length,
@@ -292,7 +311,10 @@ export class DatabaseManager {
     logger.info(`Creating backup directory: ${backupDir}`);
   }
 
-  private async backupMongoDB(backupDir: string, timestamp: string): Promise<{
+  private async backupMongoDB(
+    backupDir: string,
+    timestamp: string
+  ): Promise<{
     success: boolean;
     path?: string;
     error?: string;
@@ -308,7 +330,8 @@ export class DatabaseManager {
         path: backupPath,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       logger.error('MongoDB backup failed', error);
       return {
         success: false,
@@ -317,7 +340,10 @@ export class DatabaseManager {
     }
   }
 
-  private async backupRedis(backupDir: string, timestamp: string): Promise<{
+  private async backupRedis(
+    backupDir: string,
+    timestamp: string
+  ): Promise<{
     success: boolean;
     path?: string;
     error?: string;
@@ -333,7 +359,8 @@ export class DatabaseManager {
         path: backupPath,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       logger.error('Redis backup failed', error);
       return {
         success: false,
@@ -353,8 +380,10 @@ export const getMongoConnection = () => databaseManager.getMongoConnection();
 export const getRedisManager = () => databaseManager.getRedisManager();
 export const getMigrationManager = () => databaseManager.getMigrationManager();
 export const databaseHealthCheck = () => databaseManager.healthCheck();
-export const runMigrations = (options?: any) => databaseManager.runMigrations(options);
-export const rollbackMigrations = (options?: any) => databaseManager.rollbackMigrations(options);
+export const runMigrations = (options?: any) =>
+  databaseManager.runMigrations(options);
+export const rollbackMigrations = (options?: any) =>
+  databaseManager.rollbackMigrations(options);
 export const getMigrationStatus = () => databaseManager.getMigrationStatus();
 export const backupDatabases = () => databaseManager.backup();
 export const getDatabaseStats = () => databaseManager.getDatabaseStats();

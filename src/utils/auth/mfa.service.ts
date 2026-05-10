@@ -1,7 +1,10 @@
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import { config } from '../../config';
-import { MFASetupResponse, MFAVerificationRequest } from '../../types/auth.types';
+import {
+  MFASetupResponse,
+  MFAVerificationRequest,
+} from '../../types/auth.types';
 import logger from '../logger';
 
 export class MFAService {
@@ -16,7 +19,7 @@ export class MFAService {
       const secret = speakeasy.generateSecret({
         name: `${this.issuer} (${userId})`,
         issuer: this.issuer,
-        length: 32
+        length: 32,
       });
 
       // Generate QR code
@@ -31,7 +34,7 @@ export class MFAService {
         secret: secret.base32,
         qrCode: qrCodeUrl,
         backupCodes,
-        verificationRequired: true
+        verificationRequired: true,
       };
     } catch (error) {
       logger.error('Failed to setup TOTP', { error, userId });
@@ -39,7 +42,10 @@ export class MFAService {
     }
   }
 
-  async setupSMS(userId: string, phoneNumber: string): Promise<MFASetupResponse> {
+  async setupSMS(
+    userId: string,
+    phoneNumber: string
+  ): Promise<MFASetupResponse> {
     try {
       // Generate verification code
       const verificationCode = this.generateSMSCode();
@@ -57,7 +63,10 @@ export class MFAService {
     }
   }
 
-  async setupEmail(userId: string, emailAddress: string): Promise<MFASetupResponse> {
+  async setupEmail(
+    userId: string,
+    emailAddress: string
+  ): Promise<MFASetupResponse> {
     try {
       // Generate verification code
       const verificationCode = this.generateEmailCode();
@@ -75,7 +84,11 @@ export class MFAService {
     }
   }
 
-  async verifyCode(userId: string, code: string, isBackupCode: boolean = false): Promise<boolean> {
+  async verifyCode(
+    userId: string,
+    code: string,
+    isBackupCode: boolean = false
+  ): Promise<boolean> {
     try {
       if (isBackupCode) {
         return this.verifyBackupCode(userId, code);
@@ -94,10 +107,14 @@ export class MFAService {
         encoding: 'base32',
         token: code,
         window: 2, // Allow 2 windows before and after for clock drift
-        time: Math.floor(Date.now() / 1000)
+        time: Math.floor(Date.now() / 1000),
       });
 
-      logger.info('MFA verification attempt', { userId, verified, isBackupCode });
+      logger.info('MFA verification attempt', {
+        userId,
+        verified,
+        isBackupCode,
+      });
 
       return verified;
     } catch (error) {
@@ -143,7 +160,10 @@ export class MFAService {
   }
 
   private generateBackupCode(): string {
-    return speakeasy.generateSecret({ length: 8 }).base32.substring(0, 8).toUpperCase();
+    return speakeasy
+      .generateSecret({ length: 8 })
+      .base32.substring(0, 8)
+      .toUpperCase();
   }
 
   private verifyBackupCode(userId: string, code: string): Promise<boolean> {
@@ -209,8 +229,8 @@ export class MFAService {
         methods: [
           { type: 'totp', enabled: false, verified: false },
           { type: 'sms', enabled: false, verified: false },
-          { type: 'email', enabled: false, verified: false }
-        ]
+          { type: 'email', enabled: false, verified: false },
+        ],
       };
     } catch (error) {
       logger.error('Failed to get MFA status', { error, userId });
@@ -218,7 +238,11 @@ export class MFAService {
     }
   }
 
-  async validateMFASetup(userId: string, method: string, secret?: string): Promise<boolean> {
+  async validateMFASetup(
+    userId: string,
+    method: string,
+    secret?: string
+  ): Promise<boolean> {
     try {
       switch (method) {
         case 'totp':
@@ -229,13 +253,13 @@ export class MFAService {
           const testCode = speakeasy.totp({
             secret,
             encoding: 'base32',
-            time: Math.floor(Date.now() / 1000)
+            time: Math.floor(Date.now() / 1000),
           });
           return speakeasy.totp.verify({
             secret,
             encoding: 'base32',
             token: testCode,
-            window: 0
+            window: 0,
           });
         case 'sms':
         case 'email':

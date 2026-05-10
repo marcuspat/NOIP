@@ -1,5 +1,10 @@
 import { BaseService } from './base.service';
-import { AIAnalysisRequest, AIAnalysisResult, AIContext, AILearningPattern } from '../types';
+import {
+  AIAnalysisRequest,
+  AIAnalysisResult,
+  AIContext,
+  AILearningPattern,
+} from '../types';
 import { config } from '../config';
 import axios from 'axios';
 
@@ -57,35 +62,41 @@ export class AIService extends BaseService {
   private async initializeAgentDB(): Promise<void> {
     try {
       // Initialize AgentDB adapter for vector search and pattern storage
-      if (config.services.ai.agentDBEnabled) {
+      if ((config.services.ai as any).agentDBEnabled) {
         // In production, this would use actual AgentDB
         this.agentDB = {
           insertPattern: async (pattern: AILearningPattern) => {
             // Mock implementation - would use actual AgentDB
-            this.logOperation('Pattern inserted into AgentDB', { patternId: pattern.id });
+            this.logOperation('Pattern inserted into AgentDB', {
+              patternId: pattern.id,
+            });
           },
           retrieveWithReasoning: async (query: number[], options: any) => {
             // Mock implementation with vector similarity search
             return {
               patterns: [],
               context: 'Mock reasoning result',
-              confidence: 0.85
+              confidence: 0.85,
             };
           },
           retrieveContext: async (query: string, options: any) => {
             // Retrieve relevant context from memory
-            return this.contextMemory.filter(ctx =>
-              ctx.content.toLowerCase().includes(query.toLowerCase())
-            ).slice(0, options.limit || 5);
+            return this.contextMemory
+              .filter(ctx =>
+                ctx.content.toLowerCase().includes(query.toLowerCase())
+              )
+              .slice(0, options.limit || 5);
           },
           updateContext: async (context: AIContext) => {
-            const index = this.contextMemory.findIndex(ctx => ctx.id === context.id);
+            const index = this.contextMemory.findIndex(
+              ctx => ctx.id === context.id
+            );
             if (index >= 0) {
               this.contextMemory[index] = context;
             } else {
               this.contextMemory.push(context);
             }
-          }
+          },
         };
         this.logOperation('AgentDB initialized for advanced AI capabilities');
       }
@@ -97,12 +108,12 @@ export class AIService extends BaseService {
   private async initializeReasoningBank(): Promise<void> {
     try {
       // Initialize ReasoningBank for adaptive learning
-      if (config.services.ai.learningEnabled) {
+      if ((config.services.ai as any).learningEnabled) {
         this.reasoningBank = {
           recordExperience: async (experience: any) => {
             this.logOperation('Experience recorded in ReasoningBank', {
               task: experience.task,
-              outcome: experience.outcome?.success
+              outcome: experience.outcome?.success,
             });
           },
           recommendStrategy: async (task: string, context: any) => {
@@ -110,20 +121,23 @@ export class AIService extends BaseService {
             return {
               strategy: 'context_aware_analysis',
               confidence: 0.88,
-              reasoning: 'Based on similar past tasks, context-aware analysis yields best results'
+              reasoning:
+                'Based on similar past tasks, context-aware analysis yields best results',
             };
           },
           learnPattern: async (pattern: any) => {
-            this.logOperation('Pattern learned by ReasoningBank', { pattern: pattern.pattern });
+            this.logOperation('Pattern learned by ReasoningBank', {
+              pattern: pattern.pattern,
+            });
           },
           getMetrics: async () => {
             return {
               totalExperiences: 150,
               patternsLearned: 45,
               strategySuccessRate: 0.87,
-              improvementOverTime: 0.23
+              improvementOverTime: 0.23,
             };
-          }
+          },
         };
         this.logOperation('ReasoningBank initialized for adaptive learning');
       }
@@ -140,21 +154,25 @@ export class AIService extends BaseService {
         {
           id: 'default-security-context',
           type: 'security_analysis',
-          content: 'Previous security analyses identified common patterns in RBAC misconfigurations and network policies',
+          content:
+            'Previous security analyses identified common patterns in RBAC misconfigurations and network policies',
           timestamp: new Date(),
           confidence: 0.92,
-          embeddings: new Array(1536).fill(0.1) // Mock embedding
+          embeddings: new Array(1536).fill(0.1), // Mock embedding
         },
         {
           id: 'default-performance-context',
           type: 'performance_analysis',
-          content: 'Historical performance data shows resource optimization opportunities in scaling and memory management',
+          content:
+            'Historical performance data shows resource optimization opportunities in scaling and memory management',
           timestamp: new Date(),
           confidence: 0.89,
-          embeddings: new Array(1536).fill(0.1) // Mock embedding
-        }
+          embeddings: new Array(1536).fill(0.1), // Mock embedding
+        },
       ];
-      this.logOperation('Context memory loaded', { contexts: this.contextMemory.length });
+      this.logOperation('Context memory loaded', {
+        contexts: this.contextMemory.length,
+      });
     } catch (error) {
       this.logOperation('Failed to load context memory', error);
     }
@@ -165,16 +183,23 @@ export class AIService extends BaseService {
 
     try {
       // Get recommended strategy from ReasoningBank
-      const strategy = this.reasoningBank ?
-        await this.reasoningBank.recommendStrategy('infrastructure_analysis', {
-          dataSize: JSON.stringify(data).length,
-          clusterNodes: data.nodes?.length || 0,
-          hasMetrics: !!data.metrics
-        }) : null;
+      const strategy = this.reasoningBank
+        ? await this.reasoningBank.recommendStrategy(
+            'infrastructure_analysis',
+            {
+              dataSize: JSON.stringify(data).length,
+              clusterNodes: data.nodes?.length || 0,
+              hasMetrics: !!data.metrics,
+            }
+          )
+        : null;
 
       // Retrieve relevant context for infrastructure analysis
-      const relevantContext = this.agentDB ?
-        await this.agentDB.retrieveContext('infrastructure performance', { limit: 5 }) : [];
+      const relevantContext = this.agentDB
+        ? await this.agentDB.retrieveContext('infrastructure performance', {
+            limit: 5,
+          })
+        : [];
 
       const request: AIAnalysisRequest = {
         type: 'performance',
@@ -182,7 +207,7 @@ export class AIService extends BaseService {
         context: 'Kubernetes cluster infrastructure analysis',
         strategy: strategy?.strategy,
         relevantContext,
-        learningEnabled: this.learningEnabled
+        learningEnabled: this.learningEnabled,
       };
 
       const result = await this.performAdvancedAIAnalysis(request);
@@ -196,12 +221,12 @@ export class AIService extends BaseService {
             success: true,
             confidence: result.confidence,
             processingTime: Date.now() - startTime,
-            insightsCount: result.insights.length
+            insightsCount: result.insights.length,
           },
           context: {
             dataSize: JSON.stringify(data).length,
-            hasRecommendations: result.recommendations.length > 0
-          }
+            hasRecommendations: result.recommendations.length > 0,
+          },
         });
       }
 
@@ -219,7 +244,7 @@ export class AIService extends BaseService {
       context: 'Security scan results analysis',
     };
 
-    return this.performAIAnalysis(request);
+    return this.performAdvancedAIAnalysis(request);
   }
 
   async analyzeCompliance(resources: any[]): Promise<AIAnalysisResult> {
@@ -229,7 +254,7 @@ export class AIService extends BaseService {
       context: 'Infrastructure compliance analysis',
     };
 
-    return this.performAIAnalysis(request);
+    return this.performAdvancedAIAnalysis(request);
   }
 
   async analyzeCost(usageData: any): Promise<AIAnalysisResult> {
@@ -239,15 +264,20 @@ export class AIService extends BaseService {
       context: 'Infrastructure cost optimization analysis',
     };
 
-    return this.performAIAnalysis(request);
+    return this.performAdvancedAIAnalysis(request);
   }
 
-  private async performAdvancedAIAnalysis(request: AIAnalysisRequest): Promise<AIAnalysisResult> {
+  private async performAdvancedAIAnalysis(
+    request: AIAnalysisRequest
+  ): Promise<AIAnalysisResult> {
     const startTime = Date.now();
 
     try {
       // Enhanced analysis with context awareness and learning
-      if (config.services.ai.apiKey && config.services.ai.apiKey !== 'your-api-key') {
+      if (
+        config.services.ai.apiKey &&
+        config.services.ai.apiKey !== 'your-api-key'
+      ) {
         return await this.callEnhancedClaudeAPI(request);
       } else {
         return this.getAdvancedMockAnalysis(request);
@@ -261,12 +291,14 @@ export class AIService extends BaseService {
         type: request.type,
         strategy: request.strategy,
         contextCount: request.relevantContext?.length || 0,
-        processingTime
+        processingTime,
       });
     }
   }
 
-  private async callEnhancedClaudeAPI(request: AIAnalysisRequest): Promise<AIAnalysisResult> {
+  private async callEnhancedClaudeAPI(
+    request: AIAnalysisRequest
+  ): Promise<AIAnalysisResult> {
     // Build enhanced prompt with context and learning
     const prompt = this.buildEnhancedPrompt(request);
 
@@ -291,7 +323,7 @@ export class AIService extends BaseService {
       }
     );
 
-    const content = response.data.content[0].text;
+    const content = (response.data as any).content[0].text;
     const result = this.parseEnhancedAIResponse(content, request);
 
     // Store learned pattern if AgentDB is available
@@ -362,7 +394,9 @@ export class AIService extends BaseService {
       `,
     };
 
-    prompt += basePrompts[request.type] || `
+    prompt +=
+      basePrompts[request.type] ||
+      `
       Analyze the following data with contextual awareness and provide:
       1. Key insights based on pattern recognition
       2. Recommendations informed by historical data
@@ -373,13 +407,17 @@ export class AIService extends BaseService {
     `;
 
     if (request.learningEnabled) {
-      prompt += '\n\nPlease also identify patterns that could be learned for future analysis improvements.';
+      prompt +=
+        '\n\nPlease also identify patterns that could be learned for future analysis improvements.';
     }
 
     return prompt;
   }
 
-  private parseEnhancedAIResponse(content: string, request: AIAnalysisRequest): AIAnalysisResult {
+  private parseEnhancedAIResponse(
+    content: string,
+    request: AIAnalysisRequest
+  ): AIAnalysisResult {
     const lines = content.split('\n').filter(line => line.trim());
 
     // Enhanced parsing with pattern recognition
@@ -389,8 +427,12 @@ export class AIService extends BaseService {
     const predictions = this.extractPredictions(lines);
 
     return {
-      insights: insights.length > 0 ? insights : this.getDefaultInsights(request.type),
-      recommendations: recommendations.length > 0 ? recommendations : this.getDefaultRecommendations(request.type),
+      insights:
+        insights.length > 0 ? insights : this.getDefaultInsights(request.type),
+      recommendations:
+        recommendations.length > 0
+          ? recommendations
+          : this.getDefaultRecommendations(request.type),
       confidence: this.calculateConfidence(content, request),
       processingTime: 0,
       timestamp: new Date(),
@@ -398,16 +440,18 @@ export class AIService extends BaseService {
         strategy: request.strategy,
         relevantContextCount: request.relevantContext?.length || 0,
         patternsIdentified: patterns.length,
-        predictions: predictions
+        predictions: predictions,
       },
       learning: {
         patterns,
-        newObservations: this.extractLearningObservations(lines)
-      }
+        newObservations: this.extractLearningObservations(lines),
+      },
     };
   }
 
-  private getAdvancedMockAnalysis(request: AIAnalysisRequest): AIAnalysisResult {
+  private getAdvancedMockAnalysis(
+    request: AIAnalysisRequest
+  ): AIAnalysisResult {
     // Enhanced mock results with learning and context awareness
     const contextMultiplier = request.relevantContext ? 1.15 : 1.0;
     const strategyMultiplier = request.strategy ? 1.1 : 1.0;
@@ -418,92 +462,98 @@ export class AIService extends BaseService {
           'Context-aware security analysis identified patterns in RBAC misconfigurations',
           'Historical data shows network policy violations are most common security issue',
           'Machine learning patterns indicate unauthorized access attempts in similar environments',
-          'Predictive analysis suggests container escape vulnerabilities need immediate attention'
+          'Predictive analysis suggests container escape vulnerabilities need immediate attention',
         ],
         recommendations: [
           'Implement network policies based on historical security patterns (95% success rate)',
           'Use non-root containers across all deployments (proven effective in 89% of cases)',
           'Enable and configure Pod Security Policies (learned from previous incidents)',
           'Implement automated security scanning based on identified patterns',
-          'Deploy predictive security monitoring for anomaly detection'
+          'Deploy predictive security monitoring for anomaly detection',
         ],
         patterns: ['rbac_misconfig_pattern', 'network_policy_violation_trend'],
-        predictions: ['container_escape_risk', 'lateral_movement_attempt']
+        predictions: ['container_escape_risk', 'lateral_movement_attempt'],
       },
       performance: {
         insights: [
           'Pattern recognition identifies memory pressure during peak hours (consistent with historical data)',
           'Context-aware analysis shows network latency patterns similar to previous optimizations',
           'Machine learning indicates CPU throttling correlates with specific workloads',
-          'Predictive analysis suggests scaling needs for upcoming traffic patterns'
+          'Predictive analysis suggests scaling needs for upcoming traffic patterns',
         ],
         recommendations: [
           'Optimize resource requests based on historical usage patterns (92% effectiveness)',
           'Implement horizontal pod autoscaling with predictive scaling (learned thresholds)',
           'Consider service mesh for better observability (proven in similar environments)',
           'Implement predictive performance monitoring based on learned patterns',
-          'Optimize network policies based on performance impact analysis'
+          'Optimize network policies based on performance impact analysis',
         ],
         patterns: ['memory_pressure_pattern', 'network_latency_correlation'],
-        predictions: ['scaling_event_70%', 'performance_degradation_risk']
+        predictions: ['scaling_event_70%', 'performance_degradation_risk'],
       },
       compliance: {
         insights: [
           'Context-aware compliance analysis shows common patterns in audit logging gaps',
           'Historical data indicates backup procedure compliance issues',
           'Pattern recognition shows recurring documentation deficiencies',
-          'Predictive analysis suggests compliance risks in upcoming changes'
+          'Predictive analysis suggests compliance risks in upcoming changes',
         ],
         recommendations: [
           'Implement comprehensive audit logging based on compliance patterns (98% success)',
           'Document and test backup procedures using proven templates',
           'Review compliance using pattern-based checklists',
           'Implement predictive compliance monitoring for risk prevention',
-          'Use automated compliance validation based on learned patterns'
+          'Use automated compliance validation based on learned patterns',
         ],
         patterns: ['audit_logging_gap_pattern', 'backup_compliance_trend'],
-        predictions: ['compliance_violation_risk', 'audit_failure_probability']
+        predictions: ['compliance_violation_risk', 'audit_failure_probability'],
       },
       cost: {
         insights: [
           'Pattern recognition identifies resource over-provisioning patterns (consistent across environments)',
           'Context-aware analysis shows unused volume patterns similar to historical optimizations',
           'Machine learning identifies inefficient instance sizing patterns',
-          'Predictive analysis suggests cost optimization opportunities in upcoming scaling'
+          'Predictive analysis suggests cost optimization opportunities in upcoming scaling',
         ],
         recommendations: [
           'Right-size instances based on learned usage patterns (94% cost reduction)',
           'Implement resource quotas informed by historical data',
           'Clean up unused resources using pattern-based identification',
           'Consider spot instances for non-critical workloads (proven effective)',
-          'Implement predictive cost optimization based on usage patterns'
+          'Implement predictive cost optimization based on usage patterns',
         ],
         patterns: ['overprovisioning_pattern', 'unused_resource_trend'],
-        predictions: ['cost_saving_opportunity', 'budget_overrun_risk']
+        predictions: ['cost_saving_opportunity', 'budget_overrun_risk'],
       },
     };
 
-    const result = enhancedMockResults[request.type] || enhancedMockResults.performance;
+    const result =
+      enhancedMockResults[request.type] || enhancedMockResults.performance;
 
     return {
       ...result,
-      confidence: Math.min(0.95, (0.78 * contextMultiplier * strategyMultiplier)),
+      confidence: Math.min(0.95, 0.78 * contextMultiplier * strategyMultiplier),
       processingTime: 1200,
       timestamp: new Date(),
       context: {
         strategy: request.strategy,
         relevantContextCount: request.relevantContext?.length || 0,
         patternsIdentified: result.patterns?.length || 0,
-        predictions: result.predictions || []
+        predictions: result.predictions || [],
       },
       learning: {
         patterns: result.patterns || [],
-        newObservations: ['Context-aware analysis completed', 'Pattern matching applied']
-      }
+        newObservations: [
+          'Context-aware analysis completed',
+          'Pattern matching applied',
+        ],
+      },
     };
   }
 
-  private async callClaudeAPI(request: AIAnalysisRequest): Promise<AIAnalysisResult> {
+  private async callClaudeAPI(
+    request: AIAnalysisRequest
+  ): Promise<AIAnalysisResult> {
     const prompt = this.buildPrompt(request);
 
     const response = await axios.post(
@@ -527,7 +577,7 @@ export class AIService extends BaseService {
       }
     );
 
-    const content = response.data.content[0].text;
+    const content = (response.data as any).content[0].text;
     return this.parseAIResponse(content);
   }
 
@@ -571,36 +621,55 @@ export class AIService extends BaseService {
       `,
     };
 
-    return prompts[request.type] || `
+    return (
+      prompts[request.type] ||
+      `
       Analyze the following data and provide insights and recommendations:
       ${JSON.stringify(request.data, null, 2)}
-    `;
+    `
+    );
   }
 
   private parseAIResponse(content: string): AIAnalysisResult {
     // Simple parsing logic - in production, this would be more sophisticated
     const lines = content.split('\n').filter(line => line.trim());
 
-    const insights = lines.filter(line =>
-      line.includes('insight') || line.includes('finding') || line.includes('observation')
-    ).slice(0, 5);
+    const insights = lines
+      .filter(
+        line =>
+          line.includes('insight') ||
+          line.includes('finding') ||
+          line.includes('observation')
+      )
+      .slice(0, 5);
 
-    const recommendations = lines.filter(line =>
-      line.includes('recommend') || line.includes('suggest') || line.includes('should')
-    ).slice(0, 5);
+    const recommendations = lines
+      .filter(
+        line =>
+          line.includes('recommend') ||
+          line.includes('suggest') ||
+          line.includes('should')
+      )
+      .slice(0, 5);
 
     return {
-      insights: insights.length > 0 ? insights : [
-        'Infrastructure analysis completed successfully',
-        'Regular monitoring and maintenance recommended',
-        'Consider implementing automated remediation'
-      ],
-      recommendations: recommendations.length > 0 ? recommendations : [
-        'Review and update security policies regularly',
-        'Implement comprehensive monitoring and alerting',
-        'Consider infrastructure-as-code practices',
-        'Regular backup and disaster recovery testing'
-      ],
+      insights:
+        insights.length > 0
+          ? insights
+          : [
+              'Infrastructure analysis completed successfully',
+              'Regular monitoring and maintenance recommended',
+              'Consider implementing automated remediation',
+            ],
+      recommendations:
+        recommendations.length > 0
+          ? recommendations
+          : [
+              'Review and update security policies regularly',
+              'Implement comprehensive monitoring and alerting',
+              'Consider infrastructure-as-code practices',
+              'Regular backup and disaster recovery testing',
+            ],
       confidence: 0.85,
       processingTime: 0,
       timestamp: new Date(),
@@ -673,26 +742,38 @@ export class AIService extends BaseService {
     };
   }
 
-  async healthCheck(): Promise<{ status: string; enabled: boolean; apiKeyConfigured: boolean; advancedFeatures: any }> {
-    const reasoningBankMetrics = this.reasoningBank ? await this.reasoningBank.getMetrics() : null;
+  async healthCheck(): Promise<{
+    status: string;
+    enabled: boolean;
+    apiKeyConfigured: boolean;
+    advancedFeatures: any;
+  }> {
+    const reasoningBankMetrics = this.reasoningBank
+      ? await this.reasoningBank.getMetrics()
+      : null;
 
     return {
       status: 'healthy',
       enabled: config.services.ai.enabled,
-      apiKeyConfigured: !!config.services.ai.apiKey && config.services.ai.apiKey !== 'your-api-key',
+      apiKeyConfigured:
+        !!config.services.ai.apiKey &&
+        config.services.ai.apiKey !== 'your-api-key',
       advancedFeatures: {
         agentDBEnabled: !!this.agentDB,
         reasoningBankEnabled: !!this.reasoningBank,
         learningEnabled: this.learningEnabled,
         contextMemorySize: this.contextMemory.length,
-        reasoningBankMetrics
-      }
+        reasoningBankMetrics,
+      },
     };
   }
 
   // Advanced AI Capabilities
 
-  async storeLearningPattern(request: AIAnalysisRequest, result: AIAnalysisResult): Promise<void> {
+  async storeLearningPattern(
+    request: AIAnalysisRequest,
+    result: AIAnalysisResult
+  ): Promise<void> {
     if (!this.agentDB || !result.learning?.patterns.length) return;
 
     for (const pattern of result.learning.patterns) {
@@ -706,19 +787,22 @@ export class AIService extends BaseService {
         timestamp: new Date(),
         embeddings: new Array(1536).fill(0.1), // Mock embedding
         usageCount: 0,
-        lastUsed: new Date()
+        lastUsed: new Date(),
       };
 
       await this.agentDB.insertPattern(learningPattern);
     }
   }
 
-  async analyzeWithPredictiveInsights(data: any, analysisType: string): Promise<AIAnalysisResult & { predictions: string[] }> {
-    const baseAnalysis = await this.performAIAnalysis({
-      type: analysisType,
+  async analyzeWithPredictiveInsights(
+    data: any,
+    analysisType: string
+  ): Promise<AIAnalysisResult & { predictions: string[] }> {
+    const baseAnalysis = await this.performAdvancedAIAnalysis({
+      type: analysisType as any,
       data,
       context: `Predictive analysis for ${analysisType}`,
-      strategy: 'predictive_analysis'
+      strategy: 'predictive_analysis',
     });
 
     // Add predictive insights based on learned patterns
@@ -729,71 +813,109 @@ export class AIService extends BaseService {
       predictions,
       context: {
         ...baseAnalysis.context,
-        predictiveAnalysis: true
-      }
+        predictiveAnalysis: true,
+      },
     };
   }
 
-  private async generatePredictions(analysisType: string, data: any): Promise<string[]> {
+  private async generatePredictions(
+    analysisType: string,
+    data: any
+  ): Promise<string[]> {
     // Mock predictive insights based on analysis type and historical patterns
     const predictionMap = {
       security: [
         'High probability of container escape attempts in next 30 days',
         'Unauthorized access patterns detected in similar environments',
-        'API vulnerability exploitation likely within 2 weeks'
+        'API vulnerability exploitation likely within 2 weeks',
       ],
       performance: [
         'Memory pressure expected to increase by 40% during peak hours',
         'Network latency predicted to degrade by 25% with current scaling',
-        'CPU throttling likely at 80% current load within 48 hours'
+        'CPU throttling likely at 80% current load within 48 hours',
       ],
       compliance: [
         'Audit logging gaps likely to be flagged in next compliance review',
         'Backup procedures may fail compliance validation in 60 days',
-        'Documentation deficiencies expected in upcoming audit'
+        'Documentation deficiencies expected in upcoming audit',
       ],
       cost: [
         'Resource costs projected to increase 35% without optimization',
         'Unused resources will cost an estimated $2,400/month if not addressed',
-        'Instance over-provisioning will result in $8,500 monthly overspend'
-      ]
+        'Instance over-provisioning will result in $8,500 monthly overspend',
+      ],
     };
 
-    return predictionMap[analysisType] || ['Predictive analysis indicates potential areas for optimization'];
+    return (
+      (predictionMap as Record<string, string[]>)[analysisType] || [
+        'Predictive analysis indicates potential areas for optimization',
+      ]
+    );
   }
 
   // Helper methods for enhanced parsing
   private extractInsights(lines: string[]): string[] {
-    return lines.filter(line =>
-      line.includes('insight') || line.includes('finding') || line.includes('observation') || line.includes('identified')
-    ).slice(0, 8);
+    return lines
+      .filter(
+        line =>
+          line.includes('insight') ||
+          line.includes('finding') ||
+          line.includes('observation') ||
+          line.includes('identified')
+      )
+      .slice(0, 8);
   }
 
   private extractRecommendations(lines: string[]): string[] {
-    return lines.filter(line =>
-      line.includes('recommend') || line.includes('suggest') || line.includes('should') || line.includes('implement')
-    ).slice(0, 8);
+    return lines
+      .filter(
+        line =>
+          line.includes('recommend') ||
+          line.includes('suggest') ||
+          line.includes('should') ||
+          line.includes('implement')
+      )
+      .slice(0, 8);
   }
 
   private extractPatterns(lines: string[]): string[] {
-    return lines.filter(line =>
-      line.includes('pattern') || line.includes('trend') || line.includes('recurrent')
-    ).slice(0, 5);
+    return lines
+      .filter(
+        line =>
+          line.includes('pattern') ||
+          line.includes('trend') ||
+          line.includes('recurrent')
+      )
+      .slice(0, 5);
   }
 
   private extractPredictions(lines: string[]): string[] {
-    return lines.filter(line =>
-      line.includes('predict') || line.includes('expect') || line.includes('likely') || line.includes('forecast')
-    ).slice(0, 5);
+    return lines
+      .filter(
+        line =>
+          line.includes('predict') ||
+          line.includes('expect') ||
+          line.includes('likely') ||
+          line.includes('forecast')
+      )
+      .slice(0, 5);
   }
 
   private extractLearningObservations(lines: string[]): string[] {
-    return lines.filter(line =>
-      line.includes('learn') || line.includes('improvement') || line.includes('enhancement')
-    ).slice(0, 3);
+    return lines
+      .filter(
+        line =>
+          line.includes('learn') ||
+          line.includes('improvement') ||
+          line.includes('enhancement')
+      )
+      .slice(0, 3);
   }
 
-  private calculateConfidence(content: string, request: AIAnalysisRequest): number {
+  private calculateConfidence(
+    content: string,
+    request: AIAnalysisRequest
+  ): number {
     let confidence = 0.85; // Base confidence
 
     // Boost confidence based on context availability
@@ -812,8 +934,10 @@ export class AIService extends BaseService {
     if (contentLength > 2000) confidence += 0.03;
 
     // Look for confidence indicators in content
-    if (content.includes('high confidence') || content.includes('certain')) confidence += 0.05;
-    if (content.includes('low confidence') || content.includes('uncertain')) confidence -= 0.1;
+    if (content.includes('high confidence') || content.includes('certain'))
+      confidence += 0.05;
+    if (content.includes('low confidence') || content.includes('uncertain'))
+      confidence -= 0.1;
 
     return Math.min(0.98, Math.max(0.5, confidence));
   }
@@ -823,26 +947,26 @@ export class AIService extends BaseService {
       security: [
         'Security analysis completed with context-aware insights',
         'Historical security patterns applied to current findings',
-        'Predictive security assessment performed'
+        'Predictive security assessment performed',
       ],
       performance: [
         'Performance analysis completed with pattern recognition',
         'Historical performance data used for optimization',
-        'Predictive scaling recommendations provided'
+        'Predictive scaling recommendations provided',
       ],
       compliance: [
         'Compliance analysis performed with historical context',
         'Pattern-based compliance validation completed',
-        'Predictive compliance recommendations generated'
+        'Predictive compliance recommendations generated',
       ],
       cost: [
         'Cost analysis completed with historical optimization patterns',
         'Resource usage patterns analyzed for cost savings',
-        'Predictive cost recommendations provided'
-      ]
+        'Predictive cost recommendations provided',
+      ],
     };
 
-    return defaults[type] || defaults.performance;
+    return (defaults as Record<string, string[]>)[type] || defaults.performance;
   }
 
   private getDefaultRecommendations(type: string): string[] {
@@ -850,26 +974,26 @@ export class AIService extends BaseService {
       security: [
         'Implement context-aware security monitoring',
         'Apply learned security patterns to infrastructure',
-        'Deploy predictive security threat detection'
+        'Deploy predictive security threat detection',
       ],
       performance: [
         'Optimize resources based on learned usage patterns',
         'Implement predictive scaling based on historical data',
-        'Apply performance optimization patterns from similar environments'
+        'Apply performance optimization patterns from similar environments',
       ],
       compliance: [
         'Implement pattern-based compliance monitoring',
         'Apply learned compliance frameworks to infrastructure',
-        'Deploy predictive compliance validation'
+        'Deploy predictive compliance validation',
       ],
       cost: [
         'Apply learned cost optimization patterns',
         'Implement predictive cost monitoring',
-        'Use historical data for resource right-sizing'
-      ]
+        'Use historical data for resource right-sizing',
+      ],
     };
 
-    return defaults[type] || defaults.performance;
+    return (defaults as Record<string, string[]>)[type] || defaults.performance;
   }
 
   // Context Management Methods
@@ -887,7 +1011,10 @@ export class AIService extends BaseService {
     }
   }
 
-  async getContextMemory(query: string, limit: number = 5): Promise<AIContext[]> {
+  async getContextMemory(
+    query: string,
+    limit: number = 5
+  ): Promise<AIContext[]> {
     if (this.agentDB) {
       return await this.agentDB.retrieveContext(query, { limit });
     }
@@ -909,7 +1036,7 @@ export class AIService extends BaseService {
       learningEnabled: this.learningEnabled,
       contextMemorySize: this.contextMemory.length,
       agentDBEnabled: !!this.agentDB,
-      reasoningBankMetrics: metrics
+      reasoningBankMetrics: metrics,
     };
   }
 

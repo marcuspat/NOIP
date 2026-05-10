@@ -44,17 +44,26 @@ app.use(limiter);
 
 // Logging
 if (config.app.environment !== 'test') {
-  app.use(morgan('combined', {
-    stream: {
-      write: (message: string) => logger.info(message.trim()),
-    },
-  }));
+  app.use(
+    morgan('combined', {
+      stream: {
+        write: (message: string) => logger.info(message.trim()),
+      },
+    })
+  );
 }
 
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
-    const [discoveryHealth, securityHealth, aiHealth, dashboardHealth, performanceHealth, complianceHealth] = await Promise.all([
+    const [
+      discoveryHealth,
+      securityHealth,
+      aiHealth,
+      dashboardHealth,
+      performanceHealth,
+      complianceHealth,
+    ] = await Promise.all([
       discoveryService.healthCheck(),
       securityService.healthCheck(),
       aiService.healthCheck(),
@@ -106,15 +115,22 @@ app.use('/api/performance', performanceRoutes);
 app.use('/api/compliance', complianceRoutes);
 
 // Error handling middleware
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  logger.error('Unhandled error', err);
+app.use(
+  (
+    err: Error,
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+  ) => {
+    logger.error('Unhandled error', err);
 
-  res.status(500).json({
-    error: 'Internal server error',
-    timestamp: new Date(),
-    requestId: req.headers['x-request-id'] || 'unknown',
-  });
-});
+    res.status(500).json({
+      error: 'Internal server error',
+      timestamp: new Date(),
+      requestId: req.headers['x-request-id'] || 'unknown',
+    });
+  }
+);
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -312,10 +328,11 @@ function createDashboardRoutes(service: DashboardService): express.Router {
     try {
       const dashboard = await service.getDashboard(req.params.id);
       if (!dashboard) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           error: 'Dashboard not found',
         });
+        return;
       }
       res.json({ success: true, data: dashboard });
     } catch (error) {
@@ -366,7 +383,9 @@ async function initializeServices() {
     ]);
 
     logger.info('All services initialized successfully');
-    logger.info('Phase 3 Production Ready - Advanced AI, Performance Testing, and Compliance Framework enabled');
+    logger.info(
+      'Phase 3 Production Ready - Advanced AI, Performance Testing, and Compliance Framework enabled'
+    );
   } catch (error) {
     logger.error('Failed to initialize services', error);
     throw error;
@@ -393,10 +412,7 @@ async function startServer() {
 process.on('SIGTERM', async () => {
   logger.info('Received SIGTERM, shutting down gracefully');
 
-  await Promise.all([
-    discoveryService.stop(),
-    securityService.stop(),
-  ]);
+  await Promise.all([discoveryService.stop(), securityService.stop()]);
 
   process.exit(0);
 });
@@ -404,10 +420,7 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
   logger.info('Received SIGINT, shutting down gracefully');
 
-  await Promise.all([
-    discoveryService.stop(),
-    securityService.stop(),
-  ]);
+  await Promise.all([discoveryService.stop(), securityService.stop()]);
 
   process.exit(0);
 });

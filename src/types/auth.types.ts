@@ -117,7 +117,7 @@ export enum SSOType {
   SAML = 'saml',
   OIDC = 'oidc',
   LDAP = 'ldap',
-  OAUTH2 = 'oauth2'
+  OAUTH2 = 'oauth2',
 }
 
 export interface SSOUserMapping {
@@ -134,7 +134,7 @@ export enum UserStatus {
   INACTIVE = 'inactive',
   SUSPENDED = 'suspended',
   LOCKED = 'locked',
-  PENDING_VERIFICATION = 'pending_verification'
+  PENDING_VERIFICATION = 'pending_verification',
 }
 
 export interface JWTTokenPair {
@@ -277,14 +277,14 @@ export enum SecurityEventType {
   TOKEN_REVOKED = 'token_revoked',
   PERMISSION_ESCALATION = 'permission_escalation',
   DATA_ACCESS = 'data_access',
-  CONFIGURATION_CHANGE = 'configuration_change'
+  CONFIGURATION_CHANGE = 'configuration_change',
 }
 
 export enum SecurityEventSeverity {
   LOW = 'low',
   MEDIUM = 'medium',
   HIGH = 'high',
-  CRITICAL = 'critical'
+  CRITICAL = 'critical',
 }
 
 export interface SecurityPolicy {
@@ -303,7 +303,7 @@ export enum SecurityPolicyType {
   ACCOUNT_LOCKOUT = 'account_lockout',
   SESSION_POLICY = 'session_policy',
   MFA_POLICY = 'mfa_policy',
-  ACCESS_POLICY = 'access_policy'
+  ACCESS_POLICY = 'access_policy',
 }
 
 export interface SecurityPolicyConfig {
@@ -405,6 +405,9 @@ export interface AuthenticationStats {
   failedLoginAttempts: Array<{ date: string; count: number }>;
   mfaUsage: Array<{ method: string; count: number }>;
   userStatusDistribution: Array<{ status: UserStatus; count: number }>;
-  securityEventsBySeverity: Array<{ severity: SecurityEventSeverity; count: number }>;
+  securityEventsBySeverity: Array<{
+    severity: SecurityEventSeverity;
+    count: number;
+  }>;
   topIPAddresses: Array<{ ip: string; count: number }>;
 }
