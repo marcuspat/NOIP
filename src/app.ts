@@ -39,6 +39,10 @@ import {
   setDefaultRequirePermissionLogger,
 } from './middleware/require-permission.middleware';
 import {
+  requireMFAVerified,
+  setDefaultMFAEnforcer,
+} from './middleware/require-mfa-verified.middleware';
+import {
   createSharedRedisClient,
   connectAndPing,
   pingWithTimeout,
@@ -164,6 +168,19 @@ setDefaultRequirePermissionLogger(auditLogger);
 
 const permissionInvalidationHandles: Unsubscribe[] =
   installPermissionInvalidation(eventBus, permissionResolver, auditLogger);
+
+// ---------------------------------------------------------------------------
+// MFA enforcer (ADR-0009 Phase 1 wave 3 wireup)
+// ---------------------------------------------------------------------------
+// Routes that mutate state or expose sensitive data should mount
+// `requireMFAVerifiedDefault` after `authenticate`. The default enforcer
+// honours the MFA_GRACE_PERIOD env var (7 days fresh-account window) and
+// reads `mfaVerified` from the JWT payload.
+setDefaultMFAEnforcer(
+  requireMFAVerified({
+    availableMethods: ['totp', 'backup'],
+  })
+);
 
 /** Accessors so other modules (controllers, tests) can grab the live bus. */
 export function getEventBus(): EventBus {
