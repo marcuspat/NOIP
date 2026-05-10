@@ -115,7 +115,7 @@ app.use('/api/performance', performanceRoutes);
 app.use('/api/compliance', complianceRoutes);
 
 // Error handling middleware
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error('Unhandled error', err);
 
   res.status(500).json({
@@ -125,8 +125,9 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   });
 });
 
-// 404 handler
-app.use('*', (req, res) => {
+// 404 handler. Express 5 changed the path-to-regexp syntax: a bare `*`
+// is no longer a legal path. Use a named wildcard parameter instead.
+app.use('/{*splat}', (req, res) => {
   res.status(404).json({
     error: 'Endpoint not found',
     path: req.originalUrl,
@@ -138,7 +139,7 @@ app.use('*', (req, res) => {
 function createDiscoveryRoutes(service: DiscoveryService): express.Router {
   const router = express.Router();
 
-  router.get('/cluster', async (req, res) => {
+  router.get('/cluster', async (_req, res) => {
     try {
       const clusterInfo = await service.scanCluster();
       res.json({ success: true, data: clusterInfo });
@@ -163,7 +164,7 @@ function createDiscoveryRoutes(service: DiscoveryService): express.Router {
     }
   });
 
-  router.get('/namespaces', async (req, res) => {
+  router.get('/namespaces', async (_req, res) => {
     try {
       const namespaces = await service.getNamespaces();
       res.json({ success: true, data: namespaces });
@@ -175,7 +176,7 @@ function createDiscoveryRoutes(service: DiscoveryService): express.Router {
     }
   });
 
-  router.get('/nodes', async (req, res) => {
+  router.get('/nodes', async (_req, res) => {
     try {
       const nodes = await service.getNodeInfo();
       res.json({ success: true, data: nodes });
@@ -206,7 +207,7 @@ function createSecurityRoutes(service: SecurityService): express.Router {
     }
   });
 
-  router.get('/scan/pods', async (req, res) => {
+  router.get('/scan/pods', async (_req, res) => {
     try {
       const results = await service.scanPodSecurity();
       res.json({ success: true, data: results });
@@ -218,7 +219,7 @@ function createSecurityRoutes(service: SecurityService): express.Router {
     }
   });
 
-  router.get('/scan/network', async (req, res) => {
+  router.get('/scan/network', async (_req, res) => {
     try {
       const results = await service.scanNetworkPolicies();
       res.json({ success: true, data: results });
@@ -230,7 +231,7 @@ function createSecurityRoutes(service: SecurityService): express.Router {
     }
   });
 
-  router.get('/score', async (req, res) => {
+  router.get('/score', async (_req, res) => {
     try {
       const score = await service.getSecurityScore();
       res.json({ success: true, data: { score } });
@@ -242,7 +243,7 @@ function createSecurityRoutes(service: SecurityService): express.Router {
     }
   });
 
-  router.get('/recommendations', async (req, res) => {
+  router.get('/recommendations', async (_req, res) => {
     try {
       const recommendations = await service.getSecurityRecommendations();
       res.json({ success: true, data: recommendations });
@@ -305,7 +306,7 @@ function createAIRoutes(service: AIService): express.Router {
 function createDashboardRoutes(service: DashboardService): express.Router {
   const router = express.Router();
 
-  router.get('/', async (req, res) => {
+  router.get('/', async (_req, res) => {
     try {
       const dashboards = await service.getAllDashboards();
       res.json({ success: true, data: dashboards });
@@ -321,10 +322,11 @@ function createDashboardRoutes(service: DashboardService): express.Router {
     try {
       const dashboard = await service.getDashboard(req.params.id);
       if (!dashboard) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           error: 'Dashboard not found',
         });
+        return;
       }
       res.json({ success: true, data: dashboard });
     } catch (error) {

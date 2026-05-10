@@ -10,7 +10,7 @@ import * as path from 'path';
 
 describe('Kubernetes Resource Tests', () => {
   const testNamespace = 'noip-test';
-  const kubeconfigPath = process.env.KUBECONFIG || path.join(process.env.HOME || '', '.kube/config');
+  const kubeconfigPath = process.env['KUBECONFIG'] || path.join(process.env['HOME'] || '', '.kube/config');
 
   beforeAll(async () => {
     // Create test namespace

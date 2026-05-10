@@ -22,7 +22,7 @@ export class AuthController {
   constructor() {
     this.authService = new AuthService();
     this.authMiddleware = new AuthMiddleware();
-    this.rateLimitMiddleware = new RateLimitMiddleware(new Redis(process.env.REDIS_URL));
+    this.rateLimitMiddleware = new RateLimitMiddleware(new Redis(process.env['REDIS_URL']));
   }
 
   // Initialize authentication service
@@ -100,14 +100,14 @@ export class AuthController {
       // Set HTTP-only cookies for tokens
       res.cookie('accessToken', result.tokens.accessToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env['NODE_ENV'] === 'production',
         sameSite: 'strict',
         maxAge: 15 * 60 * 1000 // 15 minutes
       });
 
       res.cookie('refreshToken', result.tokens.refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env['NODE_ENV'] === 'production',
         sameSite: 'strict',
         maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
       });
@@ -180,7 +180,7 @@ export class AuthController {
       // Set new access token cookie
       res.cookie('accessToken', tokens.accessToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env['NODE_ENV'] === 'production',
         sameSite: 'strict',
         maxAge: 15 * 60 * 1000 // 15 minutes
       });
@@ -189,7 +189,7 @@ export class AuthController {
       if (req.body.refreshToken) {
         res.cookie('refreshToken', tokens.refreshToken, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
+          secure: process.env['NODE_ENV'] === 'production',
           sameSite: 'strict',
           maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
         });
