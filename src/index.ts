@@ -4,7 +4,7 @@ export { startServer, initializeServices } from './app';
 
 // Export services
 export { DiscoveryService } from './services/discovery.service';
-export { SecurityService } from './services/security.service';
+export { SecurityService } from './contexts/security/api';
 export { AIService } from './services/ai.service';
 export { DashboardService } from './services/dashboard.service';
 
