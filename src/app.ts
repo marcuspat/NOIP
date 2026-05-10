@@ -27,6 +27,17 @@ import {
 import { SecurityEventService } from './services/audit/security-event.service';
 import { installAuditSubscribers } from './services/audit/event-subscribers';
 import { auditMiddleware } from './middleware/audit.middleware';
+import { PermissionResolver } from './services/iam/permission-resolver.service';
+import {
+  NoopPermissionCache,
+  mongooseRoleRepository,
+  mongoosePermissionRepository,
+} from './services/iam/composition';
+import { installPermissionInvalidation } from './services/iam/permission-invalidation';
+import {
+  setDefaultPermissionResolver,
+  setDefaultRequirePermissionLogger,
+} from './middleware/require-permission.middleware';
 
 // Import route handlers
 import performanceRoutes from './routes/performance.routes';
@@ -101,6 +112,32 @@ const auditSubscriberHandles: Unsubscribe[] = installAuditSubscribers({
   appender: hashChainAppender,
   logger: auditLogger,
 });
+
+// ---------------------------------------------------------------------------
+// IAM authorisation (ADR-0008 Phase 1 wave 2 wireup)
+// ---------------------------------------------------------------------------
+// PermissionResolver materialises a user's effective permission set by
+// flattening the role DAG and unioning direct grants. The cache is a no-op
+// shim until Phase 1 wave 3 wires the shared Redis client; the resolver
+// already short-circuits on cache hits, so the swap is a one-liner.
+//
+// `setDefaultPermissionResolver` registers the live resolver so route
+// definitions can call `requirePermission('user', 'read')` without threading
+// the resolver through every router.
+//
+// `installPermissionInvalidation` wires the resolver into the EventBus so
+// `iam.permission.escalated` / `iam.role.updated` / etc. flush the cache.
+const permissionResolver = new PermissionResolver({
+  roles: mongooseRoleRepository,
+  permissions: mongoosePermissionRepository,
+  cache: new NoopPermissionCache(),
+  logger: auditLogger,
+});
+setDefaultPermissionResolver(permissionResolver);
+setDefaultRequirePermissionLogger(auditLogger);
+
+const permissionInvalidationHandles: Unsubscribe[] =
+  installPermissionInvalidation(eventBus, permissionResolver, auditLogger);
 
 /** Accessors so other modules (controllers, tests) can grab the live bus. */
 export function getEventBus(): EventBus {
@@ -533,13 +570,16 @@ process.on('SIGTERM', async () => {
   logger.info('Received SIGTERM, shutting down gracefully');
   shuttingDown = true;
 
-  // Detach audit subscribers so any in-flight publishes during teardown
-  // don't try to hit a torn-down Mongo connection.
-  for (const unsubscribe of auditSubscriberHandles) {
+  // Detach audit + permission-invalidation subscribers so any in-flight
+  // publishes during teardown don't try to hit a torn-down Mongo connection.
+  for (const unsubscribe of [
+    ...auditSubscriberHandles,
+    ...permissionInvalidationHandles,
+  ]) {
     try {
       unsubscribe();
     } catch (err) {
-      logger.warn('Failed to unsubscribe audit handler', { err });
+      logger.warn('Failed to unsubscribe handler', { err });
     }
   }
 
