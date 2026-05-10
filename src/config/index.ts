@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { validateConfig } from './validation';
 
 dotenv.config();
 
@@ -155,5 +156,45 @@ export const config = {
     mockData: process.env.MOCK_DATA === 'true',
   },
 };
+
+/**
+ * Run config validation against the live `process.env`.
+ *
+ * - In production, throws an aggregated `Error` if any rule fails so the
+ *   process exits before serving traffic. Warnings are still surfaced.
+ * - In non-production, errors are logged via `console.warn` (we deliberately
+ *   avoid importing the winston logger to prevent an import cycle through
+ *   `src/utils/logger.ts`, which itself reads `config`).
+ *
+ * Re-export so callers (e.g. tests, CLIs, or app bootstrap after env injection)
+ * can re-run the validation explicitly.
+ */
+export function validateOrThrow(): void {
+  const report = validateConfig(config, process.env);
+
+  for (const warning of report.warnings) {
+    // eslint-disable-next-line no-console
+    console.warn(`[config] warning: ${warning}`);
+  }
+
+  if (report.errors.length === 0) {
+    return;
+  }
+
+  const message = `Configuration validation failed:\n  - ${report.errors.join('\n  - ')}`;
+
+  if ((process.env['NODE_ENV'] || config.app.environment) === 'production') {
+    throw new Error(message);
+  }
+
+  for (const err of report.errors) {
+    // eslint-disable-next-line no-console
+    console.warn(`[config] error (non-prod, continuing): ${err}`);
+  }
+}
+
+// Run validation once at module load. In tests we pre-set NODE_ENV=test so
+// production-only errors are downgraded to warnings.
+validateOrThrow();
 
 export default config;

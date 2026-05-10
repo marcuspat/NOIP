@@ -16,6 +16,7 @@ import { ComplianceService } from './services/compliance.service';
 // Import route handlers
 import performanceRoutes from './routes/performance.routes';
 import complianceRoutes from './routes/compliance.routes';
+import { createHealthRoutes } from './routes/health.routes';
 
 const app = express();
 
@@ -34,26 +35,25 @@ app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: config.security.rateLimit.windowMs,
-  max: config.security.rateLimit.max,
-  message: { error: 'Too many requests from this IP' },
-});
-app.use(limiter);
+// ---------------------------------------------------------------------------
+// Operational lifecycle state (ADR-0020)
+// ---------------------------------------------------------------------------
+// `startupComplete` flips to true once `initializeServices()` resolves.
+// `shuttingDown` flips to true on SIGTERM/SIGINT so readiness fails fast and
+// the load balancer drains the pod before in-flight work is cancelled.
+let startupComplete = false;
+let shuttingDown = false;
 
-// Logging
-if (config.app.environment !== 'test') {
-  app.use(morgan('combined', {
-    stream: {
-      write: (message: string) => logger.info(message.trim()),
-    },
-  }));
-}
-
-// Health check endpoint
-app.get('/health', async (req, res) => {
-  try {
+// Mount health probes BEFORE the rate limiter so Kubernetes (and any other
+// scrapers) are never rejected with HTTP 429. ADR-0020 mandates these probes
+// stay cheap and unauthenticated.
+app.use(createHealthRoutes({
+  isStartupComplete: () => startupComplete,
+  isLive: () => !shuttingDown,
+  // TODO: once shared Mongo / Redis clients are wired in, ping them here.
+  // For now readiness only reflects bootstrap + shutdown state.
+  isReady: async () => startupComplete && !shuttingDown,
+  composite: async () => {
     const [discoveryHealth, securityHealth, aiHealth, dashboardHealth, performanceHealth, complianceHealth] = await Promise.all([
       discoveryService.healthCheck(),
       securityService.healthCheck(),
@@ -63,8 +63,8 @@ app.get('/health', async (req, res) => {
       complianceService.healthCheck(),
     ]);
 
-    const health = {
-      status: 'healthy',
+    return {
+      status: shuttingDown ? 'shutting-down' : 'healthy',
       timestamp: new Date(),
       version: config.app.version,
       environment: config.app.environment,
@@ -86,16 +86,25 @@ app.get('/health', async (req, res) => {
         contextAwareAnalysis: true,
       },
     };
+  },
+}));
 
-    res.json(health);
-  } catch (error) {
-    res.status(503).json({
-      status: 'unhealthy',
-      timestamp: new Date(),
-      error: error instanceof Error ? error.message : 'Unknown error',
-    });
-  }
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: config.security.rateLimit.windowMs,
+  max: config.security.rateLimit.max,
+  message: { error: 'Too many requests from this IP' },
 });
+app.use(limiter);
+
+// Logging
+if (config.app.environment !== 'test') {
+  app.use(morgan('combined', {
+    stream: {
+      write: (message: string) => logger.info(message.trim()),
+    },
+  }));
+}
 
 // API Routes
 app.use('/api/discovery', createDiscoveryRoutes(discoveryService));
@@ -367,6 +376,11 @@ async function initializeServices() {
 
     logger.info('All services initialized successfully');
     logger.info('Phase 3 Production Ready - Advanced AI, Performance Testing, and Compliance Framework enabled');
+
+    // ADR-0020: only flip readiness once every dependency has finished
+    // bootstrapping. Until this point `/health/ready` returns 503 and the
+    // load balancer keeps the pod out of rotation.
+    startupComplete = true;
   } catch (error) {
     logger.error('Failed to initialize services', error);
     throw error;
@@ -389,9 +403,12 @@ async function startServer() {
   }
 }
 
-// Graceful shutdown
+// Graceful shutdown (ADR-0020).
+// Flip `shuttingDown` first so `/health/ready` immediately returns 503 and
+// the load balancer drains us before we tear down the underlying services.
 process.on('SIGTERM', async () => {
   logger.info('Received SIGTERM, shutting down gracefully');
+  shuttingDown = true;
 
   await Promise.all([
     discoveryService.stop(),
@@ -403,6 +420,7 @@ process.on('SIGTERM', async () => {
 
 process.on('SIGINT', async () => {
   logger.info('Received SIGINT, shutting down gracefully');
+  shuttingDown = true;
 
   await Promise.all([
     discoveryService.stop(),
