@@ -2,8 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import rateLimit from 'express-rate-limit';
 import morgan from 'morgan';
+import mongoose from 'mongoose';
 import { config } from './config';
 import logger from './utils/logger';
 import { DiscoveryService } from './services/discovery.service';
@@ -29,15 +29,22 @@ import { installAuditSubscribers } from './services/audit/event-subscribers';
 import { auditMiddleware } from './middleware/audit.middleware';
 import { PermissionResolver } from './services/iam/permission-resolver.service';
 import {
-  NoopPermissionCache,
   mongooseRoleRepository,
   mongoosePermissionRepository,
 } from './services/iam/composition';
+import { RedisPermissionCache } from './services/iam/permission-cache';
 import { installPermissionInvalidation } from './services/iam/permission-invalidation';
 import {
   setDefaultPermissionResolver,
   setDefaultRequirePermissionLogger,
 } from './middleware/require-permission.middleware';
+import {
+  createSharedRedisClient,
+  connectAndPing,
+  pingWithTimeout,
+  type SharedRedisClient,
+} from './database/shared-redis';
+import { createBucketLimiter } from './middleware/rate-limit-redis';
 
 // Import route handlers
 import performanceRoutes from './routes/performance.routes';
@@ -114,12 +121,23 @@ const auditSubscriberHandles: Unsubscribe[] = installAuditSubscribers({
 });
 
 // ---------------------------------------------------------------------------
+// Shared Redis client (ADR-0005 Phase 1 wave 3)
+// ---------------------------------------------------------------------------
+// Exactly one ioredis client per pod, used for: rate-limit counters
+// (`noip:rl:*`), JWT denylist (`noip:deny:*`), refresh-token family
+// state (`noip:fam:*`), permission cache (`noip:cache:perm:*`), MFA
+// challenges (`noip:mfa:*`), and sessions (`noip:sess:*`). The client
+// is constructed lazily here and `connect()`-ed inside
+// `initializeServices()` so a Redis outage at boot keeps `/health/ready`
+// at 503 instead of letting the pod accept traffic it can't serve.
+const redisClient: SharedRedisClient = createSharedRedisClient();
+
+// ---------------------------------------------------------------------------
 // IAM authorisation (ADR-0008 Phase 1 wave 2 wireup)
 // ---------------------------------------------------------------------------
 // PermissionResolver materialises a user's effective permission set by
-// flattening the role DAG and unioning direct grants. The cache is a no-op
-// shim until Phase 1 wave 3 wires the shared Redis client; the resolver
-// already short-circuits on cache hits, so the swap is a one-liner.
+// flattening the role DAG and unioning direct grants. Wave 3 swaps the
+// no-op cache placeholder for the real Redis-backed cache.
 //
 // `setDefaultPermissionResolver` registers the live resolver so route
 // definitions can call `requirePermission('user', 'read')` without threading
@@ -127,10 +145,18 @@ const auditSubscriberHandles: Unsubscribe[] = installAuditSubscribers({
 //
 // `installPermissionInvalidation` wires the resolver into the EventBus so
 // `iam.permission.escalated` / `iam.role.updated` / etc. flush the cache.
+const permissionCache = new RedisPermissionCache({
+  // The shared ioredis client satisfies `PermissionCacheRedis` directly
+  // (its `get`/`setex`/`set`/`del`/`scan` signatures match). We cast to
+  // the narrower interface so the resolver only sees what it needs.
+  redis: redisClient,
+  logger: auditLogger,
+});
+
 const permissionResolver = new PermissionResolver({
   roles: mongooseRoleRepository,
   permissions: mongoosePermissionRepository,
-  cache: new NoopPermissionCache(),
+  cache: permissionCache,
   logger: auditLogger,
 });
 setDefaultPermissionResolver(permissionResolver);
@@ -183,9 +209,16 @@ app.use(
   createHealthRoutes({
     isStartupComplete: () => startupComplete,
     isLive: () => !shuttingDown,
-    // TODO: once shared Mongo / Redis clients are wired in, ping them here.
-    // For now readiness only reflects bootstrap + shutdown state.
-    isReady: async () => startupComplete && !shuttingDown,
+    // ADR-0020: readiness must reflect the health of every dependency we
+    // touch in the request path. We honour Mongo's `readyState` (cheap,
+    // local) and a bounded `PING` to Redis (200ms ceiling so a slow
+    // Redis can't make the probe itself a bottleneck).
+    isReady: async () => {
+      if (!startupComplete || shuttingDown) return false;
+      const mongoReady = mongoose.connection.readyState === 1;
+      if (!mongoReady) return false;
+      return pingWithTimeout(redisClient, 200);
+    },
     composite: async () => {
       const [
         discoveryHealth,
@@ -230,13 +263,29 @@ app.use(
   })
 );
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: config.security.rateLimit.windowMs,
-  max: config.security.rateLimit.max,
-  message: { error: 'Too many requests from this IP' },
-});
-app.use(limiter);
+// Rate limiting (ADR-0016 Phase 1 wave 3).
+// The global limiter is now Redis-backed via the shared ioredis client.
+// Counter keys land at `noip:rl:*` (the shared client's keyPrefix
+// "noip:" plus the store's "rl:" prefix). Per ADR-0016 the general
+// API bucket fails OPEN on a Redis outage — log + allow, trusting the
+// upstream WAF / ingress to cap blast radius.
+//
+// TODO Phase 1 wave 3 follow-up: mount per-bucket limiters on the auth
+// /password-reset /MFA /AI route groups using `createBucketLimiter` with
+// the appropriate `bucket: 'auth' | 'password-reset' | 'mfa' | 'ai'`
+// argument. Those buckets fail-CLOSED on outage; the auth router needs
+// to be plumbed through this composition root before we can mount them
+// there.
+const globalLimiter = createBucketLimiter(
+  {
+    bucket: 'general',
+    windowMs: config.security.rateLimit.windowMs,
+    max: config.security.rateLimit.max,
+    message: 'Too many requests from this IP',
+  },
+  { redis: redisClient }
+);
+app.use(globalLimiter);
 
 // Logging
 if (config.app.environment !== 'test') {
@@ -523,6 +572,21 @@ function createDashboardRoutes(service: DashboardService): express.Router {
 // Initialize services
 async function initializeServices() {
   try {
+    // ADR-0020 boot ordering: dial Redis + Mongo *before* flipping
+    // `startupComplete`. If either is unreachable we throw and the
+    // process supervisor handles it; readiness stays at 503 in the
+    // meantime.
+    await connectAndPing(redisClient);
+    await mongoose.connect(config.database.mongodb.uri, {
+      dbName: config.database.mongodb.name,
+      maxPoolSize: config.database.mongodb.maxPoolSize,
+      minPoolSize: config.database.mongodb.minPoolSize,
+      serverSelectionTimeoutMS:
+        config.database.mongodb.serverSelectionTimeoutMS,
+      socketTimeoutMS: config.database.mongodb.socketTimeoutMS,
+    });
+    logger.info('Mongo + Redis connected');
+
     await Promise.all([
       discoveryService.initialize(),
       securityService.initialize(),
@@ -566,8 +630,8 @@ async function startServer() {
 // Graceful shutdown (ADR-0020).
 // Flip `shuttingDown` first so `/health/ready` immediately returns 503 and
 // the load balancer drains us before we tear down the underlying services.
-process.on('SIGTERM', async () => {
-  logger.info('Received SIGTERM, shutting down gracefully');
+async function gracefulShutdown(signal: string): Promise<void> {
+  logger.info(`Received ${signal}, shutting down gracefully`);
   shuttingDown = true;
 
   // Detach audit + permission-invalidation subscribers so any in-flight
@@ -585,24 +649,28 @@ process.on('SIGTERM', async () => {
 
   await Promise.all([discoveryService.stop(), securityService.stop()]);
 
-  process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-  logger.info('Received SIGINT, shutting down gracefully');
-  shuttingDown = true;
-
-  for (const unsubscribe of auditSubscriberHandles) {
-    try {
-      unsubscribe();
-    } catch (err) {
-      logger.warn('Failed to unsubscribe audit handler', { err });
-    }
+  // ADR-0005 + ADR-0020: close shared infra last so subscribers / stop()
+  // hooks above can still write final audit entries.
+  try {
+    await redisClient.quit();
+  } catch (err) {
+    logger.warn('Failed to quit redis client', { err });
+  }
+  try {
+    await mongoose.disconnect();
+  } catch (err) {
+    logger.warn('Failed to disconnect mongoose', { err });
   }
 
-  await Promise.all([discoveryService.stop(), securityService.stop()]);
-
   process.exit(0);
+}
+
+process.on('SIGTERM', () => {
+  void gracefulShutdown('SIGTERM');
+});
+
+process.on('SIGINT', () => {
+  void gracefulShutdown('SIGINT');
 });
 
 // Start server if this file is run directly
