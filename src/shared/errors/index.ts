@@ -43,7 +43,10 @@ export class DomainError extends Error {
     ) {
       (
         Error as unknown as {
-          captureStackTrace: (target: object, ctor: Function) => void;
+          captureStackTrace: (
+            target: object,
+            ctor: new (...args: never[]) => unknown
+          ) => void;
         }
       ).captureStackTrace(this, new.target);
     }
