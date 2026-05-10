@@ -1,6 +1,7 @@
 // Unit tests for refresh-token rotation and theft detection.
 
 import { JWTManager } from '../../../src/utils/auth/jwt.manager';
+import { InMemoryEventBus, type DomainEvent } from '../../../src/shared/kernel';
 import { FakeRedis } from './_redis-stub';
 
 const claims = {
@@ -128,5 +129,53 @@ describe('JWTManager refresh rotation', () => {
     expect(rotated).not.toBeNull();
     expect(getCalls).toBe(1);
     expect(mgetCalls).toBe(1);
+  });
+
+  it('publishes iam.session.suspicious when a denylisted refresh is replayed', async () => {
+    class RecordingBus extends InMemoryEventBus {
+      public readonly events: Array<DomainEvent<unknown>> = [];
+      override publish<T>(event: DomainEvent<T>): void {
+        this.events.push(event as DomainEvent<unknown>);
+        super.publish(event);
+      }
+    }
+    const r = new FakeRedis();
+    const bus = new RecordingBus();
+    const m = new JWTManager({
+      activeKey: {
+        kid: 'kid-A',
+        secret: 'rotation-test-secret-min-32-chars-long-pad!',
+      },
+      accessExpirySec: 60,
+      refreshExpirySec: 600,
+      redis: r,
+      eventBus: bus,
+    });
+    const initial = await m.createTokenPair(claims);
+
+    // First rotation succeeds (this also denylists the original refresh).
+    const firstRotation = await m.refreshToken(initial.refreshToken);
+    expect(firstRotation).not.toBeNull();
+
+    // Drop the first-rotation events so we can isolate replay events.
+    bus.events.length = 0;
+
+    // Replay the now-denylisted refresh: detection emits
+    // `iam.session.suspicious` with `signals` containing 'refresh-replay'.
+    const replay = await m.refreshToken(initial.refreshToken);
+    expect(replay).toBeNull();
+
+    const suspicious = bus.events.filter(
+      e => e.type === 'iam.session.suspicious'
+    );
+    expect(suspicious).toHaveLength(1);
+    const payload = suspicious[0]?.payload as {
+      userId?: string;
+      sessionId?: string;
+      signals: string[];
+    };
+    expect(payload.signals).toContain('refresh-replay');
+    expect(payload.userId).toBe('user-1');
+    expect(payload.sessionId).toBe('sess-1');
   });
 });

@@ -34,7 +34,23 @@ import {
   DeviceFingerprintService,
   EmailService,
 } from '../utils/auth';
+import {
+  compose,
+  SystemClock,
+  type Clock,
+  type DomainEvent,
+  type EventBus,
+} from '../shared/kernel';
 import { v4 as uuidv4 } from 'uuid';
+
+export interface AuthServiceDeps {
+  /** Optional EventBus. When supplied, IAM domain events are published. */
+  eventBus?: EventBus;
+  /** Clock used for DomainEvent `occurredAt`. Defaults to `SystemClock`. */
+  eventClock?: Clock;
+  /** Pre-built JWT manager (lets the composition root share one bus). */
+  jwtManager?: JWTManager;
+}
 
 export class AuthService extends BaseService {
   private jwtManager: JWTManager;
@@ -42,14 +58,28 @@ export class AuthService extends BaseService {
   private passwordService: PasswordService;
   private deviceFingerprintService: DeviceFingerprintService;
   private emailService: EmailService;
+  private eventBus: EventBus | undefined;
+  private readonly eventClock: Clock;
 
-  constructor() {
+  constructor(deps: AuthServiceDeps = {}) {
     super('AuthService');
-    this.jwtManager = new JWTManager();
+    this.jwtManager =
+      deps.jwtManager ??
+      new JWTManager(deps.eventBus ? { eventBus: deps.eventBus } : {});
     this.mfaService = new MFAService();
     this.passwordService = new PasswordService();
     this.deviceFingerprintService = new DeviceFingerprintService();
     this.emailService = new EmailService();
+    if (deps.eventBus !== undefined) {
+      this.eventBus = deps.eventBus;
+    }
+    this.eventClock = deps.eventClock ?? new SystemClock();
+  }
+
+  /** Wire (or rewire) the EventBus. Threads down into the JWT manager. */
+  setEventBus(bus: EventBus | undefined): void {
+    this.eventBus = bus;
+    this.jwtManager.setEventBus(bus);
   }
 
   async initialize(): Promise<void> {
@@ -124,6 +154,16 @@ export class AuthService extends BaseService {
         });
       }
 
+      // ADR-0018: publish iam.user.registered.
+      const newUserId = String(user._id);
+      this.publishIam<{ userId: string; email: string; username: string }>(
+        'iam.user.registered',
+        'user',
+        newUserId,
+        { userId: newUserId, email: user.email, username: user.username },
+        newUserId
+      );
+
       // Create security event
       await SecurityEventModel.createEvent(
         SecurityEventType.PASSWORD_CHANGE,
@@ -164,6 +204,7 @@ export class AuthService extends BaseService {
         .populate('roles permissions');
 
       if (!user) {
+        this.emitLoginFailed(loginRequest.username, 'user_not_found');
         await this.createSecurityEvent(
           SecurityEventType.LOGIN_FAILURE,
           'Login attempt with invalid username/email',
@@ -175,6 +216,7 @@ export class AuthService extends BaseService {
 
       // Check if user is locked
       if (user.isLocked()) {
+        this.emitLoginFailed(loginRequest.username, 'account_locked');
         await this.createSecurityEvent(
           SecurityEventType.LOGIN_FAILURE,
           'Login attempt on locked account',
@@ -186,6 +228,7 @@ export class AuthService extends BaseService {
 
       // Check account status
       if (user.status !== UserStatus.ACTIVE) {
+        this.emitLoginFailed(loginRequest.username, `status:${user.status}`);
         await this.createSecurityEvent(
           SecurityEventType.LOGIN_FAILURE,
           `Login attempt on ${user.status} account`,
@@ -200,6 +243,24 @@ export class AuthService extends BaseService {
       if (!isPasswordValid) {
         await user.incrementLoginAttempts();
 
+        // Lockout policy detection: increment crossed the threshold.
+        if (user.isLocked()) {
+          const lockedUntil = (user as { lockedUntil?: Date }).lockedUntil;
+          this.publishIam<{ userId: string; lockedUntil?: string }>(
+            'iam.account.locked',
+            'user',
+            String(user._id),
+            {
+              userId: String(user._id),
+              ...(lockedUntil
+                ? { lockedUntil: lockedUntil.toISOString() }
+                : {}),
+            },
+            String(user._id)
+          );
+        }
+
+        this.emitLoginFailed(loginRequest.username, 'invalid_password');
         await this.createSecurityEvent(
           SecurityEventType.LOGIN_FAILURE,
           'Login attempt with invalid password',
@@ -230,6 +291,21 @@ export class AuthService extends BaseService {
           loginRequest.mfaCode
         );
         if (!mfaValid) {
+          this.publishIam<{
+            userId: string;
+            method: string;
+            ipAddress: string;
+          }>(
+            'iam.mfa.verification_failed',
+            'user',
+            String(user._id),
+            {
+              userId: String(user._id),
+              method: 'totp',
+              ipAddress: 'unknown',
+            },
+            String(user._id)
+          );
           await this.createSecurityEvent(
             SecurityEventType.MFA_VERIFICATION_FAILURE,
             'Invalid MFA code provided',
@@ -260,12 +336,23 @@ export class AuthService extends BaseService {
 
       await session.save();
 
-      // Generate JWT tokens
+      // Generate JWT tokens (also publishes `iam.session.opened`).
       const tokens = await this.generateTokens(user, sessionId);
 
       // Update user last login
       user.lastLogin = new Date();
       await user.save();
+
+      // ADR-0018: explicit login-succeeded event in addition to the
+      // session-opened event the JWT manager fires.
+      const userIdString = String(user._id);
+      this.publishIam<{ userId: string; sessionId: string }>(
+        'iam.login.succeeded',
+        'user',
+        userIdString,
+        { userId: userIdString, sessionId },
+        userIdString
+      );
 
       // Create security event
       await this.createSecurityEvent(
@@ -313,23 +400,39 @@ export class AuthService extends BaseService {
       }
 
       // Denylist whichever tokens the controller forwarded. The manager
-      // logs (and emits a future-EventBus marker) for each revocation,
-      // and swallows Redis errors so a logout still returns cleanly.
+      // publishes `iam.token.revoked` per call (ADR-0018) and swallows
+      // Redis errors so a logout still returns cleanly.
       // ADR-0006: presenting either of these tokens after this point
       // will be rejected by the verification middleware. The refresh
-      // token additionally marks the family revoked.
+      // token additionally marks the family revoked, which fires
+      // `iam.session.closed` from the JWT manager.
       try {
         if (tokens?.accessToken) {
-          await this.jwtManager.revokeToken(tokens.accessToken, 'logout');
+          await this.jwtManager.revokeToken(tokens.accessToken, 'logout', {
+            userId,
+          });
         }
         if (tokens?.refreshToken) {
-          await this.jwtManager.revokeToken(tokens.refreshToken, 'logout');
+          await this.jwtManager.revokeToken(tokens.refreshToken, 'logout', {
+            userId,
+          });
         }
       } catch (err) {
         // Per ADR-0006: log + continue; access token will expire naturally.
         // TODO: emit metric `noip_token_revoke_failed_total`.
         logger.error('Token revocation failed during logout', { err, userId });
       }
+
+      // ADR-0018: also publish a single summary `iam.session.closed`
+      // event so subscribers see one logout signal regardless of which
+      // tokens (if any) were forwarded.
+      this.publishIam<{ userId: string; sessionId: string; reason: string }>(
+        'iam.session.closed',
+        'session',
+        sessionId,
+        { userId, sessionId, reason: 'logout' },
+        userId
+      );
 
       // Create security event
       await SecurityEventModel.createEvent(
@@ -441,6 +544,15 @@ export class AuthService extends BaseService {
           throw new Error('Unsupported MFA method');
       }
 
+      // ADR-0018: MFA setup (still requires verification before enabling).
+      this.publishIam<{ userId: string; method: string }>(
+        'iam.mfa.enrolment_started',
+        'user',
+        userId,
+        { userId, method: setupRequest.method },
+        userId
+      );
+
       this.logOperation('MFA setup completed', {
         userId,
         method: setupRequest.method,
@@ -467,6 +579,13 @@ export class AuthService extends BaseService {
       );
 
       if (isValid) {
+        this.publishIam<{ userId: string; method: string; sessionId: string }>(
+          'iam.mfa.verification_success',
+          'user',
+          userId,
+          { userId, method: verificationRequest.method, sessionId: '' },
+          userId
+        );
         await this.createSecurityEvent(
           SecurityEventType.MFA_VERIFICATION_SUCCESS,
           'MFA verification successful',
@@ -475,6 +594,17 @@ export class AuthService extends BaseService {
           { userId, method: verificationRequest.method }
         );
       } else {
+        this.publishIam<{
+          userId: string;
+          method: string;
+          ipAddress: string;
+        }>(
+          'iam.mfa.verification_failed',
+          'user',
+          userId,
+          { userId, method: verificationRequest.method, ipAddress: 'unknown' },
+          userId
+        );
         await this.createSecurityEvent(
           SecurityEventType.MFA_VERIFICATION_FAILURE,
           'MFA verification failed',
@@ -530,7 +660,17 @@ export class AuthService extends BaseService {
       await user.save();
 
       // Revoke all existing sessions except current
-      // Implementation depends on session tracking
+      // Implementation depends on session tracking. The chained
+      // `iam.token.revoked` events surface there once we rip them out.
+
+      // ADR-0018: publish iam.password.changed.
+      this.publishIam<{ userId: string; by: string }>(
+        'iam.password.changed',
+        'user',
+        userId,
+        { userId, by: userId },
+        userId
+      );
 
       // Create security event
       await this.createSecurityEvent(
@@ -572,6 +712,16 @@ export class AuthService extends BaseService {
           userId: user._id,
         });
       }
+
+      // ADR-0018: publish iam.password.reset_requested.
+      const resetUserId = String(user._id);
+      this.publishIam<{ userId: string }>(
+        'iam.password.reset_requested',
+        'user',
+        resetUserId,
+        { userId: resetUserId },
+        resetUserId
+      );
 
       // Create security event
       await this.createSecurityEvent(
@@ -626,6 +776,16 @@ export class AuthService extends BaseService {
       // Revoke all sessions
       await SessionModel.revokeAllByUser(user._id);
 
+      // ADR-0018: publish iam.password.reset_confirmed.
+      const confirmUserId = String(user._id);
+      this.publishIam<{ userId: string }>(
+        'iam.password.reset_confirmed',
+        'user',
+        confirmUserId,
+        { userId: confirmUserId },
+        confirmUserId
+      );
+
       // Create security event
       await this.createSecurityEvent(
         SecurityEventType.PASSWORD_RESET,
@@ -670,6 +830,16 @@ export class AuthService extends BaseService {
       }
 
       await user.save();
+
+      // ADR-0018: publish iam.user.email_verified.
+      const verifyUserId = String(user._id);
+      this.publishIam<{ userId: string }>(
+        'iam.user.email_verified',
+        'user',
+        verifyUserId,
+        { userId: verifyUserId },
+        verifyUserId
+      );
 
       this.logOperation('Email verified successfully', { userId: user._id });
     }, 'Email verification failed');
@@ -982,5 +1152,63 @@ export class AuthService extends BaseService {
         details: { error: (error as Error).message },
       };
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Domain event publishing (ADR-0018)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Publishes a single IAM DomainEvent. No-ops when the bus has not been
+   * wired (legacy boot path). Errors during publish are logged and
+   * swallowed — never escape into the caller's request path.
+   */
+  private publishIam<T>(
+    type: string,
+    aggregateType: string,
+    aggregateId: string,
+    payload: T,
+    actorUserId?: string
+  ): void {
+    if (!this.eventBus) return;
+    try {
+      const envelope: Omit<
+        DomainEvent<T>,
+        'id' | 'occurredAt' | 'schemaVersion'
+      > = {
+        type,
+        context: 'iam',
+        aggregateType,
+        aggregateId,
+        payload,
+        ...(actorUserId !== undefined
+          ? { actor: { type: 'user' as const, id: actorUserId } }
+          : {}),
+      };
+      const event = compose<T>(envelope, this.eventClock);
+      this.eventBus.publish(event);
+    } catch (err) {
+      logger.error('Failed to publish iam domain event', {
+        type,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /** Convenience: publish `iam.login.failed` from any login-failure path. */
+  private emitLoginFailed(
+    usernameOrEmail: string,
+    reason: string,
+    ipAddress = 'unknown'
+  ): void {
+    this.publishIam<{
+      usernameOrEmail: string;
+      ipAddress: string;
+      reason: string;
+    }>('iam.login.failed', 'user', usernameOrEmail, {
+      usernameOrEmail,
+      ipAddress,
+      reason,
+    });
   }
 }

@@ -2,16 +2,20 @@
 // emitted on the response `'finish'` event.
 //
 // Design:
-//   - Capture is non-blocking: appender failures are logged and swallowed.
+//   - Capture is non-blocking: failures are logged and swallowed.
 //   - Single hash per request (sanitiser stringifies the body once).
 //   - Skip noisy paths (`/health/*`, `/metrics`) via `NON_AUDITED_PATHS`.
 //   - Actor resolution: prefers `req.user`, then `req.serviceAccount`,
 //     else `system: true` for unauthenticated routes that pass through
 //     (e.g. probes — though those are usually skipped).
 //
-// Phase 1 wave 3 will swap the direct `HashChainAppender.append()` call
-// for an EventBus publish so that the Audit context becomes a subscriber.
-// Until then, we own the persistence path.
+// Phase 1 wave 2 (ADR-0018): the middleware now publishes an
+// `audit.request` DomainEvent on the EventBus instead of calling
+// `HashChainAppender.append()` directly. The audit subscriber installed
+// in `src/services/audit/event-subscribers.ts` performs the persist.
+// Tests can still pass an explicit `appender` to bypass the bus and
+// keep the legacy direct-append path; in production, callers pass a
+// `bus` and the subscriber takes over.
 //
 // We also preserve a thin `AuditMiddleware` class with the
 // `auditUserAction(action, resource)` factory because `src/routes/auth.routes.ts`
@@ -29,7 +33,12 @@ import {
   type AuditLogger,
 } from '../services/audit/hash-chain-appender.service';
 import { sanitise, type SanitiseOptions } from '../services/audit/sanitiser';
-import { SystemClock } from '../shared/kernel';
+import {
+  compose,
+  SystemClock,
+  type Clock,
+  type EventBus,
+} from '../shared/kernel';
 import { config } from '../config';
 import logger from '../utils/logger';
 
@@ -97,12 +106,31 @@ export interface AuditMiddlewareOptions {
   /** Override the default skip list; useful in tests. */
   skipPaths?: ReadonlyArray<string>;
   sanitiseOptions?: SanitiseOptions;
+  /**
+   * Direct-append path (legacy, retained for tests + early-boot uses).
+   * If `bus` is also supplied, `bus` wins and the appender is ignored.
+   */
   appender?: HashChainAppender;
+  /**
+   * Event bus to publish `audit.request` on. The audit subscriber
+   * (installed in `event-subscribers.ts`) handles the persist. This is
+   * the preferred wiring in production; the constructor argument exists
+   * so callers don't need to reach for module-globals.
+   */
+  bus?: EventBus;
+  /** Clock used to stamp `occurredAt` on emitted DomainEvents. */
+  clock?: Clock;
 }
 
 /**
  * Express middleware factory. The returned handler attaches a `'finish'`
  * listener and returns immediately — request latency is unaffected.
+ *
+ * When `opts.bus` is provided the entry is wrapped in an `audit.request`
+ * DomainEvent and published; an audit subscriber persists it. Otherwise
+ * the legacy direct-append path runs against `opts.appender` (or the
+ * default lazy appender), preserving back-compat with tests that don't
+ * wire a bus.
  */
 export function auditMiddleware(
   opts: AuditMiddlewareOptions = {}
@@ -111,6 +139,7 @@ export function auditMiddleware(
   const sanitiseOpts: SanitiseOptions = opts.sanitiseOptions ?? {
     maxBodySize: config.security.audit.maxBodySize,
   };
+  const clock = opts.clock ?? new SystemClock();
 
   return (req, res, next) => {
     if (shouldSkip(req.path, skip)) {
@@ -135,11 +164,45 @@ export function auditMiddleware(
 
     res.once('finish', () => {
       const entry = buildEntry(req, res, captured.request);
-      const appender = opts.appender ?? getAppender();
 
+      if (opts.bus) {
+        try {
+          const event = compose<AuditEntryInput>(
+            {
+              type: 'audit.request',
+              context: 'audit',
+              aggregateType: 'request',
+              aggregateId:
+                entry.resourceId ?? `${entry.action}:${entry.ipAddress}`,
+              ...(entry.actor.userId !== undefined
+                ? { actor: { type: 'user', id: entry.actor.userId } }
+                : entry.actor.serviceAccountId !== undefined
+                  ? {
+                      actor: {
+                        type: 'service',
+                        id: entry.actor.serviceAccountId,
+                      },
+                    }
+                  : { actor: { type: 'system' } }),
+              payload: entry,
+            },
+            clock
+          );
+          opts.bus.publish(event);
+        } catch (err: unknown) {
+          logger.error('noip_audit_publish_failed_total', {
+            metric: 'noip_audit_publish_failed_total',
+            increment: 1,
+            action: entry.action,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        return;
+      }
+
+      // Legacy direct-append fallback (tests, pre-bus boot order).
+      const appender = opts.appender ?? getAppender();
       void appender.append(entry).catch((err: unknown) => {
-        // Surface a structured event so the metrics layer can pick it up
-        // in Phase 5 without us depending on prom-client today.
         logger.error('noip_audit_persist_failed_total', {
           metric: 'noip_audit_persist_failed_total',
           increment: 1,
