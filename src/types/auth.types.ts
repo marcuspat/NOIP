@@ -156,6 +156,13 @@ export interface JWTPayload {
   iss: string;
   aud: string;
   type: 'access' | 'refresh';
+  /**
+   * Whether this session has completed MFA verification (initial login or
+   * step-up). Required by `requireMFAVerified` middleware (ADR-0009).
+   * Optional for backwards compatibility with tokens minted before
+   * Phase 1 wave 3.
+   */
+  mfaVerified?: boolean;
 }
 
 export interface AuthTokens {
