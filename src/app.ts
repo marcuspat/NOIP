@@ -6,7 +6,14 @@ import morgan from 'morgan';
 import mongoose from 'mongoose';
 import { config } from './config';
 import logger from './utils/logger';
-import { DiscoveryService } from './services/discovery.service';
+import {
+  composeDiscovery,
+  KubernetesAdapter,
+  KubernetesClientFactory,
+  type RawKubernetesClient,
+} from './contexts/discovery/api';
+import discoveryRoutes from './contexts/discovery/http/routes';
+import { InMemoryRawKubernetesClient } from './contexts/discovery/infrastructure/kubernetes/in-memory-raw-client';
 import { SecurityService } from './services/security.service';
 import { AIService } from './services/ai.service';
 import { DashboardService } from './services/dashboard.service';
@@ -195,8 +202,45 @@ export function getSecurityEventService(): SecurityEventService {
   return securityEventService;
 }
 
+// ---------------------------------------------------------------------------
+// Discovery context (DDD-06 Phase 2 wireup)
+// ---------------------------------------------------------------------------
+// We try to load a real kube config (in-cluster service account or default
+// kubeconfig) and fall back to an empty in-memory client when no config is
+// available. Phase 2 ships the contract; operators flip
+// `K8S_KUBECONFIG_PATH` or run inside the cluster to switch to live data.
+function buildKubeRawClient(): RawKubernetesClient {
+  try {
+    return KubernetesClientFactory.fromConfig({
+      ...(process.env['K8S_KUBECONFIG_PATH']
+        ? { kubeconfigPath: process.env['K8S_KUBECONFIG_PATH'] }
+        : {}),
+      inCluster: process.env['K8S_IN_CLUSTER'] === 'true',
+    });
+  } catch (err) {
+    logger.warn('Falling back to in-memory kube client (no kubeconfig found)', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return new InMemoryRawKubernetesClient();
+  }
+}
+
+const discoveryK8s = new KubernetesAdapter({
+  raw: buildKubeRawClient(),
+  clock: eventClock,
+  logger: auditLogger,
+});
+
+const composedDiscovery = composeDiscovery({
+  k8s: discoveryK8s,
+  bus: eventBus,
+  clock: eventClock,
+  logger: auditLogger,
+});
+const discoveryService = composedDiscovery.service;
+const discoveryScheduler = composedDiscovery.scheduler;
+
 // Initialize services
-const discoveryService = new DiscoveryService();
 const securityService = new SecurityService();
 const aiService = new AIService();
 const dashboardService = new DashboardService();
@@ -322,7 +366,7 @@ if (config.app.environment !== 'test') {
 app.use(auditMiddleware({ bus: eventBus, clock: eventClock }));
 
 // API Routes
-app.use('/api/discovery', createDiscoveryRoutes(discoveryService));
+app.use('/api/discovery', discoveryRoutes(discoveryService));
 app.use('/api/security', createSecurityRoutes(securityService));
 app.use('/api/ai', createAIRoutes(aiService));
 app.use('/api/dashboard', createDashboardRoutes(dashboardService));
@@ -358,61 +402,11 @@ app.use('/{*splat}', (req, res) => {
 });
 
 // Route creators
-function createDiscoveryRoutes(service: DiscoveryService): express.Router {
-  const router = express.Router();
-
-  router.get('/cluster', async (_req, res) => {
-    try {
-      const clusterInfo = await service.scanCluster();
-      res.json({ success: true, data: clusterInfo });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  router.get('/resources', async (req, res) => {
-    try {
-      const { namespace } = req.query;
-      const resources = await service.getResources(namespace as string);
-      res.json({ success: true, data: resources });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  router.get('/namespaces', async (_req, res) => {
-    try {
-      const namespaces = await service.getNamespaces();
-      res.json({ success: true, data: namespaces });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  router.get('/nodes', async (_req, res) => {
-    try {
-      const nodes = await service.getNodeInfo();
-      res.json({ success: true, data: nodes });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  return router;
-}
-
+// Note: createDiscoveryRoutes was removed in Phase 2 — the discovery
+// router lives at `src/contexts/discovery/http/routes.ts` and is mounted
+// directly above. The legacy /cluster, /resources, /namespaces, /nodes
+// paths are preserved as aliases inside that module so the existing
+// integration suite keeps passing.
 function createSecurityRoutes(service: SecurityService): express.Router {
   const router = express.Router();
 
@@ -613,6 +607,13 @@ async function initializeServices() {
       complianceService.initialize(),
     ]);
 
+    // Discovery scheduler — kicks off the periodic scan loop.
+    // Disabled when DISCOVERY_SERVICE_ENABLED=false so unit tests and
+    // local dev don't hammer the apiserver.
+    if (config.services.discovery.enabled) {
+      discoveryScheduler.start(config.services.discovery.scanInterval);
+    }
+
     logger.info('All services initialized successfully');
     logger.info(
       'Phase 3 Production Ready - Advanced AI, Performance Testing, and Compliance Framework enabled'
@@ -664,6 +665,13 @@ async function gracefulShutdown(signal: string): Promise<void> {
     }
   }
 
+  // Discovery scheduler must stop before the service does so a
+  // concurrent tick can't fire after we tear down the bus / repos.
+  try {
+    discoveryScheduler.stop();
+  } catch (err) {
+    logger.warn('Failed to stop discovery scheduler', { err });
+  }
   await Promise.all([discoveryService.stop(), securityService.stop()]);
 
   // ADR-0005 + ADR-0020: close shared infra last so subscribers / stop()
