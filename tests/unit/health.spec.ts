@@ -4,6 +4,8 @@ import {
   createHealthRoutes,
   HealthRouteDeps,
 } from '../../src/routes/health.routes';
+import { pingWithTimeout } from '../../src/database/shared-redis';
+import type { SharedRedisClient } from '../../src/database/shared-redis';
 
 interface ProbeState {
   startupComplete: boolean;
@@ -201,5 +203,147 @@ describe('createHealthRoutes', () => {
       expect(res.status).toBe(503);
       expect(res.body.status).toBe('unhealthy');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wave 3: dependency-aware readiness probe (Mongo + Redis)
+// ---------------------------------------------------------------------------
+//
+// Mirrors the `isReady` body wired into `src/app.ts` so the integration of
+// `mongoose.connection.readyState` + `pingWithTimeout(redisClient)` is
+// exercised end-to-end without requiring a real Mongo or Redis. We inject
+// stubs that mimic just enough of each surface for the probe to read.
+
+interface DependencyStubs {
+  mongoReadyState: 0 | 1 | 2 | 3;
+  redisPingBehaviour: 'pong' | 'reject' | 'timeout';
+  startupComplete?: boolean;
+  shuttingDown?: boolean;
+}
+
+function buildAppWithDeps(stubs: DependencyStubs): Express {
+  const startupComplete = stubs.startupComplete ?? true;
+  const shuttingDown = stubs.shuttingDown ?? false;
+
+  // Minimal stub Redis. Only `ping()` is consulted by `pingWithTimeout`.
+  const stubRedis = {
+    ping: async (): Promise<string> => {
+      switch (stubs.redisPingBehaviour) {
+        case 'pong':
+          return 'PONG';
+        case 'reject':
+          throw new Error('redis offline');
+        case 'timeout':
+          // Resolve well past the probe's 200ms ceiling so the timeout
+          // path fires deterministically. `.unref()` so the timer can't
+          // hold Jest's worker process open after the test resolves.
+          return new Promise<string>(resolve => {
+            const t = setTimeout(() => resolve('PONG'), 1000);
+            t.unref();
+          });
+      }
+    },
+  } as unknown as SharedRedisClient;
+
+  const deps: HealthRouteDeps = {
+    isStartupComplete: () => startupComplete,
+    isLive: () => !shuttingDown,
+    isReady: async () => {
+      if (!startupComplete || shuttingDown) return false;
+      if (stubs.mongoReadyState !== 1) return false;
+      return pingWithTimeout(stubRedis, 50);
+    },
+  };
+
+  const app = express();
+  app.use(createHealthRoutes(deps));
+  return app;
+}
+
+describe('createHealthRoutes — Mongo + Redis dependency probe', () => {
+  it('returns 200 when Mongo is connected (readyState=1) and Redis PINGs OK', async () => {
+    const app = buildAppWithDeps({
+      mongoReadyState: 1,
+      redisPingBehaviour: 'pong',
+    });
+
+    const res = await request(app).get('/health/ready');
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ready');
+  });
+
+  it('returns 503 when Mongo is disconnected (readyState=0)', async () => {
+    const app = buildAppWithDeps({
+      mongoReadyState: 0,
+      redisPingBehaviour: 'pong',
+    });
+
+    const res = await request(app).get('/health/ready');
+
+    expect(res.status).toBe(503);
+    expect(res.body.status).toBe('not-ready');
+  });
+
+  it('returns 503 when Redis PING rejects', async () => {
+    const app = buildAppWithDeps({
+      mongoReadyState: 1,
+      redisPingBehaviour: 'reject',
+    });
+
+    const res = await request(app).get('/health/ready');
+
+    expect(res.status).toBe(503);
+    expect(res.body.status).toBe('not-ready');
+  });
+
+  it('returns 503 when Redis PING times out', async () => {
+    const app = buildAppWithDeps({
+      mongoReadyState: 1,
+      redisPingBehaviour: 'timeout',
+    });
+
+    const res = await request(app).get('/health/ready');
+
+    expect(res.status).toBe(503);
+    expect(res.body.status).toBe('not-ready');
+  });
+
+  it('returns 503 when both Mongo is down AND Redis is unreachable', async () => {
+    const app = buildAppWithDeps({
+      mongoReadyState: 0,
+      redisPingBehaviour: 'reject',
+    });
+
+    const res = await request(app).get('/health/ready');
+
+    expect(res.status).toBe(503);
+    expect(res.body.status).toBe('not-ready');
+  });
+
+  it('returns 503 with reason "starting" before startup completes (deps not consulted)', async () => {
+    const app = buildAppWithDeps({
+      startupComplete: false,
+      mongoReadyState: 1,
+      redisPingBehaviour: 'pong',
+    });
+
+    const res = await request(app).get('/health/ready');
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ status: 'not-ready', reason: 'starting' });
+  });
+
+  it('returns 503 once shutdown has been signalled even if deps look healthy', async () => {
+    const app = buildAppWithDeps({
+      shuttingDown: true,
+      mongoReadyState: 1,
+      redisPingBehaviour: 'pong',
+    });
+
+    const res = await request(app).get('/health/ready');
+
+    expect(res.status).toBe(503);
   });
 });
