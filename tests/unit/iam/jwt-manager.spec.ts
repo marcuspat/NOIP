@@ -3,6 +3,8 @@
 // here — these tests focus on the cryptographic + key-set behaviour.
 
 import { JWTManager } from '../../../src/utils/auth/jwt.manager';
+import { InMemoryEventBus, type DomainEvent } from '../../../src/shared/kernel';
+import { FakeRedis } from './_redis-stub';
 
 const baseClaims = {
   sub: 'user-1',
@@ -137,5 +139,69 @@ describe('JWTManager', () => {
     const b = makeManager({ issuer: 'Issuer-B' });
     const token = await a.signToken(baseClaims, 'access');
     expect(await b.verifyToken(token, 'access')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ADR-0018 — domain event publishing
+// ---------------------------------------------------------------------------
+
+class RecordingBus extends InMemoryEventBus {
+  public readonly events: Array<DomainEvent<unknown>> = [];
+  override publish<T>(event: DomainEvent<T>): void {
+    this.events.push(event as DomainEvent<unknown>);
+    super.publish(event);
+  }
+}
+
+describe('JWTManager — DomainEvent publishing', () => {
+  it('createTokenPair publishes iam.session.opened exactly once', async () => {
+    const bus = new RecordingBus();
+    const m = new JWTManager({
+      activeKey: {
+        kid: 'kid-A',
+        secret: 'event-publish-secret-of-min-32-chars-len!!',
+      },
+      eventBus: bus,
+    });
+    await m.createTokenPair(baseClaims);
+    const opened = bus.events.filter(e => e.type === 'iam.session.opened');
+    expect(opened).toHaveLength(1);
+    expect(opened[0]?.context).toBe('iam');
+    expect(opened[0]?.aggregateType).toBe('session');
+    const payload = opened[0]?.payload as {
+      userId?: string;
+      sessionId?: string;
+      family: string;
+    };
+    expect(payload.userId).toBe('user-1');
+    expect(payload.sessionId).toBe('sess-1');
+    expect(payload.family).toMatch(/^[0-9a-f-]{36}$/i);
+  });
+
+  it('revokeToken publishes iam.token.revoked with the threaded userId', async () => {
+    const bus = new RecordingBus();
+    const r = new FakeRedis();
+    const m = new JWTManager({
+      activeKey: {
+        kid: 'kid-A',
+        secret: 'event-publish-secret-of-min-32-chars-len!!',
+      },
+      redis: r,
+      eventBus: bus,
+    });
+    const token = await m.signToken(baseClaims, 'access');
+    bus.events.length = 0; // discard whatever signing emitted
+    await m.revokeToken(token, 'manual-test', { userId: 'user-1' });
+    const revoked = bus.events.filter(e => e.type === 'iam.token.revoked');
+    expect(revoked).toHaveLength(1);
+    const payload = revoked[0]?.payload as {
+      userId?: string;
+      jti: string;
+      reason: string;
+    };
+    expect(payload.userId).toBe('user-1');
+    expect(payload.reason).toBe('manual-test');
+    expect(payload.jti.length).toBeGreaterThan(0);
   });
 });

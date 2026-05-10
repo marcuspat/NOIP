@@ -21,9 +21,11 @@
 //     fail-closed (ADR-0016): a Redis error during verify is treated as
 //     denylisted and rejected.
 //
-// TODO (Phase 1 wave 3): publish `iam.token.revoked`, `iam.session.opened`,
-// `iam.session.closed` via EventBus where the existing logger.info calls
-// are emitted today.
+// Phase 1 wave 2 (ADR-0018): emits `iam.session.opened`, `iam.token.revoked`,
+// `iam.session.suspicious` and `iam.session.closed` through an injected
+// EventBus. The bus is optional — when absent the manager remains
+// fully functional and only logs (legacy behaviour); the AuthService
+// composition root injects the real bus.
 
 import { SignJWT, jwtVerify, decodeJwt, errors as joseErrors } from 'jose';
 import type { JWTPayload as JoseJWTPayload } from 'jose';
@@ -32,6 +34,13 @@ import { createSecretKey, type KeyObject, randomUUID } from 'crypto';
 import { config } from '../../config';
 import type { JWTPayload } from '../../types/auth.types';
 import { UnauthorizedError } from '../../shared/errors';
+import {
+  compose,
+  SystemClock,
+  type Clock,
+  type DomainEvent,
+  type EventBus,
+} from '../../shared/kernel';
 import logger from '../logger';
 
 /**
@@ -176,6 +185,19 @@ export interface JWTManagerOptions {
   priorKidTtlMs?: number;
   /** Injectable clock for tests. */
   now?: () => number;
+  /**
+   * In-process domain event bus used to publish `iam.*` events.
+   * When absent, the manager logs but does not publish — that lets unit
+   * tests that don't care about events keep working unchanged.
+   */
+  eventBus?: EventBus;
+  /**
+   * Clock used to stamp `occurredAt` on emitted DomainEvents. Defaults
+   * to `SystemClock` when an `eventBus` is supplied. Independent from
+   * `now()` so tests can freeze event timestamps without freezing the
+   * Redis-TTL math.
+   */
+  eventClock?: Clock;
 }
 
 /**
@@ -204,6 +226,8 @@ export class JWTManager {
   private redis: RedisLike | undefined;
   private readonly loadPasswordChangedAt: PasswordChangedAtLoader;
   private readonly now: () => number;
+  private eventBus: EventBus | undefined;
+  private readonly eventClock: Clock;
 
   constructor(opts: JWTManagerOptions = {}) {
     const fromEnvActive: JWTKey = opts.activeKey ?? {
@@ -236,6 +260,10 @@ export class JWTManager {
     if (opts.redis !== undefined) {
       this.redis = opts.redis;
     }
+    if (opts.eventBus !== undefined) {
+      this.eventBus = opts.eventBus;
+    }
+    this.eventClock = opts.eventClock ?? new SystemClock();
 
     this.keys = new Map();
     this.activeKid = fromEnvActive.kid;
@@ -250,6 +278,16 @@ export class JWTManager {
   /** Replace the configured Redis client at runtime. */
   setRedis(redis: RedisLike | undefined): void {
     this.redis = redis;
+  }
+
+  /**
+   * Wire (or rewire) the EventBus used to publish `iam.*` events. The
+   * composition root calls this when the bus is constructed after the
+   * manager (lazy boot order); tests pass the bus directly via the
+   * constructor instead.
+   */
+  setEventBus(bus: EventBus | undefined): void {
+    this.eventBus = bus;
   }
 
   /** The currently active signing kid. */
@@ -353,12 +391,14 @@ export class JWTManager {
         { ...payload, family },
         'refresh'
       );
-      // TODO: publish via EventBus — iam.session.opened
-      logger.info('iam.session.opened', {
-        userId: payload['sub'],
-        sessionId: payload['sessionId'],
-        family,
-      });
+      const userId =
+        typeof payload['sub'] === 'string' ? payload['sub'] : undefined;
+      const sessionId =
+        typeof payload['sessionId'] === 'string'
+          ? payload['sessionId']
+          : undefined;
+      logger.info('iam.session.opened', { userId, sessionId, family });
+      this.publishSessionOpened(userId, sessionId, family);
       return { accessToken, refreshToken, family };
     } catch (error) {
       logger.error('Failed to create token pair', { error });
@@ -545,7 +585,9 @@ export class JWTManager {
           throw new UnauthorizedError('Auth backend unavailable');
         }
         if (prior && family) {
-          await this.markFamilyCompromised(family, 'refresh-replay');
+          await this.markFamilyCompromised(family, 'refresh-replay', {
+            representativeToken: refreshToken,
+          });
           throw new UnauthorizedError('Refresh token already used');
         }
       }
@@ -624,23 +666,35 @@ export class JWTManager {
    * the Redis TTL so the entry self-cleans after the token would have
    * expired anyway. Also marks the family as revoked when the token is
    * a refresh; access tokens don't carry session-wide authority.
+   *
+   * `opts.userId` lets callers (AuthService.logout, password-change) thread
+   * the actor through so the published `iam.token.revoked` event carries
+   * the user id even though the JWT payload's `sub` is the canonical
+   * source we fall back to.
    */
-  async revokeToken(token: string, reason = 'manual'): Promise<void> {
+  async revokeToken(
+    token: string,
+    reason = 'manual',
+    opts: { userId?: string } = {}
+  ): Promise<void> {
     let jti: string | undefined;
     let exp: number | undefined;
     let family: string | undefined;
     let type: 'access' | 'refresh' | undefined;
+    let payloadUserId: string | undefined;
     try {
       const decoded = decodeJwt(token) as {
         jti?: string;
         exp?: number;
         family?: string;
         type?: 'access' | 'refresh';
+        sub?: string;
       };
       jti = decoded.jti;
       exp = decoded.exp;
       family = decoded.family;
       type = decoded.type;
+      payloadUserId = decoded.sub;
     } catch (err) {
       logger.warn('revokeToken: undecodable token', { err });
       return;
@@ -657,11 +711,15 @@ export class JWTManager {
     if (type === 'refresh' && family) {
       // Revoking a refresh implicitly revokes the whole family so the
       // session can't be resurrected on another device with a stolen pair.
-      await this.markFamilyRevoked(family, reason);
+      await this.markFamilyRevoked(family, reason, {
+        ...(opts.userId !== undefined ? { userId: opts.userId } : {}),
+        representativeToken: token,
+      });
     }
 
-    // TODO: publish via EventBus — iam.token.revoked
-    logger.info('iam.token.revoked', { jti, reason, family, type });
+    const userId = opts.userId ?? payloadUserId;
+    logger.info('iam.token.revoked', { jti, reason, family, type, userId });
+    this.publishTokenRevoked(userId, jti, reason);
   }
 
   /**
@@ -690,26 +748,65 @@ export class JWTManager {
     }
   }
 
-  /** Mark a refresh family as compromised — every token in it is rejected. */
-  async markFamilyCompromised(family: string, reason: string): Promise<void> {
+  /**
+   * Mark a refresh family as compromised — every token in it is rejected.
+   *
+   * `opts.representativeToken` is consulted (via decode-only) to recover
+   * `{userId, sessionId}` for the published `iam.session.suspicious`
+   * event when neither is threaded explicitly. Decoding never validates
+   * the token, so a forged-but-syntactically-valid replay still yields
+   * usable identifiers for the alert.
+   */
+  async markFamilyCompromised(
+    family: string,
+    reason: string,
+    opts: {
+      userId?: string;
+      sessionId?: string;
+      representativeToken?: string;
+    } = {}
+  ): Promise<void> {
     await this.writeFamilyState(family, {
       status: 'compromised',
       reason,
       at: new Date().toISOString(),
     });
-    // TODO: publish via EventBus — iam.session.suspicious + iam.token.revoked
-    logger.warn('iam.session.suspicious', { family, reason });
+    const ids = this.resolveActorIds(opts);
+    logger.warn('iam.session.suspicious', {
+      family,
+      reason,
+      userId: ids.userId,
+      sessionId: ids.sessionId,
+    });
+    this.publishSessionSuspicious(ids.userId, ids.sessionId, [reason]);
   }
 
-  /** Mark a refresh family as cleanly revoked (e.g. logout). */
-  async markFamilyRevoked(family: string, reason: string): Promise<void> {
+  /**
+   * Mark a refresh family as cleanly revoked (e.g. logout). Same id
+   * resolution rules as `markFamilyCompromised`.
+   */
+  async markFamilyRevoked(
+    family: string,
+    reason: string,
+    opts: {
+      userId?: string;
+      sessionId?: string;
+      representativeToken?: string;
+    } = {}
+  ): Promise<void> {
     await this.writeFamilyState(family, {
       status: 'revoked',
       reason,
       at: new Date().toISOString(),
     });
-    // TODO: publish via EventBus — iam.session.closed
-    logger.info('iam.session.closed', { family, reason });
+    const ids = this.resolveActorIds(opts);
+    logger.info('iam.session.closed', {
+      family,
+      reason,
+      userId: ids.userId,
+      sessionId: ids.sessionId,
+    });
+    this.publishSessionClosed(ids.userId, ids.sessionId, reason);
   }
 
   // ---------------------------------------------------------------------------
@@ -811,6 +908,130 @@ export class JWTManager {
         err,
         family,
         state,
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Domain event publishing (ADR-0018)
+  // ---------------------------------------------------------------------------
+
+  private resolveActorIds(opts: {
+    userId?: string;
+    sessionId?: string;
+    representativeToken?: string;
+  }): { userId?: string; sessionId?: string } {
+    let userId = opts.userId;
+    let sessionId = opts.sessionId;
+    if ((!userId || !sessionId) && opts.representativeToken) {
+      try {
+        const decoded = decodeJwt(opts.representativeToken) as {
+          sub?: string;
+          sessionId?: string;
+        };
+        userId = userId ?? decoded.sub;
+        sessionId = sessionId ?? decoded.sessionId;
+      } catch {
+        // decode-only failure is fine — we just emit without the ids.
+      }
+    }
+    const out: { userId?: string; sessionId?: string } = {};
+    if (userId !== undefined) out.userId = userId;
+    if (sessionId !== undefined) out.sessionId = sessionId;
+    return out;
+  }
+
+  private publishSessionOpened(
+    userId: string | undefined,
+    sessionId: string | undefined,
+    family: string
+  ): void {
+    this.publish<{ userId?: string; sessionId?: string; family: string }>({
+      type: 'iam.session.opened',
+      context: 'iam',
+      aggregateType: 'session',
+      aggregateId: sessionId ?? family,
+      ...(userId !== undefined ? { actor: { type: 'user', id: userId } } : {}),
+      payload: {
+        ...(userId !== undefined ? { userId } : {}),
+        ...(sessionId !== undefined ? { sessionId } : {}),
+        family,
+      },
+    });
+  }
+
+  private publishSessionClosed(
+    userId: string | undefined,
+    sessionId: string | undefined,
+    reason: string
+  ): void {
+    this.publish<{ userId?: string; sessionId?: string; reason: string }>({
+      type: 'iam.session.closed',
+      context: 'iam',
+      aggregateType: 'session',
+      aggregateId: sessionId ?? userId ?? 'unknown',
+      ...(userId !== undefined ? { actor: { type: 'user', id: userId } } : {}),
+      payload: {
+        ...(userId !== undefined ? { userId } : {}),
+        ...(sessionId !== undefined ? { sessionId } : {}),
+        reason,
+      },
+    });
+  }
+
+  private publishSessionSuspicious(
+    userId: string | undefined,
+    sessionId: string | undefined,
+    signals: string[]
+  ): void {
+    this.publish<{
+      userId?: string;
+      sessionId?: string;
+      signals: string[];
+    }>({
+      type: 'iam.session.suspicious',
+      context: 'iam',
+      aggregateType: 'session',
+      aggregateId: sessionId ?? userId ?? 'unknown',
+      ...(userId !== undefined ? { actor: { type: 'user', id: userId } } : {}),
+      payload: {
+        ...(userId !== undefined ? { userId } : {}),
+        ...(sessionId !== undefined ? { sessionId } : {}),
+        signals,
+      },
+    });
+  }
+
+  private publishTokenRevoked(
+    userId: string | undefined,
+    jti: string,
+    reason: string
+  ): void {
+    this.publish<{ userId?: string; jti: string; reason: string }>({
+      type: 'iam.token.revoked',
+      context: 'iam',
+      aggregateType: 'token',
+      aggregateId: jti,
+      ...(userId !== undefined ? { actor: { type: 'user', id: userId } } : {}),
+      payload: {
+        ...(userId !== undefined ? { userId } : {}),
+        jti,
+        reason,
+      },
+    });
+  }
+
+  private publish<T>(
+    envelope: Omit<DomainEvent<T>, 'id' | 'occurredAt' | 'schemaVersion'>
+  ): void {
+    if (!this.eventBus) return;
+    try {
+      const event = compose<T>(envelope, this.eventClock);
+      this.eventBus.publish(event);
+    } catch (err) {
+      logger.error('Failed to publish iam event', {
+        type: envelope.type,
+        err: err instanceof Error ? err.message : String(err),
       });
     }
   }
