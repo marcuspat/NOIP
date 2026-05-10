@@ -6,7 +6,6 @@ import {
   RegisterRequest,
   UserProfile,
   JWTTokenPair,
-  JWTPayload,
   AuthTokens,
   MFASetupRequest,
   MFASetupResponse,
@@ -27,7 +26,6 @@ import {
   SessionModel,
   SecurityEventModel,
 } from '../models';
-import { config } from '../config';
 import logger from '../utils/logger';
 import {
   JWTManager,
@@ -296,7 +294,11 @@ export class AuthService extends BaseService {
     }, 'Login failed');
   }
 
-  async logout(userId: string, sessionId: string): Promise<void> {
+  async logout(
+    userId: string,
+    sessionId: string,
+    tokens?: { accessToken?: string; refreshToken?: string }
+  ): Promise<void> {
     return this.withErrorHandling(async () => {
       this.logOperation('Starting user logout', { userId, sessionId });
 
@@ -308,6 +310,25 @@ export class AuthService extends BaseService {
       });
       if (session) {
         await session.revoke();
+      }
+
+      // Denylist whichever tokens the controller forwarded. The manager
+      // logs (and emits a future-EventBus marker) for each revocation,
+      // and swallows Redis errors so a logout still returns cleanly.
+      // ADR-0006: presenting either of these tokens after this point
+      // will be rejected by the verification middleware. The refresh
+      // token additionally marks the family revoked.
+      try {
+        if (tokens?.accessToken) {
+          await this.jwtManager.revokeToken(tokens.accessToken, 'logout');
+        }
+        if (tokens?.refreshToken) {
+          await this.jwtManager.revokeToken(tokens.refreshToken, 'logout');
+        }
+      } catch (err) {
+        // Per ADR-0006: log + continue; access token will expire naturally.
+        // TODO: emit metric `noip_token_revoke_failed_total`.
+        logger.error('Token revocation failed during logout', { err, userId });
       }
 
       // Create security event
@@ -327,11 +348,18 @@ export class AuthService extends BaseService {
     return this.withErrorHandling(async () => {
       this.logOperation('Refreshing token');
 
-      // Verify refresh token
-      const payload = await this.jwtManager.verifyToken(
-        refreshToken,
-        'refresh'
-      );
+      // ADR-0006 rotation: the manager performs verification, denylist
+      // check, theft detection (compromised-family marking), denylists
+      // the consumed refresh, and issues a new pair under the SAME
+      // family. We avoid double-verification this way.
+      const rotated = await this.jwtManager.refreshToken(refreshToken);
+      if (!rotated) {
+        throw new Error('Invalid refresh token');
+      }
+
+      // Decode to learn the user/session for activity bookkeeping. The
+      // manager has already verified — decode here is safe.
+      const payload = await this.jwtManager.decodeToken(rotated.accessToken);
       if (!payload) {
         throw new Error('Invalid refresh token');
       }
@@ -356,15 +384,17 @@ export class AuthService extends BaseService {
         throw new Error('User not found or inactive');
       }
 
-      // Generate new tokens
-      const tokens = await this.generateTokens(user, payload.sessionId);
-
       // Update session activity
       await session.updateLastActivity();
 
       this.logOperation('Token refreshed successfully', { userId: user._id });
 
-      return tokens;
+      return {
+        accessToken: rotated.accessToken,
+        refreshToken: rotated.refreshToken,
+        expiresIn: 15 * 60,
+        tokenType: 'Bearer',
+      };
     }, 'Token refresh failed');
   }
 
@@ -720,29 +750,19 @@ export class AuthService extends BaseService {
     user: any,
     sessionId: string
   ): Promise<AuthTokens> {
-    const payload: JWTPayload = {
-      sub: user._id.toString(),
-      username: user.username,
-      email: user.email,
-      roles: user.roles.map((role: any) => role.name),
-      permissions: this.extractPermissions(user),
-      sessionId,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 15 * 60, // 15 minutes
-      iss: config.app.name,
-      aud: 'noip-client',
-      type: 'access',
-    };
-
-    const accessToken = await this.jwtManager.signToken(payload, 'access');
-    const refreshToken = await this.jwtManager.signToken(
+    // ADR-0006: a fresh `family` (UUID) is bound to both tokens at login
+    // so a future refresh-replay can be detected and the family marked
+    // compromised. The manager mints jti/family/iat/exp/iss/aud.
+    const { accessToken, refreshToken } = await this.jwtManager.createTokenPair(
       {
-        ...payload,
-        type: 'refresh',
-        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
-      },
-      'refresh'
-    ); // 7 days
+        sub: user._id.toString(),
+        username: user.username,
+        email: user.email,
+        roles: user.roles.map((role: any) => role.name),
+        permissions: this.extractPermissions(user),
+        sessionId,
+      }
+    );
 
     return {
       accessToken,

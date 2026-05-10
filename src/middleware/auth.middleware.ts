@@ -1,5 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
-import { JWTManager } from '../utils/auth/jwt.manager';
+import {
+  JWTManager,
+  type RedisLike,
+  type PasswordChangedAtLoader,
+} from '../utils/auth/jwt.manager';
 import { SessionModel, UserModel, SecurityEventModel } from '../models';
 import {
   JWTPayload,
@@ -14,11 +18,46 @@ export interface AuthenticatedRequest extends Request {
   tokenPayload?: JWTPayload;
 }
 
+/** Optional injection point for the JWT manager + Redis-backed denylist. */
+export interface AuthMiddlewareOptions {
+  jwtManager?: JWTManager;
+  redis?: RedisLike;
+  passwordChangedAtLoader?: PasswordChangedAtLoader;
+}
+
+/**
+ * Default loader used by the middleware when one isn't injected: pulls
+ * `passwordChangedAt` from the User model so that ADR-0006's
+ * `token.iat < user.passwordChangedAt ⇒ revoked` rule is enforced.
+ */
+const userModelPasswordLoader: PasswordChangedAtLoader = async userId => {
+  try {
+    const u = await UserModel.findById(userId).select('passwordChangedAt');
+    return u?.passwordChangedAt ?? null;
+  } catch {
+    return null;
+  }
+};
+
 export class AuthMiddleware {
   private jwtManager: JWTManager;
 
-  constructor() {
-    this.jwtManager = new JWTManager();
+  constructor(opts: AuthMiddlewareOptions = {}) {
+    if (opts.jwtManager) {
+      this.jwtManager = opts.jwtManager;
+      if (opts.redis) {
+        this.jwtManager.setRedis(opts.redis);
+      }
+    } else {
+      const managerOpts: ConstructorParameters<typeof JWTManager>[0] = {
+        passwordChangedAtLoader:
+          opts.passwordChangedAtLoader ?? userModelPasswordLoader,
+      };
+      if (opts.redis) {
+        managerOpts.redis = opts.redis;
+      }
+      this.jwtManager = new JWTManager(managerOpts);
+    }
   }
 
   authenticate = async (
