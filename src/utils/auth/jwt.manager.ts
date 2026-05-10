@@ -15,14 +15,23 @@ export class JWTManager {
     this.issuer = config.app.name;
     this.audience = 'noip-client';
 
-    if (config.app.environment === 'production' && this.accessTokenSecret === 'your-secret-key-change-in-production') {
+    if (
+      config.app.environment === 'production' &&
+      this.accessTokenSecret === 'your-secret-key-change-in-production'
+    ) {
       throw new Error('JWT secret must be changed in production');
     }
   }
 
-  async signToken(payload: any, tokenType: 'access' | 'refresh' = 'access'): Promise<string> {
+  async signToken(
+    payload: any,
+    tokenType: 'access' | 'refresh' = 'access'
+  ): Promise<string> {
     try {
-      const secret = tokenType === 'access' ? this.accessTokenSecret : this.refreshTokenSecret;
+      const secret =
+        tokenType === 'access'
+          ? this.accessTokenSecret
+          : this.refreshTokenSecret;
       const expiresIn = tokenType === 'access' ? '15m' : '7d';
 
       const tokenPayload = {
@@ -30,14 +39,14 @@ export class JWTManager {
         type: tokenType,
         iat: Math.floor(Date.now() / 1000),
         iss: this.issuer,
-        aud: this.audience
+        aud: this.audience,
       };
 
       return jwt.sign(tokenPayload, secret, {
         expiresIn,
         algorithm: 'HS256',
         audience: this.audience,
-        issuer: this.issuer
+        issuer: this.issuer,
       });
     } catch (error) {
       logger.error('Failed to sign JWT token', { error, tokenType });
@@ -45,25 +54,37 @@ export class JWTManager {
     }
   }
 
-  async verifyToken(token: string, tokenType: 'access' | 'refresh' = 'access'): Promise<JWTPayload | null> {
+  async verifyToken(
+    token: string,
+    tokenType: 'access' | 'refresh' = 'access'
+  ): Promise<JWTPayload | null> {
     try {
-      const secret = tokenType === 'access' ? this.accessTokenSecret : this.refreshTokenSecret;
+      const secret =
+        tokenType === 'access'
+          ? this.accessTokenSecret
+          : this.refreshTokenSecret;
 
       const decoded = jwt.verify(token, secret, {
         algorithms: ['HS256'],
         audience: this.audience,
-        issuer: this.issuer
+        issuer: this.issuer,
       }) as JWTPayload;
 
       // Verify token type matches expected type
       if (decoded.type !== tokenType) {
-        logger.warn('Token type mismatch', { expected: tokenType, actual: decoded.type });
+        logger.warn('Token type mismatch', {
+          expected: tokenType,
+          actual: decoded.type,
+        });
         return null;
       }
 
       // Check if token is expired
       if (decoded.exp && decoded.exp < Math.floor(Date.now() / 1000)) {
-        logger.warn('Token expired', { exp: decoded.exp, now: Math.floor(Date.now() / 1000) });
+        logger.warn('Token expired', {
+          exp: decoded.exp,
+          now: Math.floor(Date.now() / 1000),
+        });
         return null;
       }
 
@@ -93,7 +114,9 @@ export class JWTManager {
     }
   }
 
-  async refreshToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string } | null> {
+  async refreshToken(
+    refreshToken: string
+  ): Promise<{ accessToken: string; refreshToken: string } | null> {
     try {
       // Verify refresh token
       const payload = await this.verifyToken(refreshToken, 'refresh');
@@ -105,7 +128,7 @@ export class JWTManager {
       const accessTokenPayload = {
         ...payload,
         type: 'access' as const,
-        exp: Math.floor(Date.now() / 1000) + (15 * 60) // 15 minutes
+        exp: Math.floor(Date.now() / 1000) + 15 * 60, // 15 minutes
       };
 
       const accessToken = await this.signToken(accessTokenPayload, 'access');
@@ -114,14 +137,17 @@ export class JWTManager {
       const newRefreshTokenPayload = {
         ...payload,
         type: 'refresh' as const,
-        exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
       };
 
-      const newRefreshToken = await this.signToken(newRefreshTokenPayload, 'refresh');
+      const newRefreshToken = await this.signToken(
+        newRefreshTokenPayload,
+        'refresh'
+      );
 
       return {
         accessToken,
-        refreshToken: newRefreshToken
+        refreshToken: newRefreshToken,
       };
     } catch (error) {
       logger.error('Failed to refresh token', { error });
@@ -129,23 +155,25 @@ export class JWTManager {
     }
   }
 
-  async createTokenPair(payload: any): Promise<{ accessToken: string; refreshToken: string }> {
+  async createTokenPair(
+    payload: any
+  ): Promise<{ accessToken: string; refreshToken: string }> {
     try {
       const accessTokenPayload = {
         ...payload,
         type: 'access' as const,
-        exp: Math.floor(Date.now() / 1000) + (15 * 60) // 15 minutes
+        exp: Math.floor(Date.now() / 1000) + 15 * 60, // 15 minutes
       };
 
       const refreshTokenPayload = {
         ...payload,
         type: 'refresh' as const,
-        exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days
+        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
       };
 
       const [accessToken, refreshToken] = await Promise.all([
         this.signToken(accessTokenPayload, 'access'),
-        this.signToken(refreshTokenPayload, 'refresh')
+        this.signToken(refreshTokenPayload, 'refresh'),
       ]);
 
       return { accessToken, refreshToken };
@@ -176,7 +204,9 @@ export class JWTManager {
   async revokeToken(token: string): Promise<void> {
     // In a real implementation, you would add the token to a blacklist
     // This could be stored in Redis with an expiration time
-    logger.info('Token revocation requested', { token: token.substring(0, 10) + '...' });
+    logger.info('Token revocation requested', {
+      token: token.substring(0, 10) + '...',
+    });
   }
 
   async isTokenRevoked(token: string): Promise<boolean> {

@@ -28,8 +28,8 @@ export const options = {
   ],
   thresholds: {
     http_req_duration: ['p(95)<500'], // 95% of requests under 500ms
-    http_req_failed: ['rate<0.01'],    // Error rate below 1%
-    errors: ['rate<0.01'],             // Custom error rate below 1%
+    http_req_failed: ['rate<0.01'], // Error rate below 1%
+    errors: ['rate<0.01'], // Custom error rate below 1%
   },
 };
 
@@ -41,7 +41,7 @@ export function setup() {
   // Verify the application is running
   const healthResponse = http.get(`${BASE_URL}/health`);
   check(healthResponse, {
-    'health check passed': (r) => r.status === 200,
+    'health check passed': r => r.status === 200,
   });
 
   if (healthResponse.status !== 200) {
@@ -83,10 +83,10 @@ export default function () {
 
   // Check response
   const success = check(response, {
-    'status is 200': (r) => r.status === 200,
-    'response time < 500ms': (r) => r.timings.duration < 500,
-    'response time < 1000ms': (r) => r.timings.duration < 1000,
-    'response body not empty': (r) => r.body.length > 0,
+    'status is 200': r => r.status === 200,
+    'response time < 500ms': r => r.timings.duration < 500,
+    'response time < 1000ms': r => r.timings.duration < 1000,
+    'response body not empty': r => r.body.length > 0,
   });
 
   errorRate.add(!success);

@@ -17,12 +17,20 @@ export const config = {
   services: {
     auth: {
       enabled: process.env['AUTH_SERVICE_ENABLED'] !== 'false',
-      tokenRotationInterval: parseInt(process.env['TOKEN_ROTATION_INTERVAL'] || '3600000'), // 1 hour
+      tokenRotationInterval: parseInt(
+        process.env['TOKEN_ROTATION_INTERVAL'] || '3600000'
+      ), // 1 hour
       sessionTimeout: parseInt(process.env['SESSION_TIMEOUT'] || '86400000'), // 24 hours
-      maxConcurrentSessions: parseInt(process.env['MAX_CONCURRENT_SESSIONS'] || '5'),
+      maxConcurrentSessions: parseInt(
+        process.env['MAX_CONCURRENT_SESSIONS'] || '5'
+      ),
       passwordExpiryDays: parseInt(process.env['PASSWORD_EXPIRY_DAYS'] || '90'),
-      accountLockoutAttempts: parseInt(process.env['ACCOUNT_LOCKOUT_ATTEMPTS'] || '5'),
-      accountLockoutDuration: parseInt(process.env['ACCOUNT_LOCKOUT_DURATION'] || '7200000'), // 2 hours
+      accountLockoutAttempts: parseInt(
+        process.env['ACCOUNT_LOCKOUT_ATTEMPTS'] || '5'
+      ),
+      accountLockoutDuration: parseInt(
+        process.env['ACCOUNT_LOCKOUT_DURATION'] || '7200000'
+      ), // 2 hours
       mfaGracePeriod: parseInt(process.env['MFA_GRACE_PERIOD'] || '604800000'), // 7 days
     },
     discovery: {
@@ -33,7 +41,8 @@ export const config = {
     security: {
       enabled: process.env['SECURITY_SERVICE_ENABLED'] !== 'false',
       scanInterval: parseInt(process.env['SECURITY_SCAN_INTERVAL'] || '600000'), // 10 minutes
-      rulesPath: process.env['SECURITY_RULES_PATH'] || './config/security-rules.json',
+      rulesPath:
+        process.env['SECURITY_RULES_PATH'] || './config/security-rules.json',
     },
     ai: {
       enabled: process.env['AI_SERVICE_ENABLED'] !== 'false',
@@ -51,13 +60,23 @@ export const config = {
       maxPoolSize: parseInt(process.env['MONGODB_MAX_POOL_SIZE'] || '10'),
       minPoolSize: parseInt(process.env['MONGODB_MIN_POOL_SIZE'] || '1'),
       maxIdleTimeMS: parseInt(process.env['MONGODB_MAX_IDLE_TIME'] || '30000'),
-      serverSelectionTimeoutMS: parseInt(process.env['MONGODB_SERVER_SELECTION_TIMEOUT'] || '5000'),
-      socketTimeoutMS: parseInt(process.env['MONGODB_SOCKET_TIMEOUT'] || '45000'),
-      connectTimeoutMS: parseInt(process.env['MONGODB_CONNECT_TIMEOUT'] || '10000'),
-      heartbeatFrequencyMS: parseInt(process.env['MONGODB_HEARTBEAT_FREQUENCY'] || '10000'),
+      serverSelectionTimeoutMS: parseInt(
+        process.env['MONGODB_SERVER_SELECTION_TIMEOUT'] || '5000'
+      ),
+      socketTimeoutMS: parseInt(
+        process.env['MONGODB_SOCKET_TIMEOUT'] || '45000'
+      ),
+      connectTimeoutMS: parseInt(
+        process.env['MONGODB_CONNECT_TIMEOUT'] || '10000'
+      ),
+      heartbeatFrequencyMS: parseInt(
+        process.env['MONGODB_HEARTBEAT_FREQUENCY'] || '10000'
+      ),
       retryWrites: process.env['MONGODB_RETRY_WRITES'] !== 'false',
       retryReads: process.env['MONGODB_RETRY_READS'] !== 'false',
-      bufferMaxEntries: parseInt(process.env['MONGODB_BUFFER_MAX_ENTRIES'] || '0'),
+      bufferMaxEntries: parseInt(
+        process.env['MONGODB_BUFFER_MAX_ENTRIES'] || '0'
+      ),
       bufferCommands: process.env['MONGODB_BUFFER_COMMANDS'] !== 'false',
     },
     redis: {
@@ -73,13 +92,15 @@ export const config = {
       family: parseInt(process.env['REDIS_FAMILY'] || '4'),
       connectTimeout: parseInt(process.env['REDIS_CONNECT_TIMEOUT'] || '10000'),
       commandTimeout: parseInt(process.env['REDIS_COMMAND_TIMEOUT'] || '5000'),
-      maxLoadingTimeout: parseInt(process.env['REDIS_MAX_LOADING_TIMEOUT'] || '5000'),
+      maxLoadingTimeout: parseInt(
+        process.env['REDIS_MAX_LOADING_TIMEOUT'] || '5000'
+      ),
       enableReadyCheck: process.env['REDIS_ENABLE_READY_CHECK'] !== 'false',
       maxMemoryPolicy: process.env['REDIS_MAX_MEMORY_POLICY'] || 'allkeys-lru',
       clusterEnabled: process.env['REDIS_CLUSTER_ENABLED'] === 'true',
-      clusterNodes: process.env['REDIS_CLUSTER_NODES'] ?
-        JSON.parse(process.env['REDIS_CLUSTER_NODES']) :
-        undefined,
+      clusterNodes: process.env['REDIS_CLUSTER_NODES']
+        ? JSON.parse(process.env['REDIS_CLUSTER_NODES'])
+        : undefined,
     },
     migrations: {
       autoRun: process.env['MIGRATIONS_AUTO_RUN'] !== 'false',
@@ -91,7 +112,8 @@ export const config = {
   // Security
   security: {
     jwt: {
-      secret: process.env['JWT_SECRET'] || 'your-secret-key-change-in-production',
+      secret:
+        process.env['JWT_SECRET'] || 'your-secret-key-change-in-production',
       accessTokenExpiry: process.env['JWT_ACCESS_EXPIRY'] || '15m',
       refreshTokenExpiry: process.env['JWT_REFRESH_EXPIRY'] || '7d',
       algorithm: 'HS256',
@@ -119,8 +141,12 @@ export const config = {
       max: parseInt(process.env['RATE_LIMIT_MAX'] || '100'),
       authWindowMs: parseInt(process.env['RATE_LIMIT_AUTH_WINDOW'] || '900000'), // 15 minutes
       authMax: parseInt(process.env['RATE_LIMIT_AUTH_MAX'] || '5'),
-      passwordResetWindowMs: parseInt(process.env['RATE_LIMIT_PASSWORD_RESET_WINDOW'] || '3600000'), // 1 hour
-      passwordResetMax: parseInt(process.env['RATE_LIMIT_PASSWORD_RESET_MAX'] || '3'),
+      passwordResetWindowMs: parseInt(
+        process.env['RATE_LIMIT_PASSWORD_RESET_WINDOW'] || '3600000'
+      ), // 1 hour
+      passwordResetMax: parseInt(
+        process.env['RATE_LIMIT_PASSWORD_RESET_MAX'] || '3'
+      ),
       mfaWindowMs: parseInt(process.env['RATE_LIMIT_MFA_WINDOW'] || '300000'), // 5 minutes
       mfaMax: parseInt(process.env['RATE_LIMIT_MFA_MAX'] || '10'),
     },
@@ -137,7 +163,9 @@ export const config = {
     },
     cors: {
       enabled: process.env['CORS_ENABLED'] !== 'false',
-      origins: process.env['CORS_ORIGINS'] ? process.env['CORS_ORIGINS'].split(',') : ['http://localhost:3000'],
+      origins: process.env['CORS_ORIGINS']
+        ? process.env['CORS_ORIGINS'].split(',')
+        : ['http://localhost:3000'],
       credentials: process.env['CORS_CREDENTIALS'] !== 'false',
     },
   },
@@ -146,7 +174,9 @@ export const config = {
   monitoring: {
     enabled: process.env['MONITORING_ENABLED'] !== 'false',
     metricsEndpoint: process.env['METRICS_ENDPOINT'] || '/metrics',
-    healthCheckInterval: parseInt(process.env['HEALTH_CHECK_INTERVAL'] || '30000'),
+    healthCheckInterval: parseInt(
+      process.env['HEALTH_CHECK_INTERVAL'] || '30000'
+    ),
   },
 
   // Development

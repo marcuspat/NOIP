@@ -15,7 +15,7 @@ describe('Security Tests', () => {
     // Build test image for security testing
     try {
       execSync(`docker build -t ${testImage} -f docker/Dockerfile .`, {
-        stdio: 'inherit'
+        stdio: 'inherit',
       });
     } catch (error) {
       console.log('Could not build test image, using existing image');
@@ -36,7 +36,7 @@ describe('Security Tests', () => {
     test('should not run as root user', () => {
       try {
         const userOutput = execSync(`docker run --rm ${testImage} whoami`, {
-          encoding: 'utf8'
+          encoding: 'utf8',
         }).trim();
 
         expect(userOutput).not.toBe('root');
@@ -48,9 +48,12 @@ describe('Security Tests', () => {
 
     test('should have minimal capabilities', () => {
       try {
-        const capsOutput = execSync(`docker run --rm ${testImage} capsh --print`, {
-          encoding: 'utf8'
-        });
+        const capsOutput = execSync(
+          `docker run --rm ${testImage} capsh --print`,
+          {
+            encoding: 'utf8',
+          }
+        );
 
         // Check for dangerous capabilities
         expect(capsOutput).not.toContain('CAP_SYS_ADMIN');
@@ -65,9 +68,12 @@ describe('Security Tests', () => {
 
     test('should have no SUID/SGID binaries', () => {
       try {
-        execSync(`docker run --rm ${testImage} find / -perm /6000 -type f 2>/dev/null | wc -l`, {
-          encoding: 'utf8'
-        });
+        execSync(
+          `docker run --rm ${testImage} find / -perm /6000 -type f 2>/dev/null | wc -l`,
+          {
+            encoding: 'utf8',
+          }
+        );
       } catch (error) {
         // This is expected to return no results
       }
@@ -75,18 +81,24 @@ describe('Security Tests', () => {
 
     test('should not have world-writable files', () => {
       try {
-        const writableFiles = execSync(`docker run --rm ${testImage} find / -perm -002 -type f 2>/dev/null`, {
-          encoding: 'utf8'
-        });
+        const writableFiles = execSync(
+          `docker run --rm ${testImage} find / -perm -002 -type f 2>/dev/null`,
+          {
+            encoding: 'utf8',
+          }
+        );
 
         // Should not have world-writable files except in specific safe directories
-        const lines = writableFiles.split('\n').filter(line =>
-          line.trim() &&
-          !line.includes('/tmp/') &&
-          !line.includes('/var/tmp/') &&
-          !line.includes('/proc/') &&
-          !line.includes('/sys/')
-        );
+        const lines = writableFiles
+          .split('\n')
+          .filter(
+            line =>
+              line.trim() &&
+              !line.includes('/tmp/') &&
+              !line.includes('/var/tmp/') &&
+              !line.includes('/proc/') &&
+              !line.includes('/sys/')
+          );
 
         expect(lines).toHaveLength(0);
       } catch (error) {
@@ -97,7 +109,7 @@ describe('Security Tests', () => {
     test('should have secure default umask', () => {
       try {
         const umaskOutput = execSync(`docker run --rm ${testImage} umask`, {
-          encoding: 'utf8'
+          encoding: 'utf8',
         }).trim();
 
         // Should have restrictive umask (0022, 0027, or 0077)
@@ -110,15 +122,20 @@ describe('Security Tests', () => {
     test('should not have clear text passwords in image', () => {
       try {
         // Run container and search for potential passwords
-        const result = execSync(`docker run --rm ${testImage} grep -r "password\\|secret\\|key" /etc/ /usr/local/ /app/ 2>/dev/null || true`, {
-          encoding: 'utf8'
-        });
+        const result = execSync(
+          `docker run --rm ${testImage} grep -r "password\\|secret\\|key" /etc/ /usr/local/ /app/ 2>/dev/null || true`,
+          {
+            encoding: 'utf8',
+          }
+        );
 
         const lines = result.split('\n').filter(line => line.trim());
 
         // If any lines found, they should not contain obvious passwords
         for (const line of lines) {
-          expect(line.toLowerCase()).not.toMatch(/password\s*=\s*["'][^"']+["']/);
+          expect(line.toLowerCase()).not.toMatch(
+            /password\s*=\s*["'][^"']+["']/
+          );
           expect(line.toLowerCase()).not.toMatch(/secret\s*=\s*["'][^"']+["']/);
           expect(line.toLowerCase()).not.toMatch(/key\s*=\s*["'][^"']+["']/);
         }
@@ -140,7 +157,9 @@ describe('Security Tests', () => {
       const dockerfileContent = fs.readFileSync('docker/Dockerfile', 'utf8');
 
       // Should not include development tools in production
-      expect(dockerfileContent).not.toMatch(/npm\s+install\s+--dev|apt-get\s+install\s+vim|apt-get\s+install\s+nano/);
+      expect(dockerfileContent).not.toMatch(
+        /npm\s+install\s+--dev|apt-get\s+install\s+vim|apt-get\s+install\s+nano/
+      );
     });
 
     test('should have proper LABEL metadata', () => {
@@ -154,7 +173,8 @@ describe('Security Tests', () => {
     test('should pass vulnerability scanning', async () => {
       try {
         // Try to run Trivy if available
-        execSync(`docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+        execSync(
+          `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
           aquasec/trivy:latest image --exit-code 0 --severity MEDIUM,HIGH,CRITICAL ${testImage}`,
           { stdio: 'pipe' }
         );
@@ -208,7 +228,9 @@ describe('Security Tests', () => {
         expect(content).toContain('RoleBinding');
 
         // Check that roles are specific and not overly permissive
-        expect(content).toMatch(/verbs:\s*\[(\s*["']?(get|list|watch)["']?\s*(,\s*["']?(get|list|watch)["']?\s*)*\s*\]/);
+        expect(content).toMatch(
+          /verbs:\s*\[(\s*["']?(get|list|watch)["']?\s*(,\s*["']?(get|list|watch)["']?\s*)*\s*\]/
+        );
       }
     });
 
@@ -252,21 +274,24 @@ describe('Security Tests', () => {
         '/config',
         '/env',
         '/dump',
-        '/trace'
+        '/trace',
       ];
 
       for (const endpoint of sensitiveEndpoints) {
         try {
           const containerId = execSync(`docker run -d ${testImage}`, {
-            encoding: 'utf8'
+            encoding: 'utf8',
           }).trim();
 
           await new Promise(resolve => setTimeout(resolve, 5000));
 
           try {
-            execSync(`docker exec ${containerId} curl -f http://localhost:3000${endpoint}`, {
-              stdio: 'pipe'
-            });
+            execSync(
+              `docker exec ${containerId} curl -f http://localhost:3000${endpoint}`,
+              {
+                stdio: 'pipe',
+              }
+            );
             // If this succeeds, the endpoint might be exposed - this could be a security issue
             console.warn(`Potentially sensitive endpoint exposed: ${endpoint}`);
           } catch (error) {
@@ -282,15 +307,18 @@ describe('Security Tests', () => {
 
     test('should have proper security headers', async () => {
       try {
-        const containerId = execSync(`docker run -d -p 3002:3000 ${testImage}`, {
-          encoding: 'utf8'
-        }).trim();
+        const containerId = execSync(
+          `docker run -d -p 3002:3000 ${testImage}`,
+          {
+            encoding: 'utf8',
+          }
+        ).trim();
 
         await new Promise(resolve => setTimeout(resolve, 5000));
 
         try {
           const headers = execSync(`curl -I http://localhost:3002/health`, {
-            encoding: 'utf8'
+            encoding: 'utf8',
           });
 
           // Check for security headers

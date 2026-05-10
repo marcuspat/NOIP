@@ -40,7 +40,7 @@ describe('Authentication Integration Tests', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
       const response = await request(app)
@@ -67,7 +67,7 @@ describe('Authentication Integration Tests', () => {
         password: 'weak', // Too weak
         firstName: '',
         lastName: '',
-        agreeToTerms: false
+        agreeToTerms: false,
       };
 
       const response = await request(app)
@@ -87,19 +87,16 @@ describe('Authentication Integration Tests', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
       // First registration should succeed
-      await request(app)
-        .post('/auth/register')
-        .send(userData)
-        .expect(201);
+      await request(app).post('/auth/register').send(userData).expect(201);
 
       // Second registration with same username should fail
       const duplicateData = {
         ...userData,
-        email: 'different@example.com'
+        email: 'different@example.com',
       };
 
       const response = await request(app)
@@ -121,12 +118,10 @@ describe('Authentication Integration Tests', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
-      await request(app)
-        .post('/auth/register')
-        .send(userData);
+      await request(app).post('/auth/register').send(userData);
 
       // Verify and activate the user
       const user = await UserModel.findOne({ username: 'testuser' });
@@ -140,7 +135,7 @@ describe('Authentication Integration Tests', () => {
     it('should login user successfully with correct credentials', async () => {
       const loginData = {
         username: 'testuser',
-        password: 'SecurePass123!'
+        password: 'SecurePass123!',
       };
 
       const response = await request(app)
@@ -163,7 +158,7 @@ describe('Authentication Integration Tests', () => {
     it('should reject login with incorrect password', async () => {
       const loginData = {
         username: 'testuser',
-        password: 'wrongpassword'
+        password: 'wrongpassword',
       };
 
       const response = await request(app)
@@ -178,7 +173,7 @@ describe('Authentication Integration Tests', () => {
     it('should reject login with non-existent user', async () => {
       const loginData = {
         username: 'nonexistent',
-        password: 'password'
+        password: 'password',
       };
 
       const response = await request(app)
@@ -193,14 +188,12 @@ describe('Authentication Integration Tests', () => {
     it('should handle rate limiting for repeated failed attempts', async () => {
       const loginData = {
         username: 'testuser',
-        password: 'wrongpassword'
+        password: 'wrongpassword',
       };
 
       // Make multiple failed attempts
       for (let i = 0; i < 6; i++) {
-        await request(app)
-          .post('/auth/login')
-          .send(loginData);
+        await request(app).post('/auth/login').send(loginData);
       }
 
       // Next attempt should be rate limited
@@ -224,12 +217,10 @@ describe('Authentication Integration Tests', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
-      await request(app)
-        .post('/auth/register')
-        .send(userData);
+      await request(app).post('/auth/register').send(userData);
 
       // Verify and activate the user
       const user = await UserModel.findOne({ username: 'testuser' });
@@ -240,12 +231,10 @@ describe('Authentication Integration Tests', () => {
       }
 
       // Login to get token
-      const loginResponse = await request(app)
-        .post('/auth/login')
-        .send({
-          username: 'testuser',
-          password: 'SecurePass123!'
-        });
+      const loginResponse = await request(app).post('/auth/login').send({
+        username: 'testuser',
+        password: 'SecurePass123!',
+      });
 
       accessToken = loginResponse.body.data.tokens.accessToken;
     });
@@ -262,9 +251,7 @@ describe('Authentication Integration Tests', () => {
     });
 
     it('should reject profile request without token', async () => {
-      const response = await request(app)
-        .get('/auth/profile')
-        .expect(401);
+      const response = await request(app).get('/auth/profile').expect(401);
 
       expect(response.body.error).toContain('Authentication required');
     });
@@ -291,12 +278,10 @@ describe('Authentication Integration Tests', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
-      await request(app)
-        .post('/auth/register')
-        .send(userData);
+      await request(app).post('/auth/register').send(userData);
 
       // Verify and activate the user
       const user = await UserModel.findOne({ username: 'testuser' });
@@ -307,12 +292,10 @@ describe('Authentication Integration Tests', () => {
       }
 
       // Login to get tokens
-      const loginResponse = await request(app)
-        .post('/auth/login')
-        .send({
-          username: 'testuser',
-          password: 'SecurePass123!'
-        });
+      const loginResponse = await request(app).post('/auth/login').send({
+        username: 'testuser',
+        password: 'SecurePass123!',
+      });
 
       accessToken = loginResponse.body.data.tokens.accessToken;
       refreshToken = loginResponse.body.data.tokens.refreshToken;
@@ -334,9 +317,7 @@ describe('Authentication Integration Tests', () => {
     });
 
     it('should reject logout without authentication', async () => {
-      const response = await request(app)
-        .post('/auth/logout')
-        .expect(401);
+      const response = await request(app).post('/auth/logout').expect(401);
 
       expect(response.body.error).toContain('Authentication required');
     });
@@ -353,12 +334,10 @@ describe('Authentication Integration Tests', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
-      await request(app)
-        .post('/auth/register')
-        .send(userData);
+      await request(app).post('/auth/register').send(userData);
 
       // Verify and activate the user
       const user = await UserModel.findOne({ username: 'testuser' });
@@ -369,12 +348,10 @@ describe('Authentication Integration Tests', () => {
       }
 
       // Login to get token
-      const loginResponse = await request(app)
-        .post('/auth/login')
-        .send({
-          username: 'testuser',
-          password: 'SecurePass123!'
-        });
+      const loginResponse = await request(app).post('/auth/login').send({
+        username: 'testuser',
+        password: 'SecurePass123!',
+      });
 
       accessToken = loginResponse.body.data.tokens.accessToken;
     });
@@ -383,7 +360,7 @@ describe('Authentication Integration Tests', () => {
       const passwordData = {
         currentPassword: 'SecurePass123!',
         newPassword: 'NewSecurePass456!',
-        confirmPassword: 'NewSecurePass456!'
+        confirmPassword: 'NewSecurePass456!',
       };
 
       const response = await request(app)
@@ -400,7 +377,7 @@ describe('Authentication Integration Tests', () => {
         .post('/auth/login')
         .send({
           username: 'testuser',
-          password: 'SecurePass123!'
+          password: 'SecurePass123!',
         })
         .expect(401);
 
@@ -411,7 +388,7 @@ describe('Authentication Integration Tests', () => {
         .post('/auth/login')
         .send({
           username: 'testuser',
-          password: 'NewSecurePass456!'
+          password: 'NewSecurePass456!',
         })
         .expect(200);
 
@@ -422,7 +399,7 @@ describe('Authentication Integration Tests', () => {
       const passwordData = {
         currentPassword: 'wrongpassword',
         newPassword: 'NewSecurePass456!',
-        confirmPassword: 'NewSecurePass456!'
+        confirmPassword: 'NewSecurePass456!',
       };
 
       const response = await request(app)
@@ -439,7 +416,7 @@ describe('Authentication Integration Tests', () => {
       const passwordData = {
         currentPassword: 'SecurePass123!',
         newPassword: 'weak',
-        confirmPassword: 'weak'
+        confirmPassword: 'weak',
       };
 
       const response = await request(app)
@@ -462,17 +439,15 @@ describe('Authentication Integration Tests', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
-      await request(app)
-        .post('/auth/register')
-        .send(userData);
+      await request(app).post('/auth/register').send(userData);
     });
 
     it('should request password reset successfully', async () => {
       const resetData = {
-        email: 'test@example.com'
+        email: 'test@example.com',
       };
 
       const response = await request(app)
@@ -486,7 +461,7 @@ describe('Authentication Integration Tests', () => {
 
     it('should handle password reset for non-existent email gracefully', async () => {
       const resetData = {
-        email: 'nonexistent@example.com'
+        email: 'nonexistent@example.com',
       };
 
       const response = await request(app)
@@ -500,7 +475,7 @@ describe('Authentication Integration Tests', () => {
 
     it('should reject password reset with invalid email', async () => {
       const resetData = {
-        email: 'invalid-email'
+        email: 'invalid-email',
       };
 
       const response = await request(app)
@@ -515,9 +490,7 @@ describe('Authentication Integration Tests', () => {
 
   describe('GET /auth/health', () => {
     it('should return healthy status', async () => {
-      const response = await request(app)
-        .get('/auth/health')
-        .expect(200);
+      const response = await request(app).get('/auth/health').expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.data.status).toBe('healthy');
@@ -526,9 +499,7 @@ describe('Authentication Integration Tests', () => {
 
   describe('Security Headers', () => {
     it('should include security headers', async () => {
-      const response = await request(app)
-        .get('/auth/health')
-        .expect(200);
+      const response = await request(app).get('/auth/health').expect(200);
 
       // Check for common security headers
       expect(response.headers).toBeDefined();
@@ -554,7 +525,7 @@ describe('Authentication Integration Tests', () => {
         .post('/auth/login')
         .send({
           username: 'nonexistent',
-          password: 'wrongpassword'
+          password: 'wrongpassword',
         })
         .expect(401);
 

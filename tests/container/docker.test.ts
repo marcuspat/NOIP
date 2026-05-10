@@ -16,7 +16,7 @@ describe('Docker Container Tests', () => {
     // Build test image
     console.log('Building test Docker image...');
     execSync(`docker build -t ${imageName} -f docker/Dockerfile.test .`, {
-      stdio: 'inherit'
+      stdio: 'inherit',
     });
   });
 
@@ -58,14 +58,19 @@ describe('Docker Container Tests', () => {
   describe('Container Build Tests', () => {
     test('should build successfully', () => {
       expect(() => {
-        execSync(`docker build -t ${imageName} -f docker/Dockerfile .`, { stdio: 'pipe' });
+        execSync(`docker build -t ${imageName} -f docker/Dockerfile .`, {
+          stdio: 'pipe',
+        });
       }).not.toThrow();
     });
 
     test('should have acceptable image size', () => {
-      const output = execSync(`docker images ${imageName} --format "{{.Size}}"`, {
-        encoding: 'utf8'
-      }).trim();
+      const output = execSync(
+        `docker images ${imageName} --format "{{.Size}}"`,
+        {
+          encoding: 'utf8',
+        }
+      ).trim();
 
       // Convert size to MB for comparison
       const sizeMatch = output.match(/(\d+(?:\.\d+)?)([KMGT]?B)/);
@@ -78,7 +83,8 @@ describe('Docker Container Tests', () => {
 
     test('should not have known vulnerabilities', async () => {
       try {
-        execSync(`docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+        execSync(
+          `docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
           aquasec/trivy:latest image --exit-code 0 --severity HIGH,CRITICAL ${imageName}`,
           { stdio: 'pipe' }
         );
@@ -91,7 +97,8 @@ describe('Docker Container Tests', () => {
   describe('Container Runtime Tests', () => {
     test('should start successfully', async () => {
       expect(() => {
-        execSync(`docker run -d --name ${testContainerName} -p 3001:3000 ${imageName}`,
+        execSync(
+          `docker run -d --name ${testContainerName} -p 3001:3000 ${imageName}`,
           { stdio: 'pipe' }
         );
       }).not.toThrow();
@@ -106,7 +113,8 @@ describe('Docker Container Tests', () => {
 
       while (attempts < maxAttempts) {
         try {
-          const response = execSync(`docker exec ${testContainerName} curl -f http://localhost:3000/health`,
+          const response = execSync(
+            `docker exec ${testContainerName} curl -f http://localhost:3000/health`,
             { encoding: 'utf8', stdio: 'pipe' }
           );
           const healthData = JSON.parse(response);
@@ -124,7 +132,7 @@ describe('Docker Container Tests', () => {
 
     test('should have correct environment variables', () => {
       const envOutput = execSync(`docker exec ${testContainerName} env`, {
-        encoding: 'utf8'
+        encoding: 'utf8',
       });
 
       expect(envOutput).toContain('NODE_ENV=production');
@@ -133,16 +141,19 @@ describe('Docker Container Tests', () => {
 
     test('should not run as root', () => {
       const userOutput = execSync(`docker exec ${testContainerName} whoami`, {
-        encoding: 'utf8'
+        encoding: 'utf8',
       }).trim();
 
       expect(userOutput).not.toBe('root');
     });
 
     test('should have limited capabilities', () => {
-      const capsOutput = execSync(`docker exec ${testContainerName} capsh --print`, {
-        encoding: 'utf8'
-      });
+      const capsOutput = execSync(
+        `docker exec ${testContainerName} capsh --print`,
+        {
+          encoding: 'utf8',
+        }
+      );
 
       // Should have minimal capabilities
       expect(capsOutput).not.toContain('CAP_SYS_ADMIN');
@@ -153,7 +164,8 @@ describe('Docker Container Tests', () => {
     test('should start within acceptable time', async () => {
       const startTime = Date.now();
 
-      execSync(`docker run --rm ${imageName} /bin/sh -c "echo 'Container started'"`,
+      execSync(
+        `docker run --rm ${imageName} /bin/sh -c "echo 'Container started'"`,
         { stdio: 'pipe' }
       );
 
@@ -164,17 +176,20 @@ describe('Docker Container Tests', () => {
     test('should have acceptable memory usage', async () => {
       // Run container and check memory usage
       const containerId = execSync(`docker run -d ${imageName}`, {
-        encoding: 'utf8'
+        encoding: 'utf8',
       }).trim();
 
       await new Promise(resolve => setTimeout(resolve, 10000));
 
       try {
-        const statsOutput = execSync(`docker stats --no-stream --format "{{.MemUsage}}" ${containerId}`,
-          { encoding: 'utf8'
-        }).trim();
+        const statsOutput = execSync(
+          `docker stats --no-stream --format "{{.MemUsage}}" ${containerId}`,
+          { encoding: 'utf8' }
+        ).trim();
 
-        const memMatch = statsOutput.match(/(\d+(?:\.\d+)?)([KMGT]?i?B)\/(\d+(?:\.\d+)?)([KMGT]?i?B)/);
+        const memMatch = statsOutput.match(
+          /(\d+(?:\.\d+)?)([KMGT]?i?B)\/(\d+(?:\.\d+)?)([KMGT]?i?B)/
+        );
         if (memMatch) {
           const [, used, usedUnit, total, totalUnit] = memMatch;
           const usedMB = convertToMB(parseFloat(used), usedUnit);
@@ -189,7 +204,7 @@ describe('Docker Container Tests', () => {
   describe('Container Security Tests', () => {
     test('should have read-only filesystem where possible', () => {
       const inspectOutput = execSync(`docker inspect ${testContainerName}`, {
-        encoding: 'utf8'
+        encoding: 'utf8',
       });
 
       const containerConfig = JSON.parse(inspectOutput)[0];
@@ -201,7 +216,7 @@ describe('Docker Container Tests', () => {
 
     test('should not have privileged access', () => {
       const inspectOutput = execSync(`docker inspect ${testContainerName}`, {
-        encoding: 'utf8'
+        encoding: 'utf8',
       });
 
       const containerConfig = JSON.parse(inspectOutput)[0];
@@ -210,7 +225,7 @@ describe('Docker Container Tests', () => {
 
     test('should have no sensitive data in image layers', () => {
       const historyOutput = execSync(`docker history ${imageName}`, {
-        encoding: 'utf8'
+        encoding: 'utf8',
       });
 
       // Check for any obvious sensitive data in layer commands
@@ -221,7 +236,7 @@ describe('Docker Container Tests', () => {
   describe('Container Logging Tests', () => {
     test('should produce structured logs', async () => {
       const logsOutput = execSync(`docker logs ${testContainerName}`, {
-        encoding: 'utf8'
+        encoding: 'utf8',
       });
 
       // Should have JSON structured logs
@@ -230,7 +245,7 @@ describe('Docker Container Tests', () => {
 
     test('should not log sensitive information', async () => {
       const logsOutput = execSync(`docker logs ${testContainerName}`, {
-        encoding: 'utf8'
+        encoding: 'utf8',
       });
 
       // Check for sensitive information in logs
@@ -241,11 +256,13 @@ describe('Docker Container Tests', () => {
   describe('Container Network Tests', () => {
     test('should expose only necessary ports', () => {
       const inspectOutput = execSync(`docker inspect ${testContainerName}`, {
-        encoding: 'utf8'
+        encoding: 'utf8',
       });
 
       const containerConfig = JSON.parse(inspectOutput)[0];
-      const exposedPorts = Object.keys(containerConfig.Config.ExposedPorts || {});
+      const exposedPorts = Object.keys(
+        containerConfig.Config.ExposedPorts || {}
+      );
 
       // Should only expose port 3000
       expect(exposedPorts).toHaveLength(1);
@@ -254,7 +271,7 @@ describe('Docker Container Tests', () => {
 
     test('should bind to correct interfaces', () => {
       const inspectOutput = execSync(`docker inspect ${testContainerName}`, {
-        encoding: 'utf8'
+        encoding: 'utf8',
       });
 
       const containerConfig = JSON.parse(inspectOutput)[0];
@@ -274,15 +291,15 @@ describe('Docker Container Tests', () => {
 // Helper function to convert sizes to MB
 function convertToMB(size: number, unit: string): number {
   const units: { [key: string]: number } = {
-    'B': 1 / (1024 * 1024),
-    'KB': 1 / 1024,
-    'K': 1 / 1024,
-    'MB': 1,
-    'M': 1,
-    'GB': 1024,
-    'G': 1024,
-    'TB': 1024 * 1024,
-    'T': 1024 * 1024
+    B: 1 / (1024 * 1024),
+    KB: 1 / 1024,
+    K: 1 / 1024,
+    MB: 1,
+    M: 1,
+    GB: 1024,
+    G: 1024,
+    TB: 1024 * 1024,
+    T: 1024 * 1024,
   };
 
   return size * (units[unit] || 1);

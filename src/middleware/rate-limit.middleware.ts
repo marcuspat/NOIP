@@ -36,7 +36,7 @@ export class RateLimitMiddleware {
       standardHeaders: true,
       legacyHeaders: false,
       skipSuccessfulRequests: false,
-      skipFailedRequests: false
+      skipFailedRequests: false,
     };
   }
 
@@ -44,9 +44,15 @@ export class RateLimitMiddleware {
   rateLimit = (customConfig: Partial<RateLimitConfig> = {}) => {
     const finalConfig = { ...this.defaultConfig, ...customConfig };
 
-    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    return async (
+      req: Request,
+      res: Response,
+      next: NextFunction
+    ): Promise<void> => {
       try {
-        const key = finalConfig.keyGenerator ? finalConfig.keyGenerator(req) : this.generateKey(req);
+        const key = finalConfig.keyGenerator
+          ? finalConfig.keyGenerator(req)
+          : this.generateKey(req);
         const now = Date.now();
         const windowStart = now - finalConfig.windowMs;
 
@@ -58,9 +64,14 @@ export class RateLimitMiddleware {
           await this.setRateLimitRecord(key, {
             count: 1,
             resetTime: now + finalConfig.windowMs,
-            lastAccess: now
+            lastAccess: now,
           });
-          this.setRateLimitHeaders(res, 1, finalConfig.max, now + finalConfig.windowMs);
+          this.setRateLimitHeaders(
+            res,
+            1,
+            finalConfig.max,
+            now + finalConfig.windowMs
+          );
           return next();
         }
 
@@ -69,10 +80,15 @@ export class RateLimitMiddleware {
           const newRecord = {
             count: 1,
             resetTime: now + finalConfig.windowMs,
-            lastAccess: now
+            lastAccess: now,
           };
           await this.setRateLimitRecord(key, newRecord);
-          this.setRateLimitHeaders(res, 1, finalConfig.max, newRecord.resetTime);
+          this.setRateLimitHeaders(
+            res,
+            1,
+            finalConfig.max,
+            newRecord.resetTime
+          );
           return next();
         }
 
@@ -85,7 +101,7 @@ export class RateLimitMiddleware {
           } else {
             res.status(429).json({
               error: finalConfig.message || 'Too many requests',
-              retryAfter: Math.ceil((record.resetTime - now) / 1000)
+              retryAfter: Math.ceil((record.resetTime - now) / 1000),
             });
           }
           return;
@@ -95,10 +111,15 @@ export class RateLimitMiddleware {
         const newRecord = {
           ...record,
           count: record.count + 1,
-          lastAccess: now
+          lastAccess: now,
         };
         await this.setRateLimitRecord(key, newRecord);
-        this.setRateLimitHeaders(res, newRecord.count, finalConfig.max, record.resetTime);
+        this.setRateLimitHeaders(
+          res,
+          newRecord.count,
+          finalConfig.max,
+          record.resetTime
+        );
 
         next();
       } catch (error) {
@@ -114,7 +135,7 @@ export class RateLimitMiddleware {
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5, // 5 attempts per 15 minutes
     message: 'Too many authentication attempts, please try again later.',
-    keyGenerator: (req) => this.generateAuthKey(req)
+    keyGenerator: req => this.generateAuthKey(req),
   });
 
   // Password reset rate limiting
@@ -122,7 +143,7 @@ export class RateLimitMiddleware {
     windowMs: 60 * 60 * 1000, // 1 hour
     max: 3, // 3 password reset attempts per hour
     message: 'Too many password reset attempts, please try again later.',
-    keyGenerator: (req) => this.generateEmailKey(req)
+    keyGenerator: req => this.generateEmailKey(req),
   });
 
   // MFA verification rate limiting
@@ -130,7 +151,7 @@ export class RateLimitMiddleware {
     windowMs: 5 * 60 * 1000, // 5 minutes
     max: 10, // 10 MFA attempts per 5 minutes
     message: 'Too many MFA verification attempts, please try again later.',
-    keyGenerator: (req) => this.generateUserKey(req)
+    keyGenerator: req => this.generateUserKey(req),
   });
 
   // API rate limiting for authenticated users
@@ -138,15 +159,16 @@ export class RateLimitMiddleware {
     windowMs: 60 * 1000, // 1 minute
     max: 100, // 100 requests per minute for authenticated users
     message: 'API rate limit exceeded, please try again later.',
-    keyGenerator: (req) => this.generateUserKey(req)
+    keyGenerator: req => this.generateUserKey(req),
   });
 
   // Strict API rate limiting for sensitive operations
   strictApiRateLimit = this.rateLimit({
     windowMs: 60 * 1000, // 1 minute
     max: 10, // 10 sensitive operations per minute
-    message: 'Rate limit exceeded for sensitive operations, please try again later.',
-    keyGenerator: (req) => this.generateUserKey(req)
+    message:
+      'Rate limit exceeded for sensitive operations, please try again later.',
+    keyGenerator: req => this.generateUserKey(req),
   });
 
   // IP-based rate limiting for unauthenticated requests
@@ -154,16 +176,22 @@ export class RateLimitMiddleware {
     windowMs: 60 * 1000, // 1 minute
     max: 20, // 20 requests per minute per IP
     message: 'IP rate limit exceeded, please try again later.',
-    keyGenerator: (req) => this.generateIPKey(req)
+    keyGenerator: req => this.generateIPKey(req),
   });
 
   // Progressive rate limiting - gets stricter with repeated violations
   progressiveRateLimit = (baseConfig: Partial<RateLimitConfig> = {}) => {
     const finalConfig = { ...this.defaultConfig, ...baseConfig };
 
-    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    return async (
+      req: Request,
+      res: Response,
+      next: NextFunction
+    ): Promise<void> => {
       try {
-        const key = finalConfig.keyGenerator ? finalConfig.keyGenerator(req) : this.generateKey(req);
+        const key = finalConfig.keyGenerator
+          ? finalConfig.keyGenerator(req)
+          : this.generateKey(req);
         const violationKey = `${key}:violations`;
 
         const violations = await this.getViolationCount(violationKey);
@@ -172,12 +200,12 @@ export class RateLimitMiddleware {
         const progressiveConfig = {
           ...finalConfig,
           max: Math.max(1, Math.floor(finalConfig.max! / multiplier)),
-          windowMs: finalConfig.windowMs! * multiplier
+          windowMs: finalConfig.windowMs! * multiplier,
         };
 
         // Apply the standard rate limit with progressive configuration
         const middleware = this.rateLimit(progressiveConfig);
-        middleware(req, res, (err) => {
+        middleware(req, res, err => {
           if (err) {
             // Rate limit exceeded - increment violation count
             this.incrementViolationCount(violationKey);
@@ -195,17 +223,23 @@ export class RateLimitMiddleware {
   adaptiveRateLimit = (baseConfig: Partial<RateLimitConfig> = {}) => {
     const finalConfig = { ...this.defaultConfig, ...baseConfig };
 
-    return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    return async (
+      req: Request,
+      res: Response,
+      next: NextFunction
+    ): Promise<void> => {
       try {
-        const key = finalConfig.keyGenerator ? finalConfig.keyGenerator(req) : this.generateKey(req);
+        const key = finalConfig.keyGenerator
+          ? finalConfig.keyGenerator(req)
+          : this.generateKey(req);
         const riskScore = await this.calculateRiskScore(req);
 
         // Adjust limits based on risk score (0-100)
-        const riskMultiplier = Math.max(0.1, 1 - (riskScore / 100));
+        const riskMultiplier = Math.max(0.1, 1 - riskScore / 100);
 
         const adaptiveConfig = {
           ...finalConfig,
-          max: Math.max(1, Math.floor(finalConfig.max! * riskMultiplier))
+          max: Math.max(1, Math.floor(finalConfig.max! * riskMultiplier)),
         };
 
         const middleware = this.rateLimit(adaptiveConfig);
@@ -218,10 +252,13 @@ export class RateLimitMiddleware {
   };
 
   // Rate limiting for specific endpoints based on sensitivity
-  createEndpointRateLimit = (endpoint: string, config: Partial<RateLimitConfig>) => {
+  createEndpointRateLimit = (
+    endpoint: string,
+    config: Partial<RateLimitConfig>
+  ) => {
     return this.rateLimit({
       ...config,
-      keyGenerator: (req) => `${this.generateKey(req)}:${endpoint}`
+      keyGenerator: req => `${this.generateKey(req)}:${endpoint}`,
     });
   };
 
@@ -240,7 +277,7 @@ export class RateLimitMiddleware {
       return {
         remaining: Math.max(0, this.defaultConfig.max - record.count),
         resetTime: record.resetTime,
-        total: this.defaultConfig.max
+        total: this.defaultConfig.max,
       };
     } catch (error) {
       logger.error('Failed to get rate limit status', { error, key });
@@ -266,14 +303,19 @@ export class RateLimitMiddleware {
       let deletedCount = 0;
 
       for (const key of keys) {
-        const record = await this.getRateLimitRecord(key.replace('rate_limit:', ''));
+        const record = await this.getRateLimitRecord(
+          key.replace('rate_limit:', '')
+        );
         if (record && Date.now() > record.resetTime) {
           await this.redis.del(key);
           deletedCount++;
         }
       }
 
-      logger.info('Rate limit cleanup completed', { deletedCount, totalKeys: keys.length });
+      logger.info('Rate limit cleanup completed', {
+        deletedCount,
+        totalKeys: keys.length,
+      });
       return deletedCount;
     } catch (error) {
       logger.error('Rate limit cleanup failed', { error });
@@ -281,7 +323,9 @@ export class RateLimitMiddleware {
     }
   }
 
-  private async getRateLimitRecord(key: string): Promise<RateLimitRecord | null> {
+  private async getRateLimitRecord(
+    key: string
+  ): Promise<RateLimitRecord | null> {
     try {
       const data = await this.redis.get(`rate_limit:${key}`);
       return data ? JSON.parse(data) : null;
@@ -291,7 +335,10 @@ export class RateLimitMiddleware {
     }
   }
 
-  private async setRateLimitRecord(key: string, record: RateLimitRecord): Promise<void> {
+  private async setRateLimitRecord(
+    key: string,
+    record: RateLimitRecord
+  ): Promise<void> {
     try {
       const ttl = Math.ceil((record.resetTime - Date.now()) / 1000);
       await this.redis.setex(`rate_limit:${key}`, ttl, JSON.stringify(record));
@@ -376,11 +423,13 @@ export class RateLimitMiddleware {
   }
 
   private getClientIP(req: Request): string {
-    return req.ip ||
-           req.connection.remoteAddress ||
-           req.socket.remoteAddress ||
-           (req.connection as any)?.socket?.remoteAddress ||
-           '127.0.0.1';
+    return (
+      req.ip ||
+      req.connection.remoteAddress ||
+      req.socket.remoteAddress ||
+      (req.connection as any)?.socket?.remoteAddress ||
+      '127.0.0.1'
+    );
   }
 
   private hashString(str: string): string {
@@ -403,7 +452,7 @@ export class RateLimitMiddleware {
       /java/i,
       /headless/i,
       /phantom/i,
-      /selenium/i
+      /selenium/i,
     ];
 
     return suspiciousPatterns.some(pattern => pattern.test(userAgent));
@@ -416,7 +465,7 @@ export class RateLimitMiddleware {
       /^10\./,
       /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
       /^192\.168\./,
-      /^127\./
+      /^127\./,
     ];
 
     return privateRanges.some(range => range.test(ip));
@@ -432,18 +481,23 @@ export class RateLimitMiddleware {
       // XSS patterns
       /((\%3C)|<)((\%2F)|\/)*[a-z0-9\%]+((\%3E)|>)/i,
       // Path traversal
-      /(\.\.\/|\.\.\\)/i
+      /(\.\.\/|\.\.\\)/i,
     ];
 
     const url = req.url;
     const body = JSON.stringify(req.body);
 
-    return suspiciousPatterns.some(pattern =>
-      pattern.test(url) || pattern.test(body)
+    return suspiciousPatterns.some(
+      pattern => pattern.test(url) || pattern.test(body)
     );
   }
 
-  private setRateLimitHeaders(res: Response, count: number, limit: number, resetTime: number): void {
+  private setRateLimitHeaders(
+    res: Response,
+    count: number,
+    limit: number,
+    resetTime: number
+  ): void {
     const remaining = Math.max(0, limit - count);
     const retryAfter = Math.ceil((resetTime - Date.now()) / 1000);
 
@@ -451,11 +505,15 @@ export class RateLimitMiddleware {
       'X-RateLimit-Limit': limit.toString(),
       'X-RateLimit-Remaining': remaining.toString(),
       'X-RateLimit-Reset': Math.ceil(resetTime / 1000).toString(),
-      'Retry-After': retryAfter.toString()
+      'Retry-After': retryAfter.toString(),
     });
   }
 
-  private async createRateLimitEvent(req: Request, count: number, config: RateLimitConfig): Promise<void> {
+  private async createRateLimitEvent(
+    req: Request,
+    count: number,
+    config: RateLimitConfig
+  ): Promise<void> {
     try {
       await SecurityEventModel.createEvent(
         SecurityEventType.LOGIN_FAILURE,
@@ -469,8 +527,8 @@ export class RateLimitMiddleware {
             method: req.method,
             count,
             limit: config.max,
-            windowMs: config.windowMs
-          }
+            windowMs: config.windowMs,
+          },
         }
       );
     } catch (error) {

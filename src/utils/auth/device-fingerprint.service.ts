@@ -16,13 +16,18 @@ export class DeviceFingerprintService {
         this.getTimezoneFingerprint(requestData),
         this.getCanvasFingerprint(), // In browser environment
         this.getWebGLFingerprint(), // In browser environment
-        this.getAudioContextFingerprint() // In browser environment
+        this.getAudioContextFingerprint(), // In browser environment
       ];
 
       const fingerprintString = components.join('|');
-      const hash = crypto.createHash('sha256').update(fingerprintString).digest('hex');
+      const hash = crypto
+        .createHash('sha256')
+        .update(fingerprintString)
+        .digest('hex');
 
-      logger.debug('Device fingerprint generated', { fingerprint: hash.substring(0, 8) + '...' });
+      logger.debug('Device fingerprint generated', {
+        fingerprint: hash.substring(0, 8) + '...',
+      });
       return hash;
     } catch (error) {
       logger.error('Failed to generate device fingerprint', { error });
@@ -33,7 +38,9 @@ export class DeviceFingerprintService {
 
   extractDeviceInfo(requestData?: any): DeviceInfo {
     try {
-      const userAgent = this.parseUserAgent(requestData?.userAgent || 'Unknown');
+      const userAgent = this.parseUserAgent(
+        requestData?.userAgent || 'Unknown'
+      );
 
       return {
         platform: userAgent.platform || 'Unknown',
@@ -41,7 +48,7 @@ export class DeviceFingerprintService {
         version: userAgent.version || 'Unknown',
         mobile: userAgent.mobile || false,
         trusted: false, // Will be updated based on user preferences
-        lastSeen: new Date()
+        lastSeen: new Date(),
       };
     } catch (error) {
       logger.error('Failed to extract device info', { error });
@@ -51,12 +58,15 @@ export class DeviceFingerprintService {
         version: 'Unknown',
         mobile: false,
         trusted: false,
-        lastSeen: new Date()
+        lastSeen: new Date(),
       };
     }
   }
 
-  verifyDeviceFingerprint(storedFingerprint: string, currentFingerprint: string): {
+  verifyDeviceFingerprint(
+    storedFingerprint: string,
+    currentFingerprint: string
+  ): {
     isValid: boolean;
     confidence: number;
     reasons: string[];
@@ -70,7 +80,10 @@ export class DeviceFingerprintService {
     }
 
     // If fingerprints don't match exactly, calculate similarity
-    const similarity = this.calculateFingerprintSimilarity(storedFingerprint, currentFingerprint);
+    const similarity = this.calculateFingerprintSimilarity(
+      storedFingerprint,
+      currentFingerprint
+    );
     confidence = Math.round(similarity * 100);
 
     if (confidence >= 80) {
@@ -129,20 +142,20 @@ export class DeviceFingerprintService {
         fingerprint: fingerprint.substring(0, 8) + '...',
         isKnownDevice,
         isNewLocation,
-        riskScore
+        riskScore,
       });
 
       return {
         isKnownDevice,
         isNewLocation,
-        riskScore: Math.min(100, riskScore)
+        riskScore: Math.min(100, riskScore),
       };
     } catch (error) {
       logger.error('Failed to track device activity', { error, userId });
       return {
         isKnownDevice: false,
         isNewLocation: true,
-        riskScore: 50
+        riskScore: 50,
       };
     }
   }
@@ -152,14 +165,18 @@ export class DeviceFingerprintService {
     return false; // Mock implementation
   }
 
-  async trustDevice(userId: string, fingerprint: string, duration: number = 30): Promise<void> {
+  async trustDevice(
+    userId: string,
+    fingerprint: string,
+    duration: number = 30
+  ): Promise<void> {
     try {
       // In a real implementation, this would add the device to trusted devices
       // Duration is in days
       logger.info('Device marked as trusted', {
         userId,
         fingerprint: fingerprint.substring(0, 8) + '...',
-        duration
+        duration,
       });
     } catch (error) {
       logger.error('Failed to trust device', { error, userId });
@@ -172,7 +189,7 @@ export class DeviceFingerprintService {
       // In a real implementation, this would remove the device from trusted devices
       logger.info('Device trust revoked', {
         userId,
-        fingerprint: fingerprint.substring(0, 8) + '...'
+        fingerprint: fingerprint.substring(0, 8) + '...',
       });
     } catch (error) {
       logger.error('Failed to revoke device trust', { error, userId });
@@ -180,13 +197,15 @@ export class DeviceFingerprintService {
     }
   }
 
-  getDeviceFingerprintHistory(userId: string): Promise<Array<{
-    fingerprint: string;
-    deviceInfo: DeviceInfo;
-    lastSeen: Date;
-    isTrusted: boolean;
-    riskScore: number;
-  }>> {
+  getDeviceFingerprintHistory(userId: string): Promise<
+    Array<{
+      fingerprint: string;
+      deviceInfo: DeviceInfo;
+      lastSeen: Date;
+      isTrusted: boolean;
+      riskScore: number;
+    }>
+  > {
     // In a real implementation, this would return the device history from the database
     return Promise.resolve([]);
   }
@@ -205,7 +224,11 @@ export class DeviceFingerprintService {
   private getTimezoneFingerprint(requestData?: any): string {
     if (!requestData) return 'unknown';
 
-    return requestData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
+    return (
+      requestData.timezone ||
+      Intl.DateTimeFormat().resolvedOptions().timeZone ||
+      'unknown'
+    );
   }
 
   private getCanvasFingerprint(): string {
@@ -258,7 +281,8 @@ export class DeviceFingerprintService {
     }
 
     // Check for mobile
-    const mobile = ua.includes('mobile') || ua.includes('android') || ua.includes('ios');
+    const mobile =
+      ua.includes('mobile') || ua.includes('android') || ua.includes('ios');
 
     return { name, version, platform, mobile };
   }
@@ -285,7 +309,7 @@ export class DeviceFingerprintService {
       /wget/i,
       /python/i,
       /java/i,
-      /headless/i
+      /headless/i,
     ];
 
     return suspiciousPatterns.some(pattern => pattern.test(userAgent));
@@ -294,14 +318,14 @@ export class DeviceFingerprintService {
   private isAnonymousIP(ipAddress: string): boolean {
     // Check for common anonymous/proxy IP ranges
     const anonymousRanges = [
-      /^10\./,           // Private network
+      /^10\./, // Private network
       /^172\.(1[6-9]|2[0-9]|3[0-1])\./, // Private network
-      /^192\.168\./,     // Private network
-      /^127\./,          // Loopback
-      /^169\.254\./,     // Link-local
-      /^::1$/,           // IPv6 loopback
-      /^fc00:/,          // IPv6 private
-      /^fe80:/           // IPv6 link-local
+      /^192\.168\./, // Private network
+      /^127\./, // Loopback
+      /^169\.254\./, // Link-local
+      /^::1$/, // IPv6 loopback
+      /^fc00:/, // IPv6 private
+      /^fe80:/, // IPv6 link-local
     ];
 
     return anonymousRanges.some(range => range.test(ipAddress));

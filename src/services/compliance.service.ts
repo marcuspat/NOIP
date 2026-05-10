@@ -19,7 +19,11 @@ export interface ComplianceControl {
   requirement: string;
   implementation: string;
   evidence: ComplianceEvidence[];
-  status: 'compliant' | 'non-compliant' | 'partially-compliant' | 'not-assessed';
+  status:
+    | 'compliant'
+    | 'non-compliant'
+    | 'partially-compliant'
+    | 'not-assessed';
   riskLevel: 'low' | 'medium' | 'high' | 'critical';
   lastAssessed: Date;
   nextAssessment: Date;
@@ -30,7 +34,13 @@ export interface ComplianceControl {
 
 export interface ComplianceEvidence {
   id: string;
-  type: 'automated' | 'manual' | 'document' | 'screenshot' | 'log' | 'configuration';
+  type:
+    | 'automated'
+    | 'manual'
+    | 'document'
+    | 'screenshot'
+    | 'log'
+    | 'configuration';
   description: string;
   source: string;
   timestamp: Date;
@@ -86,7 +96,11 @@ export interface ComplianceControlResult {
   controlId: string;
   title: string;
   category: string;
-  status: 'compliant' | 'non-compliant' | 'partially-compliant' | 'not-assessed';
+  status:
+    | 'compliant'
+    | 'non-compliant'
+    | 'partially-compliant'
+    | 'not-assessed';
   score: number;
   riskLevel: 'low' | 'medium' | 'high' | 'critical';
   lastAssessed: Date;
@@ -136,10 +150,26 @@ export interface ComplianceTrendAnalysis {
     trend: 'improving' | 'stable' | 'declining';
   };
   riskTrends: {
-    critical: { current: number; previous: number; trend: 'increasing' | 'stable' | 'decreasing' };
-    high: { current: number; previous: number; trend: 'increasing' | 'stable' | 'decreasing' };
-    medium: { current: number; previous: number; trend: 'increasing' | 'stable' | 'decreasing' };
-    low: { current: number; previous: number; trend: 'increasing' | 'stable' | 'decreasing' };
+    critical: {
+      current: number;
+      previous: number;
+      trend: 'increasing' | 'stable' | 'decreasing';
+    };
+    high: {
+      current: number;
+      previous: number;
+      trend: 'increasing' | 'stable' | 'decreasing';
+    };
+    medium: {
+      current: number;
+      previous: number;
+      trend: 'increasing' | 'stable' | 'decreasing';
+    };
+    low: {
+      current: number;
+      previous: number;
+      trend: 'increasing' | 'stable' | 'decreasing';
+    };
   };
   categoryTrends: Array<{
     category: string;
@@ -191,7 +221,7 @@ export class ComplianceService extends BaseService {
     this.frameworks.set('noip-enterprise', this.createNOIPFramework());
 
     this.logOperation('Compliance frameworks initialized', {
-      frameworks: Array.from(this.frameworks.keys())
+      frameworks: Array.from(this.frameworks.keys()),
     });
   }
 
@@ -202,9 +232,12 @@ export class ComplianceService extends BaseService {
         id: 'CC1.1',
         category: 'Security',
         title: 'Inventory of Information Systems',
-        description: 'The entity maintains an inventory of information systems.',
-        requirement: 'Maintain a comprehensive inventory of all information systems including hardware, software, and network components.',
-        implementation: 'Automated discovery and inventory management through NOIP platform',
+        description:
+          'The entity maintains an inventory of information systems.',
+        requirement:
+          'Maintain a comprehensive inventory of all information systems including hardware, software, and network components.',
+        implementation:
+          'Automated discovery and inventory management through NOIP platform',
         evidence: [],
         status: 'compliant',
         riskLevel: 'medium',
@@ -212,15 +245,18 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
         owner: 'Infrastructure Team',
         automatedTesting: true,
-        testFrequency: 'monthly'
+        testFrequency: 'monthly',
       },
       {
         id: 'CC2.1',
         category: 'Security',
         title: 'Use of Privileged Accounts',
-        description: 'The entity restricts the use of privileged accounts to specified personnel.',
-        requirement: 'Implement and enforce access controls for privileged accounts with proper authentication and authorization.',
-        implementation: 'Role-based access control (RBAC) with MFA enforcement for all privileged operations',
+        description:
+          'The entity restricts the use of privileged accounts to specified personnel.',
+        requirement:
+          'Implement and enforce access controls for privileged accounts with proper authentication and authorization.',
+        implementation:
+          'Role-based access control (RBAC) with MFA enforcement for all privileged operations',
         evidence: [],
         status: 'compliant',
         riskLevel: 'high',
@@ -228,15 +264,18 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         owner: 'Security Team',
         automatedTesting: true,
-        testFrequency: 'weekly'
+        testFrequency: 'weekly',
       },
       {
         id: 'CC3.1',
         category: 'Security',
         title: 'System Boundaries',
-        description: 'The entity identifies system boundaries and all system components.',
-        requirement: 'Document and maintain system architecture diagrams showing all components and data flows.',
-        implementation: 'Automated infrastructure discovery and visualization through NOIP dashboard',
+        description:
+          'The entity identifies system boundaries and all system components.',
+        requirement:
+          'Document and maintain system architecture diagrams showing all components and data flows.',
+        implementation:
+          'Automated infrastructure discovery and visualization through NOIP dashboard',
         evidence: [],
         status: 'compliant',
         riskLevel: 'low',
@@ -244,7 +283,7 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
         owner: 'Architecture Team',
         automatedTesting: true,
-        testFrequency: 'quarterly'
+        testFrequency: 'quarterly',
       },
       // Availability Category
       {
@@ -252,8 +291,10 @@ export class ComplianceService extends BaseService {
         category: 'Availability',
         title: 'Availability Monitoring',
         description: 'The entity monitors system availability and performance.',
-        requirement: 'Implement comprehensive monitoring of system availability and performance metrics.',
-        implementation: 'Real-time monitoring dashboard with automated alerting for service degradation',
+        requirement:
+          'Implement comprehensive monitoring of system availability and performance metrics.',
+        implementation:
+          'Real-time monitoring dashboard with automated alerting for service degradation',
         evidence: [],
         status: 'compliant',
         riskLevel: 'medium',
@@ -261,16 +302,19 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         owner: 'Operations Team',
         automatedTesting: true,
-        testFrequency: 'daily'
+        testFrequency: 'daily',
       },
       // Processing Integrity Category
       {
         id: 'CC8.1',
         category: 'Processing Integrity',
         title: 'Data Processing Accuracy',
-        description: 'The entity implements controls to ensure data processing is accurate, complete, and valid.',
-        requirement: 'Validate and verify data processing accuracy at critical points.',
-        implementation: 'Automated data validation and integrity checks in all processing pipelines',
+        description:
+          'The entity implements controls to ensure data processing is accurate, complete, and valid.',
+        requirement:
+          'Validate and verify data processing accuracy at critical points.',
+        implementation:
+          'Automated data validation and integrity checks in all processing pipelines',
         evidence: [],
         status: 'compliant',
         riskLevel: 'medium',
@@ -278,7 +322,7 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         owner: 'Development Team',
         automatedTesting: true,
-        testFrequency: 'weekly'
+        testFrequency: 'weekly',
       },
       // Confidentiality Category
       {
@@ -286,8 +330,10 @@ export class ComplianceService extends BaseService {
         category: 'Confidentiality',
         title: 'Data Encryption',
         description: 'The entity encrypts data at rest and in transit.',
-        requirement: 'Implement encryption for sensitive data both at rest and during transmission.',
-        implementation: 'AES-256 encryption for data at rest, TLS 1.3 for data in transit',
+        requirement:
+          'Implement encryption for sensitive data both at rest and during transmission.',
+        implementation:
+          'AES-256 encryption for data at rest, TLS 1.3 for data in transit',
         evidence: [],
         status: 'compliant',
         riskLevel: 'high',
@@ -295,7 +341,7 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         owner: 'Security Team',
         automatedTesting: true,
-        testFrequency: 'weekly'
+        testFrequency: 'weekly',
       },
       // Privacy Category
       {
@@ -303,8 +349,10 @@ export class ComplianceService extends BaseService {
         category: 'Privacy',
         title: 'Privacy Notice',
         description: 'The entity provides a privacy notice to customers.',
-        requirement: 'Maintain and provide clear privacy notices describing data collection and usage practices.',
-        implementation: 'Comprehensive privacy policy and data handling documentation',
+        requirement:
+          'Maintain and provide clear privacy notices describing data collection and usage practices.',
+        implementation:
+          'Comprehensive privacy policy and data handling documentation',
         evidence: [],
         status: 'partially-compliant',
         riskLevel: 'low',
@@ -312,17 +360,18 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
         owner: 'Legal Team',
         automatedTesting: false,
-        testFrequency: 'quarterly'
-      }
+        testFrequency: 'quarterly',
+      },
     ];
 
     return {
       name: 'SOC 2 Type II',
       version: '2017',
-      description: 'Service Organization Control 2 Type II compliance framework for security, availability, processing integrity, confidentiality, and privacy',
+      description:
+        'Service Organization Control 2 Type II compliance framework for security, availability, processing integrity, confidentiality, and privacy',
       controls,
       lastUpdated: new Date(),
-      nextReview: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      nextReview: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
     };
   }
 
@@ -333,9 +382,12 @@ export class ComplianceService extends BaseService {
         id: 'A.5.1',
         category: 'Information Security Policies',
         title: 'Policies for Information Security',
-        description: 'A set of policies for information security shall be defined, approved by management, published and communicated to employees and relevant external parties.',
-        requirement: 'Comprehensive information security policies covering all aspects of the organization.',
-        implementation: 'Information Security Policy, Acceptable Use Policy, Incident Response Policy',
+        description:
+          'A set of policies for information security shall be defined, approved by management, published and communicated to employees and relevant external parties.',
+        requirement:
+          'Comprehensive information security policies covering all aspects of the organization.',
+        implementation:
+          'Information Security Policy, Acceptable Use Policy, Incident Response Policy',
         evidence: [],
         status: 'compliant',
         riskLevel: 'medium',
@@ -343,15 +395,18 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
         owner: 'CISO',
         automatedTesting: false,
-        testFrequency: 'annually'
+        testFrequency: 'annually',
       },
       {
         id: 'A.8.2',
         category: 'Asset Management',
         title: 'Classification of Information',
-        description: 'Information shall be classified in terms of legal requirements, value, criticality and sensitivity to unauthorized disclosure or modification.',
-        requirement: 'Formal information classification scheme with appropriate handling procedures.',
-        implementation: 'Automated data classification and labeling system based on sensitivity',
+        description:
+          'Information shall be classified in terms of legal requirements, value, criticality and sensitivity to unauthorized disclosure or modification.',
+        requirement:
+          'Formal information classification scheme with appropriate handling procedures.',
+        implementation:
+          'Automated data classification and labeling system based on sensitivity',
         evidence: [],
         status: 'compliant',
         riskLevel: 'medium',
@@ -359,15 +414,18 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
         owner: 'Data Governance Team',
         automatedTesting: true,
-        testFrequency: 'monthly'
+        testFrequency: 'monthly',
       },
       {
         id: 'A.9.2',
         category: 'Access Control',
         title: 'User Access Management',
-        description: 'Formal user registration and de-registration shall be implemented.',
-        requirement: 'Controlled user access management with proper onboarding and offboarding procedures.',
-        implementation: 'Automated user provisioning/deprovisioning with access review workflows',
+        description:
+          'Formal user registration and de-registration shall be implemented.',
+        requirement:
+          'Controlled user access management with proper onboarding and offboarding procedures.',
+        implementation:
+          'Automated user provisioning/deprovisioning with access review workflows',
         evidence: [],
         status: 'compliant',
         riskLevel: 'high',
@@ -375,15 +433,18 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         owner: 'Identity Management Team',
         automatedTesting: true,
-        testFrequency: 'weekly'
+        testFrequency: 'weekly',
       },
       {
         id: 'A.12.6',
         category: 'Operations Security',
         title: 'Management of Technical Vulnerabilities',
-        description: 'Information about technical vulnerabilities of information systems being used shall be obtained in a timely fashion, the organization\'s exposure to such vulnerabilities evaluated and appropriate measures taken.',
-        requirement: 'Vulnerability management program with timely patching and remediation.',
-        implementation: 'Automated vulnerability scanning and patch management system',
+        description:
+          "Information about technical vulnerabilities of information systems being used shall be obtained in a timely fashion, the organization's exposure to such vulnerabilities evaluated and appropriate measures taken.",
+        requirement:
+          'Vulnerability management program with timely patching and remediation.',
+        implementation:
+          'Automated vulnerability scanning and patch management system',
         evidence: [],
         status: 'compliant',
         riskLevel: 'high',
@@ -391,15 +452,18 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         owner: 'Security Operations Team',
         automatedTesting: true,
-        testFrequency: 'daily'
+        testFrequency: 'daily',
       },
       {
         id: 'A.14.2',
         category: 'System Acquisition',
         title: 'Security in Development and Support Processes',
-        description: 'Security shall be integrated into the development and implementation of information systems.',
-        requirement: 'Secure software development lifecycle (SDLC) with security testing.',
-        implementation: 'DevSecOps pipeline with automated security testing and code analysis',
+        description:
+          'Security shall be integrated into the development and implementation of information systems.',
+        requirement:
+          'Secure software development lifecycle (SDLC) with security testing.',
+        implementation:
+          'DevSecOps pipeline with automated security testing and code analysis',
         evidence: [],
         status: 'compliant',
         riskLevel: 'medium',
@@ -407,15 +471,18 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         owner: 'Development Team',
         automatedTesting: true,
-        testFrequency: 'continuous'
+        testFrequency: 'continuous',
       },
       {
         id: 'A.16.1',
         category: 'Incident Management',
         title: 'Management of Information Security Incidents',
-        description: 'The organization shall have a process for managing information security incidents.',
-        requirement: 'Comprehensive incident management process with detection, response, and recovery procedures.',
-        implementation: 'Automated incident detection and response system with playbooks',
+        description:
+          'The organization shall have a process for managing information security incidents.',
+        requirement:
+          'Comprehensive incident management process with detection, response, and recovery procedures.',
+        implementation:
+          'Automated incident detection and response system with playbooks',
         evidence: [],
         status: 'compliant',
         riskLevel: 'high',
@@ -423,17 +490,18 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         owner: 'Security Operations Team',
         automatedTesting: true,
-        testFrequency: 'monthly'
-      }
+        testFrequency: 'monthly',
+      },
     ];
 
     return {
       name: 'ISO 27001:2022',
       version: '2022',
-      description: 'International Organization for Standardization 27001 Information Security Management System standard',
+      description:
+        'International Organization for Standardization 27001 Information Security Management System standard',
       controls,
       lastUpdated: new Date(),
-      nextReview: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      nextReview: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
     };
   }
 
@@ -443,9 +511,12 @@ export class ComplianceService extends BaseService {
         id: 'NOIP-SEC-001',
         category: 'Infrastructure Security',
         title: 'Automated Security Scanning',
-        description: 'Continuous automated security scanning of all infrastructure components.',
-        requirement: 'Implement comprehensive security scanning for Kubernetes clusters, containers, and cloud resources.',
-        implementation: 'NOIP platform provides continuous security scanning with AI-powered analysis',
+        description:
+          'Continuous automated security scanning of all infrastructure components.',
+        requirement:
+          'Implement comprehensive security scanning for Kubernetes clusters, containers, and cloud resources.',
+        implementation:
+          'NOIP platform provides continuous security scanning with AI-powered analysis',
         evidence: [],
         status: 'compliant',
         riskLevel: 'high',
@@ -453,15 +524,18 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 24 * 60 * 60 * 1000),
         owner: 'Security Team',
         automatedTesting: true,
-        testFrequency: 'daily'
+        testFrequency: 'daily',
       },
       {
         id: 'NOIP-SEC-002',
         category: 'Configuration Management',
         title: 'Drift Detection and Prevention',
-        description: 'Automated detection and prevention of configuration drift.',
-        requirement: 'Monitor infrastructure configurations and detect deviations from approved baselines.',
-        implementation: 'AI-powered drift detection with automated remediation capabilities',
+        description:
+          'Automated detection and prevention of configuration drift.',
+        requirement:
+          'Monitor infrastructure configurations and detect deviations from approved baselines.',
+        implementation:
+          'AI-powered drift detection with automated remediation capabilities',
         evidence: [],
         status: 'compliant',
         riskLevel: 'medium',
@@ -469,15 +543,17 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 6 * 60 * 60 * 1000),
         owner: 'Operations Team',
         automatedTesting: true,
-        testFrequency: 'continuous'
+        testFrequency: 'continuous',
       },
       {
         id: 'NOIP-SEC-003',
         category: 'Access Control',
         title: 'Zero Trust Architecture',
         description: 'Implementation of zero trust security principles.',
-        requirement: 'Verify and secure all access requests regardless of network location.',
-        implementation: 'Zero trust network access with continuous authentication and authorization',
+        requirement:
+          'Verify and secure all access requests regardless of network location.',
+        implementation:
+          'Zero trust network access with continuous authentication and authorization',
         evidence: [],
         status: 'compliant',
         riskLevel: 'high',
@@ -485,15 +561,18 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         owner: 'Security Architecture Team',
         automatedTesting: true,
-        testFrequency: 'weekly'
+        testFrequency: 'weekly',
       },
       {
         id: 'NOIP-OPS-001',
         category: 'Operational Excellence',
         title: 'AI-Powered Monitoring',
-        description: 'Advanced monitoring with AI anomaly detection and predictive analysis.',
-        requirement: 'Implement intelligent monitoring with automated threat detection and performance optimization.',
-        implementation: 'AI-powered monitoring with predictive analytics and automated response',
+        description:
+          'Advanced monitoring with AI anomaly detection and predictive analysis.',
+        requirement:
+          'Implement intelligent monitoring with automated threat detection and performance optimization.',
+        implementation:
+          'AI-powered monitoring with predictive analytics and automated response',
         evidence: [],
         status: 'compliant',
         riskLevel: 'medium',
@@ -501,15 +580,18 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 24 * 60 * 60 * 1000),
         owner: 'Observability Team',
         automatedTesting: true,
-        testFrequency: 'continuous'
+        testFrequency: 'continuous',
       },
       {
         id: 'NOIP-DATA-001',
         category: 'Data Protection',
         title: 'Advanced Data Encryption',
-        description: 'Comprehensive data protection with advanced encryption methods.',
-        requirement: 'Implement end-to-end encryption with key management and rotation.',
-        implementation: 'Quantum-resistant encryption algorithms with automated key rotation',
+        description:
+          'Comprehensive data protection with advanced encryption methods.',
+        requirement:
+          'Implement end-to-end encryption with key management and rotation.',
+        implementation:
+          'Quantum-resistant encryption algorithms with automated key rotation',
         evidence: [],
         status: 'compliant',
         riskLevel: 'high',
@@ -517,23 +599,26 @@ export class ComplianceService extends BaseService {
         nextAssessment: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         owner: 'Cryptography Team',
         automatedTesting: true,
-        testFrequency: 'daily'
-      }
+        testFrequency: 'daily',
+      },
     ];
 
     return {
       name: 'NOIP Enterprise',
       version: '1.0',
-      description: 'NetOps Intelligence Platform enterprise compliance framework with advanced security and operational requirements',
+      description:
+        'NetOps Intelligence Platform enterprise compliance framework with advanced security and operational requirements',
       controls,
       lastUpdated: new Date(),
-      nextReview: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)
+      nextReview: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
     };
   }
 
   // Public API Methods
 
-  async getComplianceFramework(framework: string): Promise<ComplianceFramework | null> {
+  async getComplianceFramework(
+    framework: string
+  ): Promise<ComplianceFramework | null> {
     return this.frameworks.get(framework) || null;
   }
 
@@ -552,7 +637,7 @@ export class ComplianceService extends BaseService {
 
     const reportPeriod = period || {
       start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-      end: new Date()
+      end: new Date(),
     };
 
     // Generate control results
@@ -572,7 +657,10 @@ export class ComplianceService extends BaseService {
     const evidenceAudit = await this.auditEvidence(framework);
 
     // Trend analysis
-    const trendAnalysis = await this.generateTrendAnalysis(framework, reportPeriod);
+    const trendAnalysis = await this.generateTrendAnalysis(
+      framework,
+      reportPeriod
+    );
 
     const report: ComplianceReport = {
       framework: frameworkData.name,
@@ -586,13 +674,15 @@ export class ComplianceService extends BaseService {
       controlResults,
       recommendations,
       evidenceAudit,
-      trendAnalysis
+      trendAnalysis,
     };
 
     return report;
   }
 
-  private async generateControlResults(framework: ComplianceFramework): Promise<ComplianceControlResult[]> {
+  private async generateControlResults(
+    framework: ComplianceFramework
+  ): Promise<ComplianceControlResult[]> {
     const results: ComplianceControlResult[] = [];
 
     for (const control of framework.controls) {
@@ -602,36 +692,50 @@ export class ComplianceService extends BaseService {
         controlId: control.id,
         title: control.title,
         category: control.category,
-        status: assessment.result === 'pass' ? 'compliant' :
-               assessment.result === 'fail' ? 'non-compliant' :
-               'partially-compliant',
+        status:
+          assessment.result === 'pass'
+            ? 'compliant'
+            : assessment.result === 'fail'
+              ? 'non-compliant'
+              : 'partially-compliant',
         score: assessment.score,
         riskLevel: control.riskLevel,
         lastAssessed: control.lastAssessed,
         evidenceCount: assessment.evidence.length,
         findings: assessment.findings,
-        gaps: assessment.findings.filter(f => f.includes('gap') || f.includes('missing')),
-        remediationPlan: assessment.score < 80 ? 'Implement remediation actions to address identified gaps' : undefined
+        gaps: assessment.findings.filter(
+          f => f.includes('gap') || f.includes('missing')
+        ),
+        remediationPlan:
+          assessment.score < 80
+            ? 'Implement remediation actions to address identified gaps'
+            : undefined,
       });
     }
 
     return results;
   }
 
-  private async performControlAssessment(control: ComplianceControl): Promise<ComplianceAssessment> {
+  private async performControlAssessment(
+    control: ComplianceControl
+  ): Promise<ComplianceAssessment> {
     const assessment: ComplianceAssessment = {
       id: `assessment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       framework: 'current',
       controlId: control.id,
       timestamp: new Date(),
       type: control.automatedTesting ? 'automated' : 'manual',
-      result: control.status === 'compliant' ? 'pass' :
-             control.status === 'non-compliant' ? 'fail' : 'warning',
+      result:
+        control.status === 'compliant'
+          ? 'pass'
+          : control.status === 'non-compliant'
+            ? 'fail'
+            : 'warning',
       score: this.calculateControlScore(control),
       findings: this.generateControlFindings(control),
       evidence: await this.generateEvidenceForControl(control),
       assessor: 'Compliance Service',
-      notes: `Automated assessment performed on ${new Date().toISOString()}`
+      notes: `Automated assessment performed on ${new Date().toISOString()}`,
     };
 
     // Store assessment
@@ -700,7 +804,9 @@ export class ComplianceService extends BaseService {
     return findings;
   }
 
-  private async generateEvidenceForControl(control: ComplianceControl): Promise<ComplianceEvidence[]> {
+  private async generateEvidenceForControl(
+    control: ComplianceControl
+  ): Promise<ComplianceEvidence[]> {
     const evidence: ComplianceEvidence[] = [];
 
     // Generate automated evidence based on control type
@@ -714,10 +820,10 @@ export class ComplianceService extends BaseService {
         data: {
           testResult: control.status === 'compliant' ? 'pass' : 'fail',
           testTimestamp: new Date(),
-          testEnvironment: 'production'
+          testEnvironment: 'production',
         },
         verified: true,
-        verificationDate: new Date()
+        verificationDate: new Date(),
       });
     }
 
@@ -731,19 +837,24 @@ export class ComplianceService extends BaseService {
       data: {
         configurationHash: 'abc123def456',
         lastModified: new Date(),
-        compliant: control.status === 'compliant'
+        compliant: control.status === 'compliant',
       },
       verified: true,
-      verificationDate: new Date()
+      verificationDate: new Date(),
     });
 
     return evidence;
   }
 
-  private calculateOverallScore(controlResults: ComplianceControlResult[]): number {
+  private calculateOverallScore(
+    controlResults: ComplianceControlResult[]
+  ): number {
     if (controlResults.length === 0) return 0;
 
-    const totalScore = controlResults.reduce((sum, result) => sum + result.score, 0);
+    const totalScore = controlResults.reduce(
+      (sum, result) => sum + result.score,
+      0
+    );
     return Math.round(totalScore / controlResults.length);
   }
 
@@ -764,20 +875,30 @@ export class ComplianceService extends BaseService {
   private generateSummary(controlResults: ComplianceControlResult[]) {
     const summary = {
       totalControls: controlResults.length,
-      compliantControls: controlResults.filter(r => r.status === 'compliant').length,
-      partiallyCompliantControls: controlResults.filter(r => r.status === 'partially-compliant').length,
-      nonCompliantControls: controlResults.filter(r => r.status === 'non-compliant').length,
-      notAssessedControls: controlResults.filter(r => r.status === 'not-assessed').length,
-      criticalRisks: controlResults.filter(r => r.riskLevel === 'critical').length,
+      compliantControls: controlResults.filter(r => r.status === 'compliant')
+        .length,
+      partiallyCompliantControls: controlResults.filter(
+        r => r.status === 'partially-compliant'
+      ).length,
+      nonCompliantControls: controlResults.filter(
+        r => r.status === 'non-compliant'
+      ).length,
+      notAssessedControls: controlResults.filter(
+        r => r.status === 'not-assessed'
+      ).length,
+      criticalRisks: controlResults.filter(r => r.riskLevel === 'critical')
+        .length,
       highRisks: controlResults.filter(r => r.riskLevel === 'high').length,
       mediumRisks: controlResults.filter(r => r.riskLevel === 'medium').length,
-      lowRisks: controlResults.filter(r => r.riskLevel === 'low').length
+      lowRisks: controlResults.filter(r => r.riskLevel === 'low').length,
     };
 
     return summary;
   }
 
-  private generateCategorySummaries(controlResults: ComplianceControlResult[]): ComplianceCategorySummary[] {
+  private generateCategorySummaries(
+    controlResults: ComplianceControlResult[]
+  ): ComplianceCategorySummary[] {
     const categories = new Map<string, ComplianceControlResult[]>();
 
     // Group by category
@@ -798,32 +919,48 @@ export class ComplianceService extends BaseService {
         critical: controls.filter(c => c.riskLevel === 'critical').length,
         high: controls.filter(c => c.riskLevel === 'high').length,
         medium: controls.filter(c => c.riskLevel === 'medium').length,
-        low: controls.filter(c => c.riskLevel === 'low').length
+        low: controls.filter(c => c.riskLevel === 'low').length,
       };
 
       return {
         category,
         score,
-        status: score >= 90 ? 'compliant' :
-               score >= 70 ? 'requires-improvement' : 'non-compliant',
+        status:
+          score >= 90
+            ? 'compliant'
+            : score >= 70
+              ? 'requires-improvement'
+              : 'non-compliant',
         totalControls: controls.length,
-        compliantControls: controls.filter(c => c.status === 'compliant').length,
-        risks
+        compliantControls: controls.filter(c => c.status === 'compliant')
+          .length,
+        risks,
       };
     });
   }
 
-  private generateRecommendations(controlResults: ComplianceControlResult[]): ComplianceRecommendation[] {
+  private generateRecommendations(
+    controlResults: ComplianceControlResult[]
+  ): ComplianceRecommendation[] {
     const recommendations: ComplianceRecommendation[] = [];
 
     // Generate recommendations for non-compliant controls
     controlResults
-      .filter(result => result.status === 'non-compliant' || result.status === 'partially-compliant')
+      .filter(
+        result =>
+          result.status === 'non-compliant' ||
+          result.status === 'partially-compliant'
+      )
       .forEach(result => {
         recommendations.push({
-          priority: result.riskLevel === 'critical' ? 'critical' :
-                   result.riskLevel === 'high' ? 'high' :
-                   result.status === 'non-compliant' ? 'medium' : 'low',
+          priority:
+            result.riskLevel === 'critical'
+              ? 'critical'
+              : result.riskLevel === 'high'
+                ? 'high'
+                : result.status === 'non-compliant'
+                  ? 'medium'
+                  : 'low',
           category: result.category,
           controlId: result.controlId,
           title: `Address non-compliance for ${result.title}`,
@@ -832,7 +969,8 @@ export class ComplianceService extends BaseService {
           effort: result.riskLevel === 'critical' ? 'high' : 'medium',
           timeline: result.riskLevel === 'critical' ? '30 days' : '90 days',
           owner: 'Compliance Team',
-          dependencies: result.gaps.length > 0 ? ['Gap analysis completion'] : undefined
+          dependencies:
+            result.gaps.length > 0 ? ['Gap analysis completion'] : undefined,
         });
       });
 
@@ -842,7 +980,9 @@ export class ComplianceService extends BaseService {
     });
   }
 
-  private async auditEvidence(framework: string): Promise<ComplianceEvidenceAudit> {
+  private async auditEvidence(
+    framework: string
+  ): Promise<ComplianceEvidenceAudit> {
     const frameworkData = this.frameworks.get(framework);
     if (!frameworkData) {
       throw new Error(`Framework ${framework} not found`);
@@ -863,8 +1003,8 @@ export class ComplianceService extends BaseService {
       totalEvidence += controlEvidence.length;
       verifiedEvidence += controlEvidence.filter(e => e.verified).length;
       pendingVerification += controlEvidence.filter(e => !e.verified).length;
-      expiredEvidence += controlEvidence.filter(e =>
-        e.timestamp < new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      expiredEvidence += controlEvidence.filter(
+        e => e.timestamp < new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
       ).length;
 
       // Check for missing evidence
@@ -880,7 +1020,7 @@ export class ComplianceService extends BaseService {
           evidenceId: evidence.id,
           controlId: control.id,
           performedBy: 'Compliance Service',
-          details: `Evidence ${evidence.type} for control ${control.id}`
+          details: `Evidence ${evidence.type} for control ${control.id}`,
         });
       });
     }
@@ -891,7 +1031,9 @@ export class ComplianceService extends BaseService {
       pendingVerification,
       expiredEvidence,
       missingEvidence,
-      auditTrail: auditTrail.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      auditTrail: auditTrail.sort(
+        (a, b) => b.timestamp.getTime() - a.timestamp.getTime()
+      ),
     };
   }
 
@@ -906,27 +1048,30 @@ export class ComplianceService extends BaseService {
         current: 87,
         previous: 84,
         change: 3.6,
-        trend: 'improving'
+        trend: 'improving',
       },
       riskTrends: {
         critical: { current: 1, previous: 2, trend: 'decreasing' },
         high: { current: 3, previous: 4, trend: 'decreasing' },
         medium: { current: 5, previous: 5, trend: 'stable' },
-        low: { current: 2, previous: 3, trend: 'decreasing' }
+        low: { current: 2, previous: 3, trend: 'decreasing' },
       },
       categoryTrends: [
         { category: 'Security', score: 92, trend: 'improving' },
         { category: 'Availability', score: 88, trend: 'stable' },
         { category: 'Processing Integrity', score: 85, trend: 'improving' },
         { category: 'Confidentiality', score: 90, trend: 'stable' },
-        { category: 'Privacy', score: 75, trend: 'declining' }
-      ]
+        { category: 'Privacy', score: 75, trend: 'declining' },
+      ],
     };
 
     return mockTrend;
   }
 
-  async runComplianceAssessment(framework: string, controlId?: string): Promise<ComplianceAssessment[]> {
+  async runComplianceAssessment(
+    framework: string,
+    controlId?: string
+  ): Promise<ComplianceAssessment[]> {
     const frameworkData = this.frameworks.get(framework);
     if (!frameworkData) {
       throw new Error(`Framework ${framework} not found`);
@@ -946,11 +1091,15 @@ export class ComplianceService extends BaseService {
     return assessments;
   }
 
-  async healthCheck(): Promise<{ status: string; frameworks: number; lastAssessment: Date }> {
+  async healthCheck(): Promise<{
+    status: string;
+    frameworks: number;
+    lastAssessment: Date;
+  }> {
     return {
       status: 'healthy',
       frameworks: this.frameworks.size,
-      lastAssessment: new Date()
+      lastAssessment: new Date(),
     };
   }
 }

@@ -43,14 +43,13 @@ export class MigrationManager {
       await this.createMigrationsCollection();
 
       // Create indexes for migrations collection
-      await this.db.collection(this.collectionName).createIndex(
-        { id: 1 },
-        { unique: true }
-      );
+      await this.db
+        .collection(this.collectionName)
+        .createIndex({ id: 1 }, { unique: true });
 
-      await this.db.collection(this.collectionName).createIndex(
-        { executedAt: 1 }
-      );
+      await this.db
+        .collection(this.collectionName)
+        .createIndex({ executedAt: 1 });
 
       logger.info('Migration manager initialized');
     } catch (error) {
@@ -72,11 +71,13 @@ export class MigrationManager {
     this.migrations.sort((a, b) => this.compareVersions(a.version, b.version));
   }
 
-  public async migrate(options: {
-    targetVersion?: string;
-    force?: boolean;
-    dryRun?: boolean;
-  } = {}): Promise<{
+  public async migrate(
+    options: {
+      targetVersion?: string;
+      force?: boolean;
+      dryRun?: boolean;
+    } = {}
+  ): Promise<{
     executed: Migration[];
     skipped: Migration[];
     failed: Migration[];
@@ -92,7 +93,11 @@ export class MigrationManager {
     const failed: Migration[] = [];
     const errors: string[] = [];
 
-    logger.info('Starting database migration', { targetVersion, force, dryRun });
+    logger.info('Starting database migration', {
+      targetVersion,
+      force,
+      dryRun,
+    });
 
     try {
       // Get executed migrations
@@ -105,7 +110,10 @@ export class MigrationManager {
           return false;
         }
 
-        if (targetVersion && this.compareVersions(migration.version, targetVersion) > 0) {
+        if (
+          targetVersion &&
+          this.compareVersions(migration.version, targetVersion) > 0
+        ) {
           return false;
         }
 
@@ -113,11 +121,16 @@ export class MigrationManager {
       });
 
       // Check dependencies
-      const dependencyErrors = await this.checkDependencies(migrationsToRun, executedIds);
+      const dependencyErrors = await this.checkDependencies(
+        migrationsToRun,
+        executedIds
+      );
       if (dependencyErrors.length > 0) {
         errors.push(...dependencyErrors);
         if (!force) {
-          throw new Error(`Migration dependencies not satisfied: ${dependencyErrors.join(', ')}`);
+          throw new Error(
+            `Migration dependencies not satisfied: ${dependencyErrors.join(', ')}`
+          );
         }
       }
 
@@ -148,10 +161,12 @@ export class MigrationManager {
           await this.recordMigrationSuccess(migration, executionTime);
 
           executed.push(migration);
-          logger.info(`Migration completed: ${migration.name} (${executionTime}ms)`);
-
+          logger.info(
+            `Migration completed: ${migration.name} (${executionTime}ms)`
+          );
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          const errorMessage =
+            error instanceof Error ? error.message : 'Unknown error';
           errors.push(`Migration ${migration.id} failed: ${errorMessage}`);
 
           // Record failed migration
@@ -161,14 +176,18 @@ export class MigrationManager {
           logger.error(`Migration failed: ${migration.name}`, error);
 
           if (!force) {
-            throw new Error(`Migration ${migration.id} failed: ${errorMessage}`);
+            throw new Error(
+              `Migration ${migration.id} failed: ${errorMessage}`
+            );
           }
         }
       }
 
       const result = {
         executed,
-        skipped: this.migrations.filter(m => !executed.includes(m) && !failed.includes(m)),
+        skipped: this.migrations.filter(
+          m => !executed.includes(m) && !failed.includes(m)
+        ),
         failed,
         errors,
       };
@@ -187,12 +206,14 @@ export class MigrationManager {
     }
   }
 
-  public async rollback(options: {
-    targetVersion?: string;
-    steps?: number;
-    force?: boolean;
-    dryRun?: boolean;
-  } = {}): Promise<{
+  public async rollback(
+    options: {
+      targetVersion?: string;
+      steps?: number;
+      force?: boolean;
+      dryRun?: boolean;
+    } = {}
+  ): Promise<{
     rolledBack: Migration[];
     failed: Migration[];
     errors: string[];
@@ -206,20 +227,26 @@ export class MigrationManager {
     const failed: Migration[] = [];
     const errors: string[] = [];
 
-    logger.info('Starting database rollback', { targetVersion, steps, force, dryRun });
+    logger.info('Starting database rollback', {
+      targetVersion,
+      steps,
+      force,
+      dryRun,
+    });
 
     try {
       // Get executed migrations in reverse order
       const executedMigrations = await this.getExecutedMigrations();
-      const executedMigrationsDesc = executedMigrations
-        .sort((a, b) => this.compareVersions(b.version, a.version));
+      const executedMigrationsDesc = executedMigrations.sort((a, b) =>
+        this.compareVersions(b.version, a.version)
+      );
 
       // Determine migrations to rollback
       let migrationsToRollback: MigrationRecord[] = [];
 
       if (targetVersion) {
-        migrationsToRollback = executedMigrationsDesc.filter(m =>
-          this.compareVersions(m.version, targetVersion) > 0
+        migrationsToRollback = executedMigrationsDesc.filter(
+          m => this.compareVersions(m.version, targetVersion) > 0
         );
       } else if (steps) {
         migrationsToRollback = executedMigrationsDesc.slice(0, steps);
@@ -228,11 +255,15 @@ export class MigrationManager {
         migrationsToRollback = executedMigrationsDesc.slice(0, 1);
       }
 
-      logger.info(`Found ${migrationsToRollback.length} migrations to rollback`);
+      logger.info(
+        `Found ${migrationsToRollback.length} migrations to rollback`
+      );
 
       // Execute rollbacks
       for (const migrationRecord of migrationsToRollback) {
-        const migration = this.migrations.find(m => m.id === migrationRecord.id);
+        const migration = this.migrations.find(
+          m => m.id === migrationRecord.id
+        );
         if (!migration) {
           const error = `Migration definition not found for: ${migrationRecord.id}`;
           errors.push(error);
@@ -240,10 +271,14 @@ export class MigrationManager {
         }
 
         try {
-          logger.info(`Rolling back migration: ${migration.name} (${migration.id})`);
+          logger.info(
+            `Rolling back migration: ${migration.name} (${migration.id})`
+          );
 
           if (dryRun) {
-            logger.info(`[DRY RUN] Would rollback migration: ${migration.name}`);
+            logger.info(
+              `[DRY RUN] Would rollback migration: ${migration.name}`
+            );
             rolledBack.push(migration);
             continue;
           }
@@ -252,13 +287,15 @@ export class MigrationManager {
           await migration.down(this.db);
 
           // Remove migration record
-          await this.db.collection(this.collectionName).deleteOne({ id: migration.id });
+          await this.db
+            .collection(this.collectionName)
+            .deleteOne({ id: migration.id });
 
           rolledBack.push(migration);
           logger.info(`Rollback completed: ${migration.name}`);
-
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          const errorMessage =
+            error instanceof Error ? error.message : 'Unknown error';
           errors.push(`Rollback ${migration.id} failed: ${errorMessage}`);
           failed.push(migration);
           logger.error(`Rollback failed: ${migration.name}`, error);
@@ -341,7 +378,9 @@ export class MigrationManager {
       if (migration.dependencies) {
         for (const dep of migration.dependencies) {
           if (!executedIds.has(dep)) {
-            errors.push(`Migration ${migration.id} depends on ${dep} which has not been executed`);
+            errors.push(
+              `Migration ${migration.id} depends on ${dep} which has not been executed`
+            );
           }
         }
       }

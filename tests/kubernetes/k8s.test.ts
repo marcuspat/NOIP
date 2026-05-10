@@ -10,7 +10,9 @@ import * as path from 'path';
 
 describe('Kubernetes Resource Tests', () => {
   const testNamespace = 'noip-test';
-  const kubeconfigPath = process.env['KUBECONFIG'] || path.join(process.env['HOME'] || '', '.kube/config');
+  const kubeconfigPath =
+    process.env['KUBECONFIG'] ||
+    path.join(process.env['HOME'] || '', '.kube/config');
 
   beforeAll(async () => {
     // Create test namespace
@@ -25,9 +27,12 @@ describe('Kubernetes Resource Tests', () => {
   afterAll(async () => {
     // Cleanup test namespace
     try {
-      execSync(`kubectl delete namespace ${testNamespace} --ignore-not-found=true`, {
-        stdio: 'pipe'
-      });
+      execSync(
+        `kubectl delete namespace ${testNamespace} --ignore-not-found=true`,
+        {
+          stdio: 'pipe',
+        }
+      );
     } catch (error) {
       console.log('Could not delete test namespace');
     }
@@ -44,7 +49,7 @@ describe('Kubernetes Resource Tests', () => {
         'k8s/database',
         'k8s/monitoring',
         'k8s/ingress',
-        'k8s/security'
+        'k8s/security',
       ];
 
       for (const dir of manifestDirs) {
@@ -55,7 +60,7 @@ describe('Kubernetes Resource Tests', () => {
               const filePath = path.join(dir, file);
               expect(() => {
                 execSync(`kubectl apply --dry-run=client -f ${filePath}`, {
-                  stdio: 'pipe'
+                  stdio: 'pipe',
                 });
               }).not.toThrow(`Invalid YAML in ${filePath}`);
             }
@@ -292,7 +297,9 @@ describe('Kubernetes Resource Tests', () => {
 
         // Check for security annotations
         expect(content).toContain('nginx.ingress.kubernetes.io/rate-limit');
-        expect(content).toContain('nginx.ingress.kubernetes.io/proxy-body-size');
+        expect(content).toContain(
+          'nginx.ingress.kubernetes.io/proxy-body-size'
+        );
       }
     });
   });
@@ -305,14 +312,14 @@ describe('Kubernetes Resource Tests', () => {
         'k8s/configmaps',
         'k8s/secrets',
         'k8s/services',
-        'k8s/deployments'
+        'k8s/deployments',
       ];
 
       for (const dir of manifestDirs) {
         if (fs.existsSync(dir)) {
           expect(() => {
             execSync(`kubectl apply --dry-run=client -f ${dir}`, {
-              stdio: 'pipe'
+              stdio: 'pipe',
             });
           }).not.toThrow(`Could not apply manifests in ${dir}`);
         }
@@ -323,26 +330,34 @@ describe('Kubernetes Resource Tests', () => {
       const deploymentPath = 'k8s/deployments/noip-platform-deployment.yaml';
       if (fs.existsSync(deploymentPath)) {
         // Apply deployment to test namespace
-        const modifiedDeployment = fs.readFileSync(deploymentPath, 'utf8')
+        const modifiedDeployment = fs
+          .readFileSync(deploymentPath, 'utf8')
           .replace(/noip-production/g, testNamespace);
 
         fs.writeFileSync('/tmp/test-deployment.yaml', modifiedDeployment);
 
         try {
-          execSync(`kubectl apply -f /tmp/test-deployment.yaml`, { stdio: 'pipe' });
+          execSync(`kubectl apply -f /tmp/test-deployment.yaml`, {
+            stdio: 'pipe',
+          });
 
           // Check if pod would be created with proper security
-          const podYaml = execSync(`kubectl get deployment noip-platform -n ${testNamespace} -o yaml`, {
-            encoding: 'utf8'
-          });
+          const podYaml = execSync(
+            `kubectl get deployment noip-platform -n ${testNamespace} -o yaml`,
+            {
+              encoding: 'utf8',
+            }
+          );
 
           expect(podYaml).toContain('runAsNonRoot');
           expect(podYaml).toContain('securityContext');
-
         } finally {
-          execSync(`kubectl delete -f /tmp/test-deployment.yaml --ignore-not-found=true`, {
-            stdio: 'pipe'
-          });
+          execSync(
+            `kubectl delete -f /tmp/test-deployment.yaml --ignore-not-found=true`,
+            {
+              stdio: 'pipe',
+            }
+          );
           fs.unlinkSync('/tmp/test-deployment.yaml');
         }
       }
@@ -368,7 +383,9 @@ describe('Kubernetes Resource Tests', () => {
 
         // Check memory limits are reasonable
         expect(content).toMatch(/memory:\s*["']?\d+[KMGT]?i?B["']?/);
-        expect(content).toMatch(/limits:\s*\n.*memory:\s*["']?\d+[KMGT]?i?B["']?/);
+        expect(content).toMatch(
+          /limits:\s*\n.*memory:\s*["']?\d+[KMGT]?i?B["']?/
+        );
       }
     });
   });

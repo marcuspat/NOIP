@@ -31,7 +31,7 @@ export const options = {
   ],
   thresholds: {
     http_req_duration: ['p(95)<1000'], // More lenient during stress test
-    http_req_failed: ['rate<0.05'],     // Allow higher error rate during stress
+    http_req_failed: ['rate<0.05'], // Allow higher error rate during stress
     errors: ['rate<0.05'],
   },
 };
@@ -44,7 +44,7 @@ export function setup() {
   // Verify the application is running
   const healthResponse = http.get(`${BASE_URL}/health`);
   check(healthResponse, {
-    'health check passed': (r) => r.status === 200,
+    'health check passed': r => r.status === 200,
   });
 }
 
@@ -76,8 +76,8 @@ export default function () {
     const payload = JSON.stringify({
       resources: [
         { type: 'pod', name: 'test-pod' },
-        { type: 'service', name: 'test-service' }
-      ]
+        { type: 'service', name: 'test-service' },
+      ],
     });
     response = http.post(`${BASE_URL}${endpoint}`, payload, params);
   } else {
@@ -86,9 +86,9 @@ export default function () {
 
   // Check response with more lenient thresholds for stress test
   const success = check(response, {
-    'status is 200': (r) => r.status === 200 || r.status === 429, // Allow rate limiting
-    'response time < 2000ms': (r) => r.timings.duration < 2000,
-    'response time < 5000ms': (r) => r.timings.duration < 5000,
+    'status is 200': r => r.status === 200 || r.status === 429, // Allow rate limiting
+    'response time < 2000ms': r => r.timings.duration < 2000,
+    'response time < 5000ms': r => r.timings.duration < 5000,
   });
 
   errorRate.add(!success);

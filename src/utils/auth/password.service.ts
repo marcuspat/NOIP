@@ -21,7 +21,7 @@ export class PasswordService {
     requireNumbers: true,
     requireSpecialChars: true,
     preventReuse: 5,
-    maxAge: 90 * 24 * 60 * 60 * 1000 // 90 days in milliseconds
+    maxAge: 90 * 24 * 60 * 60 * 1000, // 90 days in milliseconds
   };
 
   async hashPassword(password: string): Promise<string> {
@@ -34,7 +34,7 @@ export class PasswordService {
         memoryCost: 65536, // 64 MB
         timeCost: 3,
         parallelism: 4,
-        hashLength: 32
+        hashLength: 32,
       });
 
       logger.debug('Password hashed successfully');
@@ -55,7 +55,10 @@ export class PasswordService {
     }
   }
 
-  validatePasswordStrength(password: string, policy?: Partial<PasswordPolicy>): {
+  validatePasswordStrength(
+    password: string,
+    policy?: Partial<PasswordPolicy>
+  ): {
     isValid: boolean;
     errors: string[];
     score: number;
@@ -65,7 +68,9 @@ export class PasswordService {
 
     // Length check
     if (password.length < activePolicy.minLength) {
-      errors.push(`Password must be at least ${activePolicy.minLength} characters long`);
+      errors.push(
+        `Password must be at least ${activePolicy.minLength} characters long`
+      );
     }
 
     // Uppercase check
@@ -84,13 +89,18 @@ export class PasswordService {
     }
 
     // Special characters check
-    if (activePolicy.requireSpecialChars && !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+    if (
+      activePolicy.requireSpecialChars &&
+      !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)
+    ) {
       errors.push('Password must contain at least one special character');
     }
 
     // Common patterns check
     if (this.isCommonPassword(password)) {
-      errors.push('Password is too common. Please choose a more secure password');
+      errors.push(
+        'Password is too common. Please choose a more secure password'
+      );
     }
 
     // Sequential characters check
@@ -130,7 +140,10 @@ export class PasswordService {
     }
 
     // Shuffle the password
-    return password.split('').sort(() => Math.random() - 0.5).join('');
+    return password
+      .split('')
+      .sort(() => Math.random() - 0.5)
+      .join('');
   }
 
   generatePasswordResetToken(): string {
@@ -159,14 +172,20 @@ export class PasswordService {
     return hashedInput === hashedToken;
   }
 
-  async checkPasswordExpiry(passwordChangedAt: Date, policy?: Partial<PasswordPolicy>): Promise<boolean> {
+  async checkPasswordExpiry(
+    passwordChangedAt: Date,
+    policy?: Partial<PasswordPolicy>
+  ): Promise<boolean> {
     const activePolicy = { ...this.defaultPolicy, ...policy };
     const now = new Date();
     const expiryTime = passwordChangedAt.getTime() + activePolicy.maxAge;
     return now.getTime() > expiryTime;
   }
 
-  async checkPasswordReuse(newPassword: string, passwordHistory: string[]): Promise<boolean> {
+  async checkPasswordReuse(
+    newPassword: string,
+    passwordHistory: string[]
+  ): Promise<boolean> {
     for (const oldPassword of passwordHistory) {
       if (await this.verifyPassword(newPassword, oldPassword)) {
         return true; // Password was reused
@@ -177,14 +196,26 @@ export class PasswordService {
 
   private isCommonPassword(password: string): boolean {
     const commonPasswords = [
-      'password', '123456', 'password123', 'admin', 'qwerty',
-      'letmein', 'welcome', 'monkey', '1234567890', 'password1',
-      'abc123', 'password123!', 'admin123', 'root', 'toor'
+      'password',
+      '123456',
+      'password123',
+      'admin',
+      'qwerty',
+      'letmein',
+      'welcome',
+      'monkey',
+      '1234567890',
+      'password1',
+      'abc123',
+      'password123!',
+      'admin123',
+      'root',
+      'toor',
     ];
 
     const lowerPassword = password.toLowerCase();
-    return commonPasswords.some(common =>
-      lowerPassword.includes(common) || common.includes(lowerPassword)
+    return commonPasswords.some(
+      common => lowerPassword.includes(common) || common.includes(lowerPassword)
     );
   }
 
@@ -245,7 +276,9 @@ export class PasswordService {
     return Math.max(0, Math.min(100, score));
   }
 
-  getPasswordStrengthLabel(score: number): 'Weak' | 'Fair' | 'Good' | 'Strong' | 'Very Strong' {
+  getPasswordStrengthLabel(
+    score: number
+  ): 'Weak' | 'Fair' | 'Good' | 'Strong' | 'Very Strong' {
     if (score < 30) return 'Weak';
     if (score < 50) return 'Fair';
     if (score < 70) return 'Good';
@@ -271,7 +304,10 @@ export class PasswordService {
 
     if (isOldHash) {
       // Verify the password using the old hash first
-      const isValid = await this.verifyPasswordWithOldHash(currentHash, plainPassword);
+      const isValid = await this.verifyPasswordWithOldHash(
+        currentHash,
+        plainPassword
+      );
       if (isValid) {
         // Re-hash with the new algorithm
         return this.hashPassword(plainPassword);
@@ -286,7 +322,10 @@ export class PasswordService {
     return hash.startsWith('$2');
   }
 
-  private async verifyPasswordWithOldHash(hash: string, password: string): Promise<boolean> {
+  private async verifyPasswordWithOldHash(
+    hash: string,
+    password: string
+  ): Promise<boolean> {
     // Implementation for verifying old password hashes
     // This would support legacy hashing algorithms during migration
     try {

@@ -209,7 +209,7 @@ export class MongoDBConnection {
       this.reconnectAttempts = 0;
     });
 
-    this.connection.on('error', (error) => {
+    this.connection.on('error', error => {
       logger.error('MongoDB connection error', error);
       this.isConnected = false;
     });
@@ -227,23 +227,23 @@ export class MongoDBConnection {
     });
 
     // Connection pool events
-    this.connection.on('connectionPoolCreated', (event) => {
+    this.connection.on('connectionPoolCreated', event => {
       logger.debug('MongoDB connection pool created', event);
     });
 
-    this.connection.on('connectionCreated', (event) => {
+    this.connection.on('connectionCreated', event => {
       logger.debug('MongoDB connection created', event);
     });
 
-    this.connection.on('connectionReady', (event) => {
+    this.connection.on('connectionReady', event => {
       logger.debug('MongoDB connection ready', event);
     });
 
-    this.connection.on('connectionClosed', (event) => {
+    this.connection.on('connectionClosed', event => {
       logger.debug('MongoDB connection closed', event);
     });
 
-    this.connection.on('connectionPoolCleared', (event) => {
+    this.connection.on('connectionPoolCleared', event => {
       logger.debug('MongoDB connection pool cleared', event);
     });
   }
@@ -255,13 +255,18 @@ export class MongoDBConnection {
     }
 
     this.reconnectAttempts++;
-    logger.info(`Attempting MongoDB reconnection (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    logger.info(
+      `Attempting MongoDB reconnection (${this.reconnectAttempts}/${this.maxReconnectAttempts})`
+    );
 
     setTimeout(async () => {
       try {
         await this.connect();
       } catch (error) {
-        logger.error(`MongoDB reconnection attempt ${this.reconnectAttempts} failed`, error);
+        logger.error(
+          `MongoDB reconnection attempt ${this.reconnectAttempts} failed`,
+          error
+        );
         this.attemptReconnect();
       }
     }, this.reconnectInterval);
@@ -277,7 +282,10 @@ export class MongoDBConnection {
   }
 
   // Database operations helper methods
-  public async createIndexes(collection: string, indexes: any[]): Promise<void> {
+  public async createIndexes(
+    collection: string,
+    indexes: any[]
+  ): Promise<void> {
     try {
       if (!this.isHealthy()) {
         throw new Error('MongoDB not connected');
@@ -287,7 +295,10 @@ export class MongoDBConnection {
       await db.collection(collection).createIndexes(indexes);
       logger.info(`Indexes created for collection: ${collection}`);
     } catch (error) {
-      logger.error(`Failed to create indexes for collection: ${collection}`, error);
+      logger.error(
+        `Failed to create indexes for collection: ${collection}`,
+        error
+      );
       throw error;
     }
   }
@@ -366,6 +377,8 @@ export class MongoDBConnection {
 }
 
 // Export default instance factory
-export function createMongoDBConnection(config: MongoConfig): MongoDBConnection {
+export function createMongoDBConnection(
+  config: MongoConfig
+): MongoDBConnection {
   return MongoDBConnection.getInstance(config);
 }

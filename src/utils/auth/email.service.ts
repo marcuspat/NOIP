@@ -15,9 +15,10 @@ export class EmailService {
   private readonly fromName: string;
 
   constructor() {
-    this.fromEmail = config.app.environment === 'production'
-      ? 'noreply@noip.platform'
-      : process.env['EMAIL_FROM'] || 'noreply@noip.local';
+    this.fromEmail =
+      config.app.environment === 'production'
+        ? 'noreply@noip.platform'
+        : process.env['EMAIL_FROM'] || 'noreply@noip.local';
     this.fromName = 'NOIP Platform';
 
     this.transporter = nodemailer.createTransporter({
@@ -26,11 +27,11 @@ export class EmailService {
       secure: process.env['SMTP_SECURE'] === 'true',
       auth: {
         user: process.env['SMTP_USER'] || '',
-        pass: process.env['SMTP_PASS'] || ''
+        pass: process.env['SMTP_PASS'] || '',
       },
       tls: {
-        rejectUnauthorized: process.env['SMTP_REJECT_UNAUTHORIZED'] !== 'false'
-      }
+        rejectUnauthorized: process.env['SMTP_REJECT_UNAUTHORIZED'] !== 'false',
+      },
     });
 
     this.verifyTransporter();
@@ -44,7 +45,9 @@ export class EmailService {
       logger.error('Failed to verify email transporter', { error });
       // In development, we might not have a real SMTP server
       if (config.app.environment !== 'production') {
-        logger.warn('Email service running in development mode without SMTP verification');
+        logger.warn(
+          'Email service running in development mode without SMTP verification'
+        );
       }
     }
   }
@@ -56,20 +59,20 @@ export class EmailService {
         to: options.to,
         subject: options.subject,
         html: options.html,
-        text: options.text || this.htmlToText(options.html)
+        text: options.text || this.htmlToText(options.html),
       };
 
       const info = await this.transporter.sendMail(mailOptions);
       logger.info('Email sent successfully', {
         to: options.to,
         subject: options.subject,
-        messageId: info.messageId
+        messageId: info.messageId,
       });
     } catch (error) {
       logger.error('Failed to send email', {
         error,
         to: options.to,
-        subject: options.subject
+        subject: options.subject,
       });
       throw new Error(`Failed to send email: ${(error as Error).message}`);
     }
@@ -84,7 +87,7 @@ export class EmailService {
       to: email,
       subject: 'Verify Your Email Address - NOIP Platform',
       html,
-      text
+      text,
     });
   }
 
@@ -97,7 +100,7 @@ export class EmailService {
       to: email,
       subject: 'Reset Your Password - NOIP Platform',
       html,
-      text
+      text,
     });
   }
 
@@ -109,17 +112,20 @@ export class EmailService {
       to: email,
       subject: 'Your MFA Verification Code - NOIP Platform',
       html,
-      text
+      text,
     });
   }
 
-  async sendSecurityAlertEmail(email: string, event: {
-    type: string;
-    description: string;
-    ipAddress: string;
-    location?: string;
-    timestamp: Date;
-  }): Promise<void> {
+  async sendSecurityAlertEmail(
+    email: string,
+    event: {
+      type: string;
+      description: string;
+      ipAddress: string;
+      location?: string;
+      timestamp: Date;
+    }
+  ): Promise<void> {
     const html = this.generateSecurityAlertEmailTemplate(event);
     const text = `Security Alert: ${event.description}. If this was not you, please secure your account immediately.`;
 
@@ -127,7 +133,7 @@ export class EmailService {
       to: email,
       subject: 'Security Alert - NOIP Platform',
       html,
-      text
+      text,
     });
   }
 
@@ -139,7 +145,7 @@ export class EmailService {
       to: email,
       subject: 'Account Locked - NOIP Platform',
       html,
-      text
+      text,
     });
   }
 
@@ -151,7 +157,7 @@ export class EmailService {
       to: email,
       subject: 'Welcome to NOIP Platform!',
       html,
-      text
+      text,
     });
   }
 
@@ -451,13 +457,17 @@ export class EmailService {
       .trim();
   }
 
-  async sendBulkEmails(recipients: string[], template: string, data: any): Promise<void> {
+  async sendBulkEmails(
+    recipients: string[],
+    template: string,
+    data: any
+  ): Promise<void> {
     const promises = recipients.map(email =>
       this.sendEmail({
         to: email,
         subject: data.subject,
         html: template,
-        text: data.text
+        text: data.text,
       })
     );
 

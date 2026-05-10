@@ -1,5 +1,11 @@
 import { AuthService } from '../../src/services/auth.service';
-import { UserModel, RoleModel, PermissionModel, SessionModel, SecurityEventModel } from '../../src/models';
+import {
+  UserModel,
+  RoleModel,
+  PermissionModel,
+  SessionModel,
+  SecurityEventModel,
+} from '../../src/models';
 import { UserStatus, SecurityEventType } from '../../src/types/auth.types';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
@@ -38,7 +44,7 @@ describe('AuthService', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
       const result = await authService.register(userData);
@@ -58,17 +64,19 @@ describe('AuthService', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
       await authService.register(userData);
 
       const duplicateUserData = {
         ...userData,
-        email: 'different@example.com'
+        email: 'different@example.com',
       };
 
-      await expect(authService.register(duplicateUserData)).rejects.toThrow('User with this username or email already exists');
+      await expect(authService.register(duplicateUserData)).rejects.toThrow(
+        'User with this username or email already exists'
+      );
     });
 
     it('should reject registration with weak password', async () => {
@@ -78,10 +86,12 @@ describe('AuthService', () => {
         password: 'weak',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
-      await expect(authService.register(userData)).rejects.toThrow('Password does not meet security requirements');
+      await expect(authService.register(userData)).rejects.toThrow(
+        'Password does not meet security requirements'
+      );
     });
   });
 
@@ -93,7 +103,7 @@ describe('AuthService', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
       await authService.register(userData);
@@ -110,7 +120,7 @@ describe('AuthService', () => {
     it('should login user successfully with correct credentials', async () => {
       const loginData = {
         username: 'testuser',
-        password: 'SecurePass123!'
+        password: 'SecurePass123!',
       };
 
       const result = await authService.login(loginData);
@@ -124,19 +134,23 @@ describe('AuthService', () => {
     it('should reject login with incorrect password', async () => {
       const loginData = {
         username: 'testuser',
-        password: 'wrongpassword'
+        password: 'wrongpassword',
       };
 
-      await expect(authService.login(loginData)).rejects.toThrow('Invalid credentials');
+      await expect(authService.login(loginData)).rejects.toThrow(
+        'Invalid credentials'
+      );
     });
 
     it('should reject login with non-existent user', async () => {
       const loginData = {
         username: 'nonexistent',
-        password: 'password'
+        password: 'password',
       };
 
-      await expect(authService.login(loginData)).rejects.toThrow('Invalid credentials');
+      await expect(authService.login(loginData)).rejects.toThrow(
+        'Invalid credentials'
+      );
     });
 
     it('should handle login with MFA enabled', async () => {
@@ -149,7 +163,7 @@ describe('AuthService', () => {
 
       const loginData = {
         username: 'testuser',
-        password: 'SecurePass123!'
+        password: 'SecurePass123!',
       };
 
       const result = await authService.login(loginData);
@@ -170,7 +184,7 @@ describe('AuthService', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
       await authService.register(userData);
@@ -185,7 +199,7 @@ describe('AuthService', () => {
 
       const loginData = {
         username: 'testuser',
-        password: 'SecurePass123!'
+        password: 'SecurePass123!',
       };
 
       const result = await authService.login(loginData);
@@ -202,7 +216,9 @@ describe('AuthService', () => {
     });
 
     it('should reject refresh with invalid token', async () => {
-      await expect(authService.refreshToken('invalid-token')).rejects.toThrow('Invalid refresh token');
+      await expect(authService.refreshToken('invalid-token')).rejects.toThrow(
+        'Invalid refresh token'
+      );
     });
   });
 
@@ -214,7 +230,7 @@ describe('AuthService', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
       await authService.register(userData);
@@ -235,7 +251,7 @@ describe('AuthService', () => {
       const passwordData = {
         currentPassword: 'SecurePass123!',
         newPassword: 'NewSecurePass456!',
-        confirmPassword: 'NewSecurePass456!'
+        confirmPassword: 'NewSecurePass456!',
       };
 
       await authService.changePassword(user!._id.toString(), passwordData);
@@ -243,15 +259,17 @@ describe('AuthService', () => {
       // Verify old password no longer works
       const loginData = {
         username: 'testuser',
-        password: 'SecurePass123!'
+        password: 'SecurePass123!',
       };
 
-      await expect(authService.login(loginData)).rejects.toThrow('Invalid credentials');
+      await expect(authService.login(loginData)).rejects.toThrow(
+        'Invalid credentials'
+      );
 
       // Verify new password works
       const newLoginData = {
         username: 'testuser',
-        password: 'NewSecurePass456!'
+        password: 'NewSecurePass456!',
       };
 
       const result = await authService.login(newLoginData);
@@ -265,10 +283,12 @@ describe('AuthService', () => {
       const passwordData = {
         currentPassword: 'wrongpassword',
         newPassword: 'NewSecurePass456!',
-        confirmPassword: 'NewSecurePass456!'
+        confirmPassword: 'NewSecurePass456!',
       };
 
-      await expect(authService.changePassword(user!._id.toString(), passwordData)).rejects.toThrow('Current password is incorrect');
+      await expect(
+        authService.changePassword(user!._id.toString(), passwordData)
+      ).rejects.toThrow('Current password is incorrect');
     });
 
     it('should reject password change with weak new password', async () => {
@@ -278,10 +298,12 @@ describe('AuthService', () => {
       const passwordData = {
         currentPassword: 'SecurePass123!',
         newPassword: 'weak',
-        confirmPassword: 'weak'
+        confirmPassword: 'weak',
       };
 
-      await expect(authService.changePassword(user!._id.toString(), passwordData)).rejects.toThrow('New password does not meet security requirements');
+      await expect(
+        authService.changePassword(user!._id.toString(), passwordData)
+      ).rejects.toThrow('New password does not meet security requirements');
     });
   });
 
@@ -293,7 +315,7 @@ describe('AuthService', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
       await authService.register(userData);
@@ -309,18 +331,22 @@ describe('AuthService', () => {
 
     it('should request password reset successfully', async () => {
       const resetData = {
-        email: 'test@example.com'
+        email: 'test@example.com',
       };
 
-      await expect(authService.requestPasswordReset(resetData)).resolves.not.toThrow();
+      await expect(
+        authService.requestPasswordReset(resetData)
+      ).resolves.not.toThrow();
     });
 
     it('should handle password reset for non-existent email gracefully', async () => {
       const resetData = {
-        email: 'nonexistent@example.com'
+        email: 'nonexistent@example.com',
       };
 
-      await expect(authService.requestPasswordReset(resetData)).resolves.not.toThrow();
+      await expect(
+        authService.requestPasswordReset(resetData)
+      ).resolves.not.toThrow();
     });
   });
 
@@ -334,7 +360,7 @@ describe('AuthService', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
       await authService.register(userData);
@@ -355,7 +381,9 @@ describe('AuthService', () => {
     });
 
     it('should reject verification with invalid token', async () => {
-      await expect(authService.verifyEmail('invalid-token')).rejects.toThrow('Invalid verification token');
+      await expect(authService.verifyEmail('invalid-token')).rejects.toThrow(
+        'Invalid verification token'
+      );
     });
   });
 
@@ -367,7 +395,7 @@ describe('AuthService', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
       await authService.register(userData);
@@ -394,7 +422,9 @@ describe('AuthService', () => {
     });
 
     it('should return null for non-existent user', async () => {
-      await expect(authService.getProfile('507f1f77bcf86cd799439011')).rejects.toThrow('User not found');
+      await expect(
+        authService.getProfile('507f1f77bcf86cd799439011')
+      ).rejects.toThrow('User not found');
     });
   });
 
@@ -402,7 +432,7 @@ describe('AuthService', () => {
     it('should create security events for failed login attempts', async () => {
       const loginData = {
         username: 'nonexistent',
-        password: 'wrongpassword'
+        password: 'wrongpassword',
       };
 
       try {
@@ -412,7 +442,7 @@ describe('AuthService', () => {
       }
 
       const events = await SecurityEventModel.find({
-        type: SecurityEventType.LOGIN_FAILURE
+        type: SecurityEventType.LOGIN_FAILURE,
       });
 
       expect(events.length).toBeGreaterThan(0);
@@ -426,7 +456,7 @@ describe('AuthService', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
       await authService.register(userData);
@@ -441,13 +471,13 @@ describe('AuthService', () => {
 
       const loginData = {
         username: 'testuser',
-        password: 'SecurePass123!'
+        password: 'SecurePass123!',
       };
 
       await authService.login(loginData);
 
       const events = await SecurityEventModel.find({
-        type: SecurityEventType.LOGIN_SUCCESS
+        type: SecurityEventType.LOGIN_SUCCESS,
       });
 
       expect(events.length).toBeGreaterThan(0);
@@ -464,7 +494,7 @@ describe('AuthService', () => {
         password: 'SecurePass123!',
         firstName: 'Test',
         lastName: 'User',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
       await authService.register(userData);
@@ -476,7 +506,7 @@ describe('AuthService', () => {
         password: 'SecurePass123!',
         firstName: 'Test2',
         lastName: 'User2',
-        agreeToTerms: true
+        agreeToTerms: true,
       };
 
       await authService.register(userData2);

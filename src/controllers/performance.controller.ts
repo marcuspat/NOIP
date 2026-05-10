@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
-import { PerformanceService, LoadTestConfig } from '../services/performance.service';
+import {
+  PerformanceService,
+  LoadTestConfig,
+} from '../services/performance.service';
 import { ServiceResponse } from '../types';
 
 export class PerformanceController {
@@ -17,7 +20,7 @@ export class PerformanceController {
         success: true,
         data: { message: 'Performance service initialized successfully' },
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -25,7 +28,7 @@ export class PerformanceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -39,7 +42,7 @@ export class PerformanceController {
         success: true,
         data: metrics,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -47,7 +50,7 @@ export class PerformanceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -62,9 +65,10 @@ export class PerformanceController {
       if (!config.targetUrl || !config.concurrentUsers || !config.duration) {
         const response: ServiceResponse = {
           success: false,
-          error: 'Missing required configuration: targetUrl, concurrentUsers, duration',
+          error:
+            'Missing required configuration: targetUrl, concurrentUsers, duration',
           timestamp: new Date(),
-          requestId: req.headers['x-request-id'] as string || 'unknown'
+          requestId: (req.headers['x-request-id'] as string) || 'unknown',
         };
         res.status(400).json(response);
         return;
@@ -81,7 +85,7 @@ export class PerformanceController {
         success: true,
         data: result,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -89,7 +93,7 @@ export class PerformanceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -105,7 +109,7 @@ export class PerformanceController {
         success: true,
         data: history,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -113,7 +117,7 @@ export class PerformanceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -130,7 +134,7 @@ export class PerformanceController {
           success: false,
           error: 'Test not found',
           timestamp: new Date(),
-          requestId: req.headers['x-request-id'] as string || 'unknown'
+          requestId: (req.headers['x-request-id'] as string) || 'unknown',
         };
         res.status(404).json(response);
         return;
@@ -140,7 +144,7 @@ export class PerformanceController {
         success: true,
         data: result,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -148,7 +152,7 @@ export class PerformanceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -163,7 +167,7 @@ export class PerformanceController {
         success: true,
         data: summary,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -171,7 +175,7 @@ export class PerformanceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -186,7 +190,7 @@ export class PerformanceController {
         success: true,
         data: configs,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -194,7 +198,7 @@ export class PerformanceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -222,7 +226,7 @@ export class PerformanceController {
             success: false,
             error: 'Invalid test type. Use: light, medium, heavy',
             timestamp: new Date(),
-            requestId: req.headers['x-request-id'] as string || 'unknown'
+            requestId: (req.headers['x-request-id'] as string) || 'unknown',
           };
           res.status(400).json(response);
           return;
@@ -235,7 +239,7 @@ export class PerformanceController {
         success: true,
         data: result,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -243,7 +247,7 @@ export class PerformanceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -258,7 +262,7 @@ export class PerformanceController {
         success: true,
         data: health,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -266,7 +270,7 @@ export class PerformanceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -283,7 +287,7 @@ export class PerformanceController {
           success: false,
           error: 'Test not found',
           timestamp: new Date(),
-          requestId: req.headers['x-request-id'] as string || 'unknown'
+          requestId: (req.headers['x-request-id'] as string) || 'unknown',
         };
         res.status(404).json(response);
         return;
@@ -295,7 +299,7 @@ export class PerformanceController {
         success: true,
         data: report,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -303,7 +307,7 @@ export class PerformanceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -318,7 +322,7 @@ export class PerformanceController {
         method: 'GET' as const,
         endpoint: '/health',
         expectedStatus: 200,
-        timeout: 5000
+        timeout: 5000,
       },
       {
         name: 'Dashboard Load',
@@ -326,7 +330,7 @@ export class PerformanceController {
         method: 'GET' as const,
         endpoint: '/api/dashboard',
         expectedStatus: 200,
-        timeout: 10000
+        timeout: 10000,
       },
       {
         name: 'API Test',
@@ -334,14 +338,20 @@ export class PerformanceController {
         method: 'POST' as const,
         endpoint: '/api/test',
         expectedStatus: 200,
-        timeout: 5000
-      }
+        timeout: 5000,
+      },
     ];
   }
 
   private generatePerformanceReport(test: any) {
-    const successRate = ((test.successfulRequests / test.totalRequests) * 100).toFixed(2);
-    const errorRate = ((test.failedRequests / test.totalRequests) * 100).toFixed(2);
+    const successRate = (
+      (test.successfulRequests / test.totalRequests) *
+      100
+    ).toFixed(2);
+    const errorRate = (
+      (test.failedRequests / test.totalRequests) *
+      100
+    ).toFixed(2);
 
     return {
       testSummary: {
@@ -349,7 +359,7 @@ export class PerformanceController {
         timestamp: test.startTime,
         duration: `${Math.floor(test.duration / 60)}m ${test.duration % 60}s`,
         targetUrl: test.config.targetUrl,
-        concurrentUsers: test.config.concurrentUsers
+        concurrentUsers: test.config.concurrentUsers,
       },
       performance: {
         totalRequests: test.totalRequests,
@@ -358,7 +368,7 @@ export class PerformanceController {
         successRate: `${successRate}%`,
         errorRate: `${errorRate}%`,
         requestsPerSecond: test.requestsPerSecond.toFixed(2),
-        throughput: `${(test.throughput / 1024).toFixed(2)} KB/s`
+        throughput: `${(test.throughput / 1024).toFixed(2)} KB/s`,
       },
       responseTime: {
         average: `${test.averageResponseTime.toFixed(2)}ms`,
@@ -367,13 +377,15 @@ export class PerformanceController {
         p50: `${test.p50ResponseTime}ms`,
         p90: `${test.p90ResponseTime}ms`,
         p95: `${test.p95ResponseTime}ms`,
-        p99: `${test.p99ResponseTime}ms`
+        p99: `${test.p99ResponseTime}ms`,
       },
       analysis: {
         bottlenecks: test.bottlenecks.length,
-        criticalIssues: test.bottlenecks.filter((b: any) => b.severity === 'critical').length,
+        criticalIssues: test.bottlenecks.filter(
+          (b: any) => b.severity === 'critical'
+        ).length,
         recommendations: test.recommendations.length,
-        overallPerformance: this.calculatePerformanceScore(test)
+        overallPerformance: this.calculatePerformanceScore(test),
       },
       bottlenecks: test.bottlenecks,
       recommendations: test.recommendations,
@@ -381,8 +393,8 @@ export class PerformanceController {
         type: error.type,
         count: error.count,
         percentage: `${error.percentage.toFixed(2)}%`,
-        message: error.message
-      }))
+        message: error.message,
+      })),
     };
   }
 

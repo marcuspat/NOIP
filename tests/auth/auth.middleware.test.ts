@@ -1,5 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { AuthMiddleware, AuthenticatedRequest } from '../../src/middleware/auth.middleware';
+import {
+  AuthMiddleware,
+  AuthenticatedRequest,
+} from '../../src/middleware/auth.middleware';
 import { JWTManager } from '../../src/utils/auth/jwt.manager';
 import { SessionModel, UserModel, SecurityEventModel } from '../../src/models';
 import { UserStatus, SecurityEventType } from '../../src/types/auth.types';
@@ -29,7 +32,7 @@ describe('AuthMiddleware', () => {
       passwordHash: 'hashedpassword',
       firstName: 'Test',
       lastName: 'User',
-      status: UserStatus.ACTIVE
+      status: UserStatus.ACTIVE,
     });
 
     // Create test session
@@ -43,12 +46,12 @@ describe('AuthMiddleware', () => {
         version: '1.0',
         mobile: false,
         trusted: false,
-        lastSeen: new Date()
+        lastSeen: new Date(),
       },
       ipAddress: '127.0.0.1',
       userAgent: 'test-agent',
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
-      isActive: true
+      isActive: true,
     });
 
     // Generate valid JWT token
@@ -60,10 +63,10 @@ describe('AuthMiddleware', () => {
       permissions: ['user:read:own'],
       sessionId: testSession.sessionId,
       iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + (15 * 60), // 15 minutes
+      exp: Math.floor(Date.now() / 1000) + 15 * 60, // 15 minutes
       iss: 'NOIP Platform',
       aud: 'noip-client',
-      type: 'access' as const
+      type: 'access' as const,
     };
 
     validToken = await jwtManager.signToken(payload, 'access');
@@ -82,13 +85,13 @@ describe('AuthMiddleware', () => {
     it('should authenticate user with valid token', async () => {
       const req = {
         headers: {
-          authorization: `Bearer ${validToken}`
-        }
+          authorization: `Bearer ${validToken}`,
+        },
       } as AuthenticatedRequest;
 
       const res = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn()
+        json: jest.fn(),
       } as any;
 
       const next = jest.fn();
@@ -105,12 +108,12 @@ describe('AuthMiddleware', () => {
 
     it('should reject request without token', async () => {
       const req = {
-        headers: {}
+        headers: {},
       } as AuthenticatedRequest;
 
       const res = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn()
+        json: jest.fn(),
       } as any;
 
       const next = jest.fn();
@@ -118,20 +121,22 @@ describe('AuthMiddleware', () => {
       await authMiddleware.authenticate(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Authentication required' });
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Authentication required',
+      });
       expect(next).not.toHaveBeenCalled();
     });
 
     it('should reject request with invalid token', async () => {
       const req = {
         headers: {
-          authorization: 'Bearer invalid-token'
-        }
+          authorization: 'Bearer invalid-token',
+        },
       } as AuthenticatedRequest;
 
       const res = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn()
+        json: jest.fn(),
       } as any;
 
       const next = jest.fn();
@@ -139,7 +144,9 @@ describe('AuthMiddleware', () => {
       await authMiddleware.authenticate(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Invalid or expired token' });
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Invalid or expired token',
+      });
       expect(next).not.toHaveBeenCalled();
     });
 
@@ -155,12 +162,12 @@ describe('AuthMiddleware', () => {
           version: '1.0',
           mobile: false,
           trusted: false,
-          lastSeen: new Date()
+          lastSeen: new Date(),
         },
         ipAddress: '127.0.0.1',
         userAgent: 'test-agent',
         expiresAt: new Date(Date.now() - 1000), // Expired
-        isActive: true
+        isActive: true,
       });
 
       const payload = {
@@ -171,23 +178,23 @@ describe('AuthMiddleware', () => {
         permissions: ['user:read:own'],
         sessionId: expiredSession.sessionId,
         iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + (15 * 60),
+        exp: Math.floor(Date.now() / 1000) + 15 * 60,
         iss: 'NOIP Platform',
         aud: 'noip-client',
-        type: 'access' as const
+        type: 'access' as const,
       };
 
       const token = await jwtManager.signToken(payload, 'access');
 
       const req = {
         headers: {
-          authorization: `Bearer ${token}`
-        }
+          authorization: `Bearer ${token}`,
+        },
       } as AuthenticatedRequest;
 
       const res = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn()
+        json: jest.fn(),
       } as any;
 
       const next = jest.fn();
@@ -195,7 +202,9 @@ describe('AuthMiddleware', () => {
       await authMiddleware.authenticate(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Session expired or invalid' });
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Session expired or invalid',
+      });
       expect(next).not.toHaveBeenCalled();
     });
 
@@ -207,7 +216,7 @@ describe('AuthMiddleware', () => {
         passwordHash: 'hashedpassword',
         firstName: 'Inactive',
         lastName: 'User',
-        status: UserStatus.INACTIVE
+        status: UserStatus.INACTIVE,
       });
 
       const payload = {
@@ -218,23 +227,23 @@ describe('AuthMiddleware', () => {
         permissions: ['user:read:own'],
         sessionId: testSession.sessionId,
         iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + (15 * 60),
+        exp: Math.floor(Date.now() / 1000) + 15 * 60,
         iss: 'NOIP Platform',
         aud: 'noip-client',
-        type: 'access' as const
+        type: 'access' as const,
       };
 
       const token = await jwtManager.signToken(payload, 'access');
 
       const req = {
         headers: {
-          authorization: `Bearer ${token}`
-        }
+          authorization: `Bearer ${token}`,
+        },
       } as AuthenticatedRequest;
 
       const res = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn()
+        json: jest.fn(),
       } as any;
 
       const next = jest.fn();
@@ -242,7 +251,9 @@ describe('AuthMiddleware', () => {
       await authMiddleware.authenticate(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({ error: 'User not found or inactive' });
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'User not found or inactive',
+      });
       expect(next).not.toHaveBeenCalled();
     });
   });
@@ -250,7 +261,7 @@ describe('AuthMiddleware', () => {
   describe('optionalAuth', () => {
     it('should continue without authentication if no token provided', async () => {
       const req = {
-        headers: {}
+        headers: {},
       } as AuthenticatedRequest;
 
       const res = {} as Response;
@@ -266,8 +277,8 @@ describe('AuthMiddleware', () => {
     it('should authenticate if valid token provided', async () => {
       const req = {
         headers: {
-          authorization: `Bearer ${validToken}`
-        }
+          authorization: `Bearer ${validToken}`,
+        },
       } as AuthenticatedRequest;
 
       const res = {} as Response;
@@ -285,7 +296,7 @@ describe('AuthMiddleware', () => {
     it('should allow access if MFA is not enabled', async () => {
       const req = {
         user: { mfaEnabled: false },
-        session: { mfaVerified: false }
+        session: { mfaVerified: false },
       } as AuthenticatedRequest;
 
       const res = {} as Response;
@@ -299,7 +310,7 @@ describe('AuthMiddleware', () => {
     it('should allow access if MFA is verified', async () => {
       const req = {
         user: { mfaEnabled: true },
-        session: { mfaVerified: true }
+        session: { mfaVerified: true },
       } as AuthenticatedRequest;
 
       const res = {} as Response;
@@ -313,12 +324,12 @@ describe('AuthMiddleware', () => {
     it('should reject access if MFA is enabled but not verified', async () => {
       const req = {
         user: { mfaEnabled: true },
-        session: { mfaVerified: false }
+        session: { mfaVerified: false },
       } as AuthenticatedRequest;
 
       const res = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn()
+        json: jest.fn(),
       } as any;
 
       const next = jest.fn();
@@ -326,7 +337,9 @@ describe('AuthMiddleware', () => {
       await authMiddleware.requireMFA(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({ error: 'MFA verification required' });
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'MFA verification required',
+      });
       expect(next).not.toHaveBeenCalled();
     });
 
@@ -335,7 +348,7 @@ describe('AuthMiddleware', () => {
 
       const res = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn()
+        json: jest.fn(),
       } as any;
 
       const next = jest.fn();
@@ -343,7 +356,9 @@ describe('AuthMiddleware', () => {
       await authMiddleware.requireMFA(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Authentication required' });
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Authentication required',
+      });
       expect(next).not.toHaveBeenCalled();
     });
   });
@@ -352,11 +367,8 @@ describe('AuthMiddleware', () => {
     it('should allow access if user has required role', async () => {
       const req = {
         user: {
-          roles: [
-            { name: 'admin' },
-            { name: 'user' }
-          ]
-        }
+          roles: [{ name: 'admin' }, { name: 'user' }],
+        },
       } as AuthenticatedRequest;
 
       const res = {} as Response;
@@ -371,15 +383,13 @@ describe('AuthMiddleware', () => {
     it('should reject access if user does not have required role', async () => {
       const req = {
         user: {
-          roles: [
-            { name: 'user' }
-          ]
-        }
+          roles: [{ name: 'user' }],
+        },
       } as AuthenticatedRequest;
 
       const res = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn()
+        json: jest.fn(),
       } as any;
 
       const next = jest.fn();
@@ -388,7 +398,9 @@ describe('AuthMiddleware', () => {
       await middleware(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Insufficient permissions' });
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Insufficient permissions',
+      });
       expect(next).not.toHaveBeenCalled();
     });
   });
@@ -399,9 +411,9 @@ describe('AuthMiddleware', () => {
         user: {
           permissions: [
             { resource: 'user', action: 'read' },
-            { resource: 'admin', action: 'update' }
-          ]
-        }
+            { resource: 'admin', action: 'update' },
+          ],
+        },
       } as AuthenticatedRequest;
 
       const res = {} as Response;
@@ -416,15 +428,13 @@ describe('AuthMiddleware', () => {
     it('should reject access if user does not have required permission', async () => {
       const req = {
         user: {
-          permissions: [
-            { resource: 'user', action: 'read' }
-          ]
-        }
+          permissions: [{ resource: 'user', action: 'read' }],
+        },
       } as AuthenticatedRequest;
 
       const res = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn()
+        json: jest.fn(),
       } as any;
 
       const next = jest.fn();
@@ -433,7 +443,9 @@ describe('AuthMiddleware', () => {
       await middleware(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Insufficient permissions' });
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Insufficient permissions',
+      });
       expect(next).not.toHaveBeenCalled();
     });
   });
@@ -441,7 +453,7 @@ describe('AuthMiddleware', () => {
   describe('requireEmailVerification', () => {
     it('should allow access if email is verified', async () => {
       const req = {
-        user: { emailVerified: true }
+        user: { emailVerified: true },
       } as AuthenticatedRequest;
 
       const res = {} as Response;
@@ -454,12 +466,12 @@ describe('AuthMiddleware', () => {
 
     it('should reject access if email is not verified', async () => {
       const req = {
-        user: { emailVerified: false }
+        user: { emailVerified: false },
       } as AuthenticatedRequest;
 
       const res = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn()
+        json: jest.fn(),
       } as any;
 
       const next = jest.fn();
@@ -467,7 +479,9 @@ describe('AuthMiddleware', () => {
       await authMiddleware.requireEmailVerification(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Email verification required' });
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Email verification required',
+      });
       expect(next).not.toHaveBeenCalled();
     });
   });
@@ -477,15 +491,17 @@ describe('AuthMiddleware', () => {
       const req = {
         session: {
           isExpired: jest.fn().mockReturnValue(false),
-          deviceFingerprint: 'test-fingerprint'
-        }
+          deviceFingerprint: 'test-fingerprint',
+        },
       } as any;
 
       const res = {} as Response;
       const next = jest.fn();
 
       // Mock device fingerprint extraction
-      jest.spyOn(authMiddleware as any, 'extractDeviceFingerprint').mockReturnValue('test-fingerprint');
+      jest
+        .spyOn(authMiddleware as any, 'extractDeviceFingerprint')
+        .mockReturnValue('test-fingerprint');
 
       await authMiddleware.validateSession(req, res, next);
 
@@ -496,13 +512,13 @@ describe('AuthMiddleware', () => {
       const req = {
         session: {
           isExpired: jest.fn().mockReturnValue(true),
-          revoke: jest.fn()
-        }
+          revoke: jest.fn(),
+        },
       } as any;
 
       const res = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn()
+        json: jest.fn(),
       } as any;
 
       const next = jest.fn();
@@ -520,7 +536,7 @@ describe('AuthMiddleware', () => {
 
       const res = {
         status: jest.fn().mockReturnThis(),
-        json: jest.fn()
+        json: jest.fn(),
       } as any;
 
       const next = jest.fn();
@@ -528,7 +544,9 @@ describe('AuthMiddleware', () => {
       await authMiddleware.validateSession(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Valid session required' });
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Valid session required',
+      });
       expect(next).not.toHaveBeenCalled();
     });
   });

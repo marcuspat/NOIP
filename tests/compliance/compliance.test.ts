@@ -24,7 +24,8 @@ describe('Compliance Service', () => {
     });
 
     test('should retrieve specific framework', async () => {
-      const soc2Framework = await complianceService.getComplianceFramework('soc2-type2');
+      const soc2Framework =
+        await complianceService.getComplianceFramework('soc2-type2');
 
       expect(soc2Framework).toBeDefined();
       expect(soc2Framework!.name).toBe('SOC 2 Type II');
@@ -33,7 +34,8 @@ describe('Compliance Service', () => {
     });
 
     test('should return null for non-existent framework', async () => {
-      const nonExistentFramework = await complianceService.getComplianceFramework('non-existent');
+      const nonExistentFramework =
+        await complianceService.getComplianceFramework('non-existent');
       expect(nonExistentFramework).toBeNull();
     });
 
@@ -63,13 +65,26 @@ describe('Compliance Service', () => {
           expect(control.testFrequency).toBeDefined();
 
           // Validate status values
-          expect(['compliant', 'non-compliant', 'partially-compliant', 'not-assessed']).toContain(control.status);
+          expect([
+            'compliant',
+            'non-compliant',
+            'partially-compliant',
+            'not-assessed',
+          ]).toContain(control.status);
 
           // Validate risk level values
-          expect(['low', 'medium', 'high', 'critical']).toContain(control.riskLevel);
+          expect(['low', 'medium', 'high', 'critical']).toContain(
+            control.riskLevel
+          );
 
           // Validate test frequency values
-          expect(['daily', 'weekly', 'monthly', 'quarterly', 'annually']).toContain(control.testFrequency);
+          expect([
+            'daily',
+            'weekly',
+            'monthly',
+            'quarterly',
+            'annually',
+          ]).toContain(control.testFrequency);
         }
       }
     });
@@ -77,7 +92,8 @@ describe('Compliance Service', () => {
 
   describe('Compliance Reports', () => {
     test('should generate compliance report for SOC 2', async () => {
-      const report = await complianceService.generateComplianceReport('soc2-type2');
+      const report =
+        await complianceService.generateComplianceReport('soc2-type2');
 
       expect(report).toBeDefined();
       expect(report.framework).toBe('SOC 2 Type II');
@@ -85,13 +101,17 @@ describe('Compliance Service', () => {
       expect(report.overallScore).toBeGreaterThanOrEqual(0);
       expect(report.overallScore).toBeLessThanOrEqual(100);
       expect(report.status).toBeDefined();
-      expect(['compliant', 'non-compliant', 'requires-improvement']).toContain(report.status);
+      expect(['compliant', 'non-compliant', 'requires-improvement']).toContain(
+        report.status
+      );
 
       // Check summary
       expect(report.summary).toBeDefined();
       expect(report.summary.totalControls).toBeGreaterThan(0);
       expect(report.summary.compliantControls).toBeGreaterThanOrEqual(0);
-      expect(report.summary.partiallyCompliantControls).toBeGreaterThanOrEqual(0);
+      expect(report.summary.partiallyCompliantControls).toBeGreaterThanOrEqual(
+        0
+      );
       expect(report.summary.nonCompliantControls).toBeGreaterThanOrEqual(0);
       expect(report.summary.notAssessedControls).toBeGreaterThanOrEqual(0);
 
@@ -120,7 +140,8 @@ describe('Compliance Service', () => {
     });
 
     test('should generate compliance report for ISO 27001', async () => {
-      const report = await complianceService.generateComplianceReport('iso27001');
+      const report =
+        await complianceService.generateComplianceReport('iso27001');
 
       expect(report).toBeDefined();
       expect(report.framework).toBe('ISO 27001:2022');
@@ -131,10 +152,13 @@ describe('Compliance Service', () => {
     test('should generate compliance report for custom period', async () => {
       const customPeriod = {
         start: new Date('2025-01-01'),
-        end: new Date('2025-01-31')
+        end: new Date('2025-01-31'),
       };
 
-      const report = await complianceService.generateComplianceReport('soc2-type2', customPeriod);
+      const report = await complianceService.generateComplianceReport(
+        'soc2-type2',
+        customPeriod
+      );
 
       expect(report).toBeDefined();
       expect(report.period.start).toEqual(customPeriod.start);
@@ -150,7 +174,8 @@ describe('Compliance Service', () => {
 
   describe('Compliance Assessments', () => {
     test('should run assessment for entire framework', async () => {
-      const assessments = await complianceService.runComplianceAssessment('soc2-type2');
+      const assessments =
+        await complianceService.runComplianceAssessment('soc2-type2');
 
       expect(assessments).toBeDefined();
       expect(Array.isArray(assessments)).toBe(true);
@@ -176,7 +201,10 @@ describe('Compliance Service', () => {
     });
 
     test('should run assessment for specific control', async () => {
-      const assessments = await complianceService.runComplianceAssessment('soc2-type2', 'CC1.1');
+      const assessments = await complianceService.runComplianceAssessment(
+        'soc2-type2',
+        'CC1.1'
+      );
 
       expect(assessments).toBeDefined();
       expect(Array.isArray(assessments)).toBe(true);
@@ -185,7 +213,8 @@ describe('Compliance Service', () => {
     });
 
     test('should generate appropriate findings', async () => {
-      const assessments = await complianceService.runComplianceAssessment('soc2-type2');
+      const assessments =
+        await complianceService.runComplianceAssessment('soc2-type2');
 
       assessments.forEach(assessment => {
         expect(assessment.findings.length).toBeGreaterThan(0);
@@ -197,7 +226,8 @@ describe('Compliance Service', () => {
     });
 
     test('should generate evidence for assessments', async () => {
-      const assessments = await complianceService.runComplianceAssessment('soc2-type2');
+      const assessments =
+        await complianceService.runComplianceAssessment('soc2-type2');
 
       assessments.forEach(assessment => {
         expect(assessment.evidence.length).toBeGreaterThan(0);
@@ -214,12 +244,13 @@ describe('Compliance Service', () => {
 
   describe('Compliance Calculations', () => {
     test('should calculate overall compliance score correctly', async () => {
-      const report = await complianceService.generateComplianceReport('soc2-type2');
+      const report =
+        await complianceService.generateComplianceReport('soc2-type2');
 
       // Verify score calculation
       const expectedScore = Math.round(
         report.controlResults.reduce((sum, result) => sum + result.score, 0) /
-        report.controlResults.length
+          report.controlResults.length
       );
 
       expect(report.overallScore).toBe(expectedScore);
@@ -228,7 +259,8 @@ describe('Compliance Service', () => {
     });
 
     test('should determine compliance status correctly', async () => {
-      const report = await complianceService.generateComplianceReport('soc2-type2');
+      const report =
+        await complianceService.generateComplianceReport('soc2-type2');
 
       // Verify status determination
       const criticalNonCompliant = report.controlResults.filter(
@@ -247,7 +279,8 @@ describe('Compliance Service', () => {
     });
 
     test('should generate category summaries correctly', async () => {
-      const report = await complianceService.generateComplianceReport('soc2-type2');
+      const report =
+        await complianceService.generateComplianceReport('soc2-type2');
 
       expect(report.categories.length).toBeGreaterThan(0);
 
@@ -257,7 +290,9 @@ describe('Compliance Service', () => {
         expect(category.score).toBeLessThanOrEqual(100);
         expect(category.totalControls).toBeGreaterThan(0);
         expect(category.compliantControls).toBeGreaterThanOrEqual(0);
-        expect(category.compliantControls).toBeLessThanOrEqual(category.totalControls);
+        expect(category.compliantControls).toBeLessThanOrEqual(
+          category.totalControls
+        );
         expect(category.risks).toBeDefined();
         expect(category.risks.critical).toBeGreaterThanOrEqual(0);
         expect(category.risks.high).toBeGreaterThanOrEqual(0);
@@ -267,11 +302,14 @@ describe('Compliance Service', () => {
     });
 
     test('should generate meaningful recommendations', async () => {
-      const report = await complianceService.generateComplianceReport('soc2-type2');
+      const report =
+        await complianceService.generateComplianceReport('soc2-type2');
 
       report.recommendations.forEach(recommendation => {
         expect(recommendation.priority).toBeDefined();
-        expect(['critical', 'high', 'medium', 'low']).toContain(recommendation.priority);
+        expect(['critical', 'high', 'medium', 'low']).toContain(
+          recommendation.priority
+        );
         expect(recommendation.category).toBeDefined();
         expect(recommendation.controlId).toBeDefined();
         expect(recommendation.title).toBeDefined();
@@ -287,12 +325,15 @@ describe('Compliance Service', () => {
 
   describe('Evidence Management', () => {
     test('should audit evidence correctly', async () => {
-      const report = await complianceService.generateComplianceReport('soc2-type2');
+      const report =
+        await complianceService.generateComplianceReport('soc2-type2');
 
       expect(report.evidenceAudit).toBeDefined();
       expect(report.evidenceAudit.totalEvidence).toBeGreaterThanOrEqual(0);
       expect(report.evidenceAudit.verifiedEvidence).toBeGreaterThanOrEqual(0);
-      expect(report.evidenceAudit.pendingVerification).toBeGreaterThanOrEqual(0);
+      expect(report.evidenceAudit.pendingVerification).toBeGreaterThanOrEqual(
+        0
+      );
       expect(report.evidenceAudit.expiredEvidence).toBeGreaterThanOrEqual(0);
       expect(report.evidenceAudit.missingEvidence).toBeGreaterThanOrEqual(0);
       expect(report.evidenceAudit.auditTrail).toBeDefined();
@@ -303,7 +344,13 @@ describe('Compliance Service', () => {
         const entry = report.evidenceAudit.auditTrail[0];
         expect(entry.timestamp).toBeDefined();
         expect(entry.action).toBeDefined();
-        expect(['created', 'verified', 'updated', 'expired', 'deleted']).toContain(entry.action);
+        expect([
+          'created',
+          'verified',
+          'updated',
+          'expired',
+          'deleted',
+        ]).toContain(entry.action);
         expect(entry.evidenceId).toBeDefined();
         expect(entry.controlId).toBeDefined();
         expect(entry.performedBy).toBeDefined();
@@ -312,7 +359,8 @@ describe('Compliance Service', () => {
     });
 
     test('should generate evidence for controls', async () => {
-      const assessments = await complianceService.runComplianceAssessment('soc2-type2');
+      const assessments =
+        await complianceService.runComplianceAssessment('soc2-type2');
 
       assessments.forEach(assessment => {
         expect(assessment.evidence.length).toBeGreaterThan(0);
@@ -321,7 +369,12 @@ describe('Compliance Service', () => {
           expect(evidence.id).toBeDefined();
           expect(evidence.type).toBeDefined();
           expect([
-            'automated', 'manual', 'document', 'screenshot', 'log', 'configuration'
+            'automated',
+            'manual',
+            'document',
+            'screenshot',
+            'log',
+            'configuration',
           ]).toContain(evidence.type);
           expect(evidence.description).toBeDefined();
           expect(evidence.source).toBeDefined();
@@ -334,20 +387,33 @@ describe('Compliance Service', () => {
 
   describe('Trend Analysis', () => {
     test('should generate trend analysis', async () => {
-      const report = await complianceService.generateComplianceReport('soc2-type2');
+      const report =
+        await complianceService.generateComplianceReport('soc2-type2');
 
       expect(report.trendAnalysis).toBeDefined();
       expect(report.trendAnalysis.period).toBeDefined();
-      expect(['30d', '60d', '90d', '180d', '365d']).toContain(report.trendAnalysis.period);
+      expect(['30d', '60d', '90d', '180d', '365d']).toContain(
+        report.trendAnalysis.period
+      );
 
       // Check compliance score trends
       expect(report.trendAnalysis.complianceScore).toBeDefined();
-      expect(report.trendAnalysis.complianceScore.current).toBeGreaterThanOrEqual(0);
-      expect(report.trendAnalysis.complianceScore.current).toBeLessThanOrEqual(100);
-      expect(report.trendAnalysis.complianceScore.previous).toBeGreaterThanOrEqual(0);
-      expect(report.trendAnalysis.complianceScore.previous).toBeLessThanOrEqual(100);
+      expect(
+        report.trendAnalysis.complianceScore.current
+      ).toBeGreaterThanOrEqual(0);
+      expect(report.trendAnalysis.complianceScore.current).toBeLessThanOrEqual(
+        100
+      );
+      expect(
+        report.trendAnalysis.complianceScore.previous
+      ).toBeGreaterThanOrEqual(0);
+      expect(report.trendAnalysis.complianceScore.previous).toBeLessThanOrEqual(
+        100
+      );
       expect(report.trendAnalysis.complianceScore.trend).toBeDefined();
-      expect(['improving', 'stable', 'declining']).toContain(report.trendAnalysis.complianceScore.trend);
+      expect(['improving', 'stable', 'declining']).toContain(
+        report.trendAnalysis.complianceScore.trend
+      );
 
       // Check risk trends
       expect(report.trendAnalysis.riskTrends).toBeDefined();
@@ -372,7 +438,9 @@ describe('Compliance Service', () => {
         expect(categoryTrend.score).toBeGreaterThanOrEqual(0);
         expect(categoryTrend.score).toBeLessThanOrEqual(100);
         expect(categoryTrend.trend).toBeDefined();
-        expect(['improving', 'stable', 'declining']).toContain(categoryTrend.trend);
+        expect(['improving', 'stable', 'declining']).toContain(
+          categoryTrend.trend
+        );
       });
     });
   });
@@ -383,14 +451,22 @@ describe('Compliance Service', () => {
 
       frameworks.forEach(framework => {
         framework.controls.forEach(control => {
-          expect(['compliant', 'non-compliant', 'partially-compliant', 'not-assessed']).toContain(control.status);
+          expect([
+            'compliant',
+            'non-compliant',
+            'partially-compliant',
+            'not-assessed',
+          ]).toContain(control.status);
 
           // Validate assessment scheduling
-          expect(control.nextAssessment.getTime()).toBeGreaterThan(control.lastAssessed.getTime());
+          expect(control.nextAssessment.getTime()).toBeGreaterThan(
+            control.lastAssessed.getTime()
+          );
 
           // Validate risk-based scheduling
           const daysUntilNextAssessment = Math.floor(
-            (control.nextAssessment.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+            (control.nextAssessment.getTime() - new Date().getTime()) /
+              (1000 * 60 * 60 * 24)
           );
 
           // Higher risk controls should have more frequent assessments
@@ -408,14 +484,17 @@ describe('Compliance Service', () => {
       await complianceService.runComplianceAssessment('soc2-type2');
       await complianceService.runComplianceAssessment('soc2-type2');
 
-      const report = await complianceService.generateComplianceReport('soc2-type2');
+      const report =
+        await complianceService.generateComplianceReport('soc2-type2');
 
       // Each control should have been assessed
       expect(report.controlResults.length).toBeGreaterThan(0);
 
       report.controlResults.forEach(result => {
         expect(result.lastAssessed).toBeDefined();
-        expect(result.lastAssessed.getTime()).toBeLessThanOrEqual(new Date().getTime());
+        expect(result.lastAssessed.getTime()).toBeLessThanOrEqual(
+          new Date().getTime()
+        );
       });
     });
   });
@@ -439,7 +518,10 @@ describe('Compliance Service', () => {
     });
 
     test('should handle invalid control IDs', async () => {
-      const assessments = await complianceService.runComplianceAssessment('soc2-type2', 'invalid-control-id');
+      const assessments = await complianceService.runComplianceAssessment(
+        'soc2-type2',
+        'invalid-control-id'
+      );
       expect(assessments).toBeDefined();
       expect(assessments.length).toBe(0);
     });
@@ -447,7 +529,7 @@ describe('Compliance Service', () => {
     test('should handle invalid dates', async () => {
       const invalidPeriod = {
         start: new Date('invalid-date'),
-        end: new Date()
+        end: new Date(),
       };
 
       // Should handle gracefully or throw appropriate error

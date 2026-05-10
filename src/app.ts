@@ -47,47 +47,56 @@ let shuttingDown = false;
 // Mount health probes BEFORE the rate limiter so Kubernetes (and any other
 // scrapers) are never rejected with HTTP 429. ADR-0020 mandates these probes
 // stay cheap and unauthenticated.
-app.use(createHealthRoutes({
-  isStartupComplete: () => startupComplete,
-  isLive: () => !shuttingDown,
-  // TODO: once shared Mongo / Redis clients are wired in, ping them here.
-  // For now readiness only reflects bootstrap + shutdown state.
-  isReady: async () => startupComplete && !shuttingDown,
-  composite: async () => {
-    const [discoveryHealth, securityHealth, aiHealth, dashboardHealth, performanceHealth, complianceHealth] = await Promise.all([
-      discoveryService.healthCheck(),
-      securityService.healthCheck(),
-      aiService.healthCheck(),
-      dashboardService.healthCheck(),
-      performanceService.healthCheck(),
-      complianceService.healthCheck(),
-    ]);
+app.use(
+  createHealthRoutes({
+    isStartupComplete: () => startupComplete,
+    isLive: () => !shuttingDown,
+    // TODO: once shared Mongo / Redis clients are wired in, ping them here.
+    // For now readiness only reflects bootstrap + shutdown state.
+    isReady: async () => startupComplete && !shuttingDown,
+    composite: async () => {
+      const [
+        discoveryHealth,
+        securityHealth,
+        aiHealth,
+        dashboardHealth,
+        performanceHealth,
+        complianceHealth,
+      ] = await Promise.all([
+        discoveryService.healthCheck(),
+        securityService.healthCheck(),
+        aiService.healthCheck(),
+        dashboardService.healthCheck(),
+        performanceService.healthCheck(),
+        complianceService.healthCheck(),
+      ]);
 
-    return {
-      status: shuttingDown ? 'shutting-down' : 'healthy',
-      timestamp: new Date(),
-      version: config.app.version,
-      environment: config.app.environment,
-      phase: 'Phase 3 - Production Ready (100%)',
-      services: {
-        discovery: discoveryHealth,
-        security: securityHealth,
-        ai: aiHealth,
-        dashboard: dashboardHealth,
-        performance: performanceHealth,
-        compliance: complianceHealth,
-      },
-      capabilities: {
-        advancedAI: true,
-        performanceTesting: true,
-        complianceFramework: true,
-        loadTesting: true,
-        predictiveAnalytics: true,
-        contextAwareAnalysis: true,
-      },
-    };
-  },
-}));
+      return {
+        status: shuttingDown ? 'shutting-down' : 'healthy',
+        timestamp: new Date(),
+        version: config.app.version,
+        environment: config.app.environment,
+        phase: 'Phase 3 - Production Ready (100%)',
+        services: {
+          discovery: discoveryHealth,
+          security: securityHealth,
+          ai: aiHealth,
+          dashboard: dashboardHealth,
+          performance: performanceHealth,
+          compliance: complianceHealth,
+        },
+        capabilities: {
+          advancedAI: true,
+          performanceTesting: true,
+          complianceFramework: true,
+          loadTesting: true,
+          predictiveAnalytics: true,
+          contextAwareAnalysis: true,
+        },
+      };
+    },
+  })
+);
 
 // Rate limiting
 const limiter = rateLimit({
@@ -99,11 +108,13 @@ app.use(limiter);
 
 // Logging
 if (config.app.environment !== 'test') {
-  app.use(morgan('combined', {
-    stream: {
-      write: (message: string) => logger.info(message.trim()),
-    },
-  }));
+  app.use(
+    morgan('combined', {
+      stream: {
+        write: (message: string) => logger.info(message.trim()),
+      },
+    })
+  );
 }
 
 // API Routes
@@ -115,15 +126,22 @@ app.use('/api/performance', performanceRoutes);
 app.use('/api/compliance', complianceRoutes);
 
 // Error handling middleware
-app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  logger.error('Unhandled error', err);
+app.use(
+  (
+    err: Error,
+    req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction
+  ) => {
+    logger.error('Unhandled error', err);
 
-  res.status(500).json({
-    error: 'Internal server error',
-    timestamp: new Date(),
-    requestId: req.headers['x-request-id'] || 'unknown',
-  });
-});
+    res.status(500).json({
+      error: 'Internal server error',
+      timestamp: new Date(),
+      requestId: req.headers['x-request-id'] || 'unknown',
+    });
+  }
+);
 
 // 404 handler. Express 5 changed the path-to-regexp syntax: a bare `*`
 // is no longer a legal path. Use a named wildcard parameter instead.
@@ -377,7 +395,9 @@ async function initializeServices() {
     ]);
 
     logger.info('All services initialized successfully');
-    logger.info('Phase 3 Production Ready - Advanced AI, Performance Testing, and Compliance Framework enabled');
+    logger.info(
+      'Phase 3 Production Ready - Advanced AI, Performance Testing, and Compliance Framework enabled'
+    );
 
     // ADR-0020: only flip readiness once every dependency has finished
     // bootstrapping. Until this point `/health/ready` returns 503 and the
@@ -412,10 +432,7 @@ process.on('SIGTERM', async () => {
   logger.info('Received SIGTERM, shutting down gracefully');
   shuttingDown = true;
 
-  await Promise.all([
-    discoveryService.stop(),
-    securityService.stop(),
-  ]);
+  await Promise.all([discoveryService.stop(), securityService.stop()]);
 
   process.exit(0);
 });
@@ -424,10 +441,7 @@ process.on('SIGINT', async () => {
   logger.info('Received SIGINT, shutting down gracefully');
   shuttingDown = true;
 
-  await Promise.all([
-    discoveryService.stop(),
-    securityService.stop(),
-  ]);
+  await Promise.all([discoveryService.stop(), securityService.stop()]);
 
   process.exit(0);
 });

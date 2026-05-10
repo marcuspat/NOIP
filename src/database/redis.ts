@@ -156,9 +156,13 @@ export class RedisManager {
   }
 
   public getClient(): Redis | Redis.Cluster {
-    return this.redisCluster || this.redis || (() => {
-      throw new Error('Redis not connected');
-    })();
+    return (
+      this.redisCluster ||
+      this.redis ||
+      (() => {
+        throw new Error('Redis not connected');
+      })()
+    );
   }
 
   public isHealthy(): boolean {
@@ -478,7 +482,9 @@ export class RedisManager {
   public async getStats(): Promise<any> {
     try {
       const client = this.getClient();
-      const info = await client.info('server,memory,clients,stats,replication,cpu,persistence');
+      const info = await client.info(
+        'server,memory,clients,stats,replication,cpu,persistence'
+      );
       return this.parseRedisInfo(info);
     } catch (error) {
       logger.error('Failed to get Redis stats', error);
@@ -499,7 +505,7 @@ export class RedisManager {
       logger.info('Redis connection ready');
     });
 
-    this.redis.on('error', (error) => {
+    this.redis.on('error', error => {
       logger.error('Redis connection error', error);
       this.isConnected = false;
     });
@@ -510,7 +516,7 @@ export class RedisManager {
       this.attemptReconnect();
     });
 
-    this.redis.on('reconnecting', (delay) => {
+    this.redis.on('reconnecting', delay => {
       logger.info(`Redis reconnecting in ${delay}ms`);
     });
 
@@ -533,7 +539,7 @@ export class RedisManager {
       logger.info('Redis cluster connection ready');
     });
 
-    this.redisCluster.on('error', (error) => {
+    this.redisCluster.on('error', error => {
       logger.error('Redis cluster connection error', error);
       this.isConnected = false;
     });
@@ -544,7 +550,7 @@ export class RedisManager {
       this.attemptReconnect();
     });
 
-    this.redisCluster.on('reconnecting', (delay) => {
+    this.redisCluster.on('reconnecting', delay => {
       logger.info(`Redis cluster reconnecting in ${delay}ms`);
     });
 
@@ -565,13 +571,18 @@ export class RedisManager {
     }
 
     this.reconnectAttempts++;
-    logger.info(`Attempting Redis reconnection (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    logger.info(
+      `Attempting Redis reconnection (${this.reconnectAttempts}/${this.maxReconnectAttempts})`
+    );
 
     setTimeout(async () => {
       try {
         await this.connect();
       } catch (error) {
-        logger.error(`Redis reconnection attempt ${this.reconnectAttempts} failed`, error);
+        logger.error(
+          `Redis reconnection attempt ${this.reconnectAttempts} failed`,
+          error
+        );
         this.attemptReconnect();
       }
     }, this.reconnectInterval);

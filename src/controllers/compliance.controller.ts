@@ -17,7 +17,7 @@ export class ComplianceController {
         success: true,
         data: { message: 'Compliance service initialized successfully' },
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -25,7 +25,7 @@ export class ComplianceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -39,7 +39,7 @@ export class ComplianceController {
         success: true,
         data: frameworks,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -47,7 +47,7 @@ export class ComplianceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -57,14 +57,15 @@ export class ComplianceController {
   async getFramework(req: Request, res: Response): Promise<void> {
     try {
       const { framework } = req.params;
-      const frameworkData = await this.complianceService.getComplianceFramework(framework);
+      const frameworkData =
+        await this.complianceService.getComplianceFramework(framework);
 
       if (!frameworkData) {
         const response: ServiceResponse = {
           success: false,
           error: 'Framework not found',
           timestamp: new Date(),
-          requestId: req.headers['x-request-id'] as string || 'unknown'
+          requestId: (req.headers['x-request-id'] as string) || 'unknown',
         };
         res.status(404).json(response);
         return;
@@ -74,7 +75,7 @@ export class ComplianceController {
         success: true,
         data: frameworkData,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -82,7 +83,7 @@ export class ComplianceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -98,17 +99,20 @@ export class ComplianceController {
       if (start && end) {
         period = {
           start: new Date(start as string),
-          end: new Date(end as string)
+          end: new Date(end as string),
         };
       }
 
-      const report = await this.complianceService.generateComplianceReport(framework, period);
+      const report = await this.complianceService.generateComplianceReport(
+        framework,
+        period
+      );
 
       const response: ServiceResponse = {
         success: true,
         data: report,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -116,7 +120,7 @@ export class ComplianceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -137,7 +141,7 @@ export class ComplianceController {
         success: true,
         data: assessments,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -145,7 +149,7 @@ export class ComplianceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -161,11 +165,14 @@ export class ComplianceController {
         overview: {
           totalFrameworks: frameworks.length,
           lastUpdated: new Date(),
-          status: 'healthy'
+          status: 'healthy',
         },
         frameworkSummaries: await Promise.all(
-          frameworks.map(async (framework) => {
-            const report = await this.complianceService.generateComplianceReport(framework.name);
+          frameworks.map(async framework => {
+            const report =
+              await this.complianceService.generateComplianceReport(
+                framework.name
+              );
             return {
               name: framework.name,
               version: framework.version,
@@ -174,19 +181,19 @@ export class ComplianceController {
               totalControls: report.summary.totalControls,
               compliantControls: report.summary.compliantControls,
               criticalRisks: report.summary.criticalRisks,
-              highRisks: report.summary.highRisks
+              highRisks: report.summary.highRisks,
             };
           })
         ),
         alerts: this.generateComplianceAlerts(frameworks),
-        upcomingAssessments: this.getUpcomingAssessments(frameworks)
+        upcomingAssessments: this.getUpcomingAssessments(frameworks),
       };
 
       const response: ServiceResponse = {
         success: true,
         data: dashboard,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -194,7 +201,7 @@ export class ComplianceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -216,7 +223,7 @@ export class ComplianceController {
             description: 'Automated security scan results',
             timestamp: new Date(),
             status: 'verified',
-            fileUrl: '/api/evidence/evidence-1.pdf'
+            fileUrl: '/api/evidence/evidence-1.pdf',
           },
           {
             id: 'evidence-2',
@@ -224,16 +231,16 @@ export class ComplianceController {
             description: 'System configuration verification',
             timestamp: new Date(),
             status: 'verified',
-            fileUrl: '/api/evidence/evidence-2.json'
-          }
-        ]
+            fileUrl: '/api/evidence/evidence-2.json',
+          },
+        ],
       };
 
       const response: ServiceResponse = {
         success: true,
         data: mockEvidence,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -241,7 +248,7 @@ export class ComplianceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -257,26 +264,38 @@ export class ComplianceController {
       if (start && end) {
         period = {
           start: new Date(start as string),
-          end: new Date(end as string)
+          end: new Date(end as string),
         };
       }
 
-      const report = await this.complianceService.generateComplianceReport(framework, period);
+      const report = await this.complianceService.generateComplianceReport(
+        framework,
+        period
+      );
 
       // Export in different formats
       switch (format) {
         case 'pdf':
           // Generate PDF
           res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', `attachment; filename="compliance-report-${framework}.pdf"`);
+          res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="compliance-report-${framework}.pdf"`
+          );
           // PDF generation logic here
           res.send(Buffer.from('PDF content would go here'));
           break;
 
         case 'excel':
           // Generate Excel
-          res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-          res.setHeader('Content-Disposition', `attachment; filename="compliance-report-${framework}.xlsx"`);
+          res.setHeader(
+            'Content-Type',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          );
+          res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="compliance-report-${framework}.xlsx"`
+          );
           // Excel generation logic here
           res.send(Buffer.from('Excel content would go here'));
           break;
@@ -288,7 +307,7 @@ export class ComplianceController {
             success: true,
             data: report,
             timestamp: new Date(),
-            requestId: req.headers['x-request-id'] as string || 'unknown'
+            requestId: (req.headers['x-request-id'] as string) || 'unknown',
           };
           res.status(200).json(response);
           break;
@@ -298,7 +317,7 @@ export class ComplianceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -316,7 +335,7 @@ export class ComplianceController {
           currentScore: 87,
           previousScore: 84,
           trend: 'improving',
-          targetScore: 95
+          targetScore: 95,
         },
         frameworkMetrics: {
           soc2Type2: {
@@ -324,22 +343,22 @@ export class ComplianceController {
             status: 'compliant',
             controlsAssessed: 67,
             criticalIssues: 0,
-            lastAssessment: new Date()
+            lastAssessment: new Date(),
           },
           iso27001: {
             score: 85,
             status: 'requires-improvement',
             controlsAssessed: 114,
             criticalIssues: 1,
-            lastAssessment: new Date()
+            lastAssessment: new Date(),
           },
           noipEnterprise: {
             score: 88,
             status: 'compliant',
             controlsAssessed: 5,
             criticalIssues: 0,
-            lastAssessment: new Date()
-          }
+            lastAssessment: new Date(),
+          },
         },
         riskMetrics: {
           totalRisks: 11,
@@ -347,36 +366,36 @@ export class ComplianceController {
           high: 3,
           medium: 5,
           low: 2,
-          riskTrend: 'decreasing'
+          riskTrend: 'decreasing',
         },
         assessmentMetrics: {
           totalAssessments: 186,
           automatedAssessments: 142,
           manualAssessments: 44,
           averageAssessmentTime: '2.5 hours',
-          nextAssessmentsDue: 8
+          nextAssessmentsDue: 8,
         },
         evidenceMetrics: {
           totalEvidence: 1248,
           verifiedEvidence: 1198,
           pendingVerification: 35,
           expiredEvidence: 15,
-          evidenceAuditScore: 96
+          evidenceAuditScore: 96,
         },
         remediationMetrics: {
           openRemediations: 12,
           inProgressRemediations: 8,
           completedRemediations: 45,
           averageRemediationTime: '14 days',
-          overdueRemediations: 2
-        }
+          overdueRemediations: 2,
+        },
       };
 
       const response: ServiceResponse = {
         success: true,
         data: metrics,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -384,7 +403,7 @@ export class ComplianceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -399,7 +418,7 @@ export class ComplianceController {
         success: true,
         data: health,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(200).json(response);
     } catch (error) {
@@ -407,7 +426,7 @@ export class ComplianceController {
         success: false,
         error: error.message,
         timestamp: new Date(),
-        requestId: req.headers['x-request-id'] as string || 'unknown'
+        requestId: (req.headers['x-request-id'] as string) || 'unknown',
       };
       res.status(500).json(response);
     }
@@ -420,7 +439,10 @@ export class ComplianceController {
     // Check for critical issues
     frameworks.forEach(framework => {
       framework.controls.forEach((control: any) => {
-        if (control.riskLevel === 'critical' && control.status !== 'compliant') {
+        if (
+          control.riskLevel === 'critical' &&
+          control.status !== 'compliant'
+        ) {
           alerts.push({
             id: `alert-${framework.name}-${control.id}`,
             type: 'critical',
@@ -429,13 +451,14 @@ export class ComplianceController {
             severity: 'critical',
             timestamp: new Date(),
             framework: framework.name,
-            controlId: control.id
+            controlId: control.id,
           });
         }
 
         // Check for upcoming assessments
         const daysUntilAssessment = Math.floor(
-          (control.nextAssessment.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+          (control.nextAssessment.getTime() - new Date().getTime()) /
+            (1000 * 60 * 60 * 24)
         );
 
         if (daysUntilAssessment <= 7 && daysUntilAssessment > 0) {
@@ -448,7 +471,7 @@ export class ComplianceController {
             timestamp: new Date(),
             framework: framework.name,
             controlId: control.id,
-            dueDate: control.nextAssessment
+            dueDate: control.nextAssessment,
           });
         }
       });
@@ -466,7 +489,8 @@ export class ComplianceController {
     frameworks.forEach(framework => {
       framework.controls.forEach((control: any) => {
         const daysUntilAssessment = Math.floor(
-          (control.nextAssessment.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+          (control.nextAssessment.getTime() - new Date().getTime()) /
+            (1000 * 60 * 60 * 24)
         );
 
         if (daysUntilAssessment <= 30) {
@@ -478,7 +502,7 @@ export class ComplianceController {
             dueDate: control.nextAssessment,
             daysUntilAssessment,
             riskLevel: control.riskLevel,
-            automatedTesting: control.automatedTesting
+            automatedTesting: control.automatedTesting,
           });
         }
       });

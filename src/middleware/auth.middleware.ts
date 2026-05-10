@@ -1,7 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
 import { JWTManager } from '../utils/auth/jwt.manager';
 import { SessionModel, UserModel, SecurityEventModel } from '../models';
-import { JWTPayload, SecurityEventType, SecurityEventSeverity } from '../types/auth.types';
+import {
+  JWTPayload,
+  SecurityEventType,
+  SecurityEventSeverity,
+} from '../types/auth.types';
 import logger from '../utils/logger';
 
 export interface AuthenticatedRequest extends Request {
@@ -17,11 +21,19 @@ export class AuthMiddleware {
     this.jwtManager = new JWTManager();
   }
 
-  authenticate = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  authenticate = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const token = this.extractToken(req);
       if (!token) {
-        await this.createSecurityEvent(req, SecurityEventType.LOGIN_FAILURE, 'Missing authentication token');
+        await this.createSecurityEvent(
+          req,
+          SecurityEventType.LOGIN_FAILURE,
+          'Missing authentication token'
+        );
         res.status(401).json({ error: 'Authentication required' });
         return;
       }
@@ -29,7 +41,11 @@ export class AuthMiddleware {
       // Verify JWT token
       const payload = await this.jwtManager.verifyToken(token, 'access');
       if (!payload) {
-        await this.createSecurityEvent(req, SecurityEventType.LOGIN_FAILURE, 'Invalid authentication token');
+        await this.createSecurityEvent(
+          req,
+          SecurityEventType.LOGIN_FAILURE,
+          'Invalid authentication token'
+        );
         res.status(401).json({ error: 'Invalid or expired token' });
         return;
       }
@@ -37,7 +53,11 @@ export class AuthMiddleware {
       // Check if token is revoked
       const isRevoked = await this.jwtManager.isTokenRevoked(token);
       if (isRevoked) {
-        await this.createSecurityEvent(req, SecurityEventType.TOKEN_REVOKED, 'Attempted use of revoked token');
+        await this.createSecurityEvent(
+          req,
+          SecurityEventType.TOKEN_REVOKED,
+          'Attempted use of revoked token'
+        );
         res.status(401).json({ error: 'Token has been revoked' });
         return;
       }
@@ -47,19 +67,30 @@ export class AuthMiddleware {
         userId: payload.sub,
         sessionId: payload.sessionId,
         isActive: true,
-        expiresAt: { $gt: new Date() }
+        expiresAt: { $gt: new Date() },
       });
 
       if (!session) {
-        await this.createSecurityEvent(req, SecurityEventType.LOGIN_FAILURE, 'Invalid or expired session');
+        await this.createSecurityEvent(
+          req,
+          SecurityEventType.LOGIN_FAILURE,
+          'Invalid or expired session'
+        );
         res.status(401).json({ error: 'Session expired or invalid' });
         return;
       }
 
       // Get user
-      const user = await UserModel.findById(payload.sub).populate('roles permissions');
+      const user = await UserModel.findById(payload.sub).populate(
+        'roles permissions'
+      );
       if (!user || user.status !== 'active') {
-        await this.createSecurityEvent(req, SecurityEventType.LOGIN_FAILURE, 'User not found or inactive', { userId: payload.sub });
+        await this.createSecurityEvent(
+          req,
+          SecurityEventType.LOGIN_FAILURE,
+          'User not found or inactive',
+          { userId: payload.sub }
+        );
         res.status(401).json({ error: 'User not found or inactive' });
         return;
       }
@@ -75,12 +106,20 @@ export class AuthMiddleware {
       next();
     } catch (error) {
       logger.error('Authentication middleware error', { error });
-      await this.createSecurityEvent(req, SecurityEventType.LOGIN_FAILURE, 'Authentication middleware error');
+      await this.createSecurityEvent(
+        req,
+        SecurityEventType.LOGIN_FAILURE,
+        'Authentication middleware error'
+      );
       res.status(500).json({ error: 'Authentication failed' });
     }
   };
 
-  optionalAuth = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  optionalAuth = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const token = this.extractToken(req);
       if (!token) {
@@ -98,7 +137,7 @@ export class AuthMiddleware {
         userId: payload.sub,
         sessionId: payload.sessionId,
         isActive: true,
-        expiresAt: { $gt: new Date() }
+        expiresAt: { $gt: new Date() },
       });
 
       if (!session) {
@@ -106,7 +145,9 @@ export class AuthMiddleware {
         return;
       }
 
-      const user = await UserModel.findById(payload.sub).populate('roles permissions');
+      const user = await UserModel.findById(payload.sub).populate(
+        'roles permissions'
+      );
       if (!user || user.status !== 'active') {
         next();
         return;
@@ -125,7 +166,11 @@ export class AuthMiddleware {
     }
   };
 
-  requireMFA = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  requireMFA = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       if (!req.user) {
         res.status(401).json({ error: 'Authentication required' });
@@ -145,16 +190,26 @@ export class AuthMiddleware {
   };
 
   requireRole = (requiredRole: string) => {
-    return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    return async (
+      req: AuthenticatedRequest,
+      res: Response,
+      next: NextFunction
+    ): Promise<void> => {
       try {
         if (!req.user) {
           res.status(401).json({ error: 'Authentication required' });
           return;
         }
 
-        const hasRole = req.user.roles?.some((role: any) => role.name === requiredRole);
+        const hasRole = req.user.roles?.some(
+          (role: any) => role.name === requiredRole
+        );
         if (!hasRole) {
-          await this.createSecurityEvent(req, SecurityEventType.PERMISSION_ESCALATION, `Access denied - missing role: ${requiredRole}`);
+          await this.createSecurityEvent(
+            req,
+            SecurityEventType.PERMISSION_ESCALATION,
+            `Access denied - missing role: ${requiredRole}`
+          );
           res.status(403).json({ error: 'Insufficient permissions' });
           return;
         }
@@ -168,16 +223,29 @@ export class AuthMiddleware {
   };
 
   requirePermission = (resource: string, action: string) => {
-    return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    return async (
+      req: AuthenticatedRequest,
+      res: Response,
+      next: NextFunction
+    ): Promise<void> => {
       try {
         if (!req.user) {
           res.status(401).json({ error: 'Authentication required' });
           return;
         }
 
-        const hasPermission = await this.checkPermission(req.user, resource, action, req);
+        const hasPermission = await this.checkPermission(
+          req.user,
+          resource,
+          action,
+          req
+        );
         if (!hasPermission) {
-          await this.createSecurityEvent(req, SecurityEventType.PERMISSION_ESCALATION, `Access denied - missing permission: ${resource}:${action}`);
+          await this.createSecurityEvent(
+            req,
+            SecurityEventType.PERMISSION_ESCALATION,
+            `Access denied - missing permission: ${resource}:${action}`
+          );
           res.status(403).json({ error: 'Insufficient permissions' });
           return;
         }
@@ -191,7 +259,11 @@ export class AuthMiddleware {
   };
 
   requireOwnership = (resourceParam: string = 'id') => {
-    return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    return async (
+      req: AuthenticatedRequest,
+      res: Response,
+      next: NextFunction
+    ): Promise<void> => {
       try {
         if (!req.user) {
           res.status(401).json({ error: 'Authentication required' });
@@ -205,11 +277,21 @@ export class AuthMiddleware {
         }
 
         // Check if user owns the resource or has admin permissions
-        const isOwner = await this.checkOwnership(req.user._id, resourceId, req.route?.path || '');
-        const isAdmin = req.user.roles?.some((role: any) => ['admin', 'super_admin'].includes(role.name));
+        const isOwner = await this.checkOwnership(
+          req.user._id,
+          resourceId,
+          req.route?.path || ''
+        );
+        const isAdmin = req.user.roles?.some((role: any) =>
+          ['admin', 'super_admin'].includes(role.name)
+        );
 
         if (!isOwner && !isAdmin) {
-          await this.createSecurityEvent(req, SecurityEventType.PERMISSION_ESCALATION, `Access denied - not owner of resource: ${resourceId}`);
+          await this.createSecurityEvent(
+            req,
+            SecurityEventType.PERMISSION_ESCALATION,
+            `Access denied - not owner of resource: ${resourceId}`
+          );
           res.status(403).json({ error: 'Access denied' });
           return;
         }
@@ -222,7 +304,11 @@ export class AuthMiddleware {
     };
   };
 
-  requireEmailVerification = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  requireEmailVerification = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       if (!req.user) {
         res.status(401).json({ error: 'Authentication required' });
@@ -241,7 +327,11 @@ export class AuthMiddleware {
     }
   };
 
-  validateSession = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+  validateSession = async (
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       if (!req.session) {
         res.status(401).json({ error: 'Valid session required' });
@@ -258,9 +348,15 @@ export class AuthMiddleware {
       // Check for suspicious activity
       const currentFingerprint = this.extractDeviceFingerprint(req);
       if (req.session.deviceFingerprint !== currentFingerprint) {
-        await this.createSecurityEvent(req, SecurityEventType.SUSPICIOUS_LOGIN, 'Device fingerprint mismatch');
+        await this.createSecurityEvent(
+          req,
+          SecurityEventType.SUSPICIOUS_LOGIN,
+          'Device fingerprint mismatch'
+        );
         // Optionally require re-authentication
-        res.status(403).json({ error: 'Session validation failed - please re-authenticate' });
+        res.status(403).json({
+          error: 'Session validation failed - please re-authenticate',
+        });
         return;
       }
 
@@ -291,36 +387,57 @@ export class AuthMiddleware {
       .digest('hex');
   }
 
-  private async checkPermission(user: any, resource: string, action: string, req: Request): Promise<boolean> {
+  private async checkPermission(
+    user: any,
+    resource: string,
+    action: string,
+    req: Request
+  ): Promise<boolean> {
     // Check direct permissions
-    const directPermission = user.permissions?.find((perm: any) =>
-      perm.resource === resource && perm.action === action
+    const directPermission = user.permissions?.find(
+      (perm: any) => perm.resource === resource && perm.action === action
     );
 
     if (directPermission) {
       // Check if permission has conditions that need to be evaluated
-      if (directPermission.conditions && Object.keys(directPermission.conditions).length > 0) {
-        return this.evaluatePermissionConditions(directPermission.conditions, req, user);
+      if (
+        directPermission.conditions &&
+        Object.keys(directPermission.conditions).length > 0
+      ) {
+        return this.evaluatePermissionConditions(
+          directPermission.conditions,
+          req,
+          user
+        );
       }
       return true;
     }
 
     // Check permissions from roles
     for (const role of user.roles || []) {
-      const rolePermission = role.permissions?.find((perm: any) =>
-        perm.resource === resource && perm.action === action
+      const rolePermission = role.permissions?.find(
+        (perm: any) => perm.resource === resource && perm.action === action
       );
 
       if (rolePermission) {
-        if (rolePermission.conditions && Object.keys(rolePermission.conditions).length > 0) {
-          return this.evaluatePermissionConditions(rolePermission.conditions, req, user);
+        if (
+          rolePermission.conditions &&
+          Object.keys(rolePermission.conditions).length > 0
+        ) {
+          return this.evaluatePermissionConditions(
+            rolePermission.conditions,
+            req,
+            user
+          );
         }
         return true;
       }
     }
 
     // Check for admin permissions
-    const isAdmin = user.roles?.some((role: any) => ['admin', 'super_admin'].includes(role.name));
+    const isAdmin = user.roles?.some((role: any) =>
+      ['admin', 'super_admin'].includes(role.name)
+    );
     if (isAdmin && resource === 'admin') {
       return true;
     }
@@ -328,7 +445,11 @@ export class AuthMiddleware {
     return false;
   }
 
-  private evaluatePermissionConditions(conditions: any, req: Request, user: any): boolean {
+  private evaluatePermissionConditions(
+    conditions: any,
+    req: Request,
+    user: any
+  ): boolean {
     try {
       // Evaluate permission conditions based on context
       for (const [key, condition] of Object.entries(conditions)) {
@@ -338,17 +459,29 @@ export class AuthMiddleware {
       }
       return true;
     } catch (error) {
-      logger.error('Failed to evaluate permission conditions', { error, conditions });
+      logger.error('Failed to evaluate permission conditions', {
+        error,
+        conditions,
+      });
       return false; // Fail securely
     }
   }
 
-  private evaluateCondition(key: string, condition: any, req: Request, user: any): boolean {
+  private evaluateCondition(
+    key: string,
+    condition: any,
+    req: Request,
+    user: any
+  ): boolean {
     const contextValue = this.getContextValue(key, req, user);
 
     if (typeof condition === 'object' && condition !== null) {
       if (condition.operator && condition.value) {
-        return this.evaluateOperator(condition.operator, contextValue, condition.value);
+        return this.evaluateOperator(
+          condition.operator,
+          contextValue,
+          condition.value
+        );
       }
     }
 
@@ -370,18 +503,30 @@ export class AuthMiddleware {
     return value;
   }
 
-  private evaluateOperator(operator: string, contextValue: any, conditionValue: any): boolean {
+  private evaluateOperator(
+    operator: string,
+    contextValue: any,
+    conditionValue: any
+  ): boolean {
     switch (operator) {
       case 'equals':
         return contextValue === conditionValue;
       case 'not_equals':
         return contextValue !== conditionValue;
       case 'in':
-        return Array.isArray(conditionValue) && conditionValue.includes(contextValue);
+        return (
+          Array.isArray(conditionValue) && conditionValue.includes(contextValue)
+        );
       case 'not_in':
-        return Array.isArray(conditionValue) && !conditionValue.includes(contextValue);
+        return (
+          Array.isArray(conditionValue) &&
+          !conditionValue.includes(contextValue)
+        );
       case 'contains':
-        return typeof contextValue === 'string' && contextValue.includes(conditionValue);
+        return (
+          typeof contextValue === 'string' &&
+          contextValue.includes(conditionValue)
+        );
       case 'greater_than':
         return Number(contextValue) > Number(conditionValue);
       case 'less_than':
@@ -391,7 +536,11 @@ export class AuthMiddleware {
     }
   }
 
-  private async checkOwnership(userId: string, resourceId: string, resourcePath: string): Promise<boolean> {
+  private async checkOwnership(
+    userId: string,
+    resourceId: string,
+    resourcePath: string
+  ): Promise<boolean> {
     // In a real implementation, this would check if the user owns the resource
     // This would involve database queries specific to the resource type
     return false; // Mock implementation
@@ -413,7 +562,7 @@ export class AuthMiddleware {
           userId: (req as AuthenticatedRequest).user?._id,
           sessionId: (req as AuthenticatedRequest).session?._id,
           severity: this.getEventSeverity(type),
-          details
+          details,
         }
       );
     } catch (error) {
@@ -422,11 +571,13 @@ export class AuthMiddleware {
   }
 
   private getClientIP(req: Request): string {
-    return req.ip ||
-           req.connection.remoteAddress ||
-           req.socket.remoteAddress ||
-           (req.connection as any)?.socket?.remoteAddress ||
-           '127.0.0.1';
+    return (
+      req.ip ||
+      req.connection.remoteAddress ||
+      req.socket.remoteAddress ||
+      (req.connection as any)?.socket?.remoteAddress ||
+      '127.0.0.1'
+    );
   }
 
   private getEventSeverity(type: SecurityEventType): SecurityEventSeverity {

@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { AuthService } from '../services/auth.service';
-import { AuthMiddleware, AuthenticatedRequest } from '../middleware/auth.middleware';
+import {
+  AuthMiddleware,
+  AuthenticatedRequest,
+} from '../middleware/auth.middleware';
 import { RateLimitMiddleware } from '../middleware/rate-limit.middleware';
 import {
   LoginRequest,
@@ -9,7 +12,7 @@ import {
   MFAVerificationRequest,
   PasswordChangeRequest,
   PasswordResetRequest,
-  PasswordResetConfirmRequest
+  PasswordResetConfirmRequest,
 } from '../types/auth.types';
 import logger from '../utils/logger';
 import { validationResult } from 'express-validator';
@@ -22,7 +25,9 @@ export class AuthController {
   constructor() {
     this.authService = new AuthService();
     this.authMiddleware = new AuthMiddleware();
-    this.rateLimitMiddleware = new RateLimitMiddleware(new Redis(process.env['REDIS_URL']));
+    this.rateLimitMiddleware = new RateLimitMiddleware(
+      new Redis(process.env['REDIS_URL'])
+    );
   }
 
   // Initialize authentication service
@@ -38,7 +43,7 @@ export class AuthController {
       if (!errors.isEmpty()) {
         res.status(400).json({
           error: 'Validation failed',
-          details: errors.array()
+          details: errors.array(),
         });
         return;
       }
@@ -51,15 +56,18 @@ export class AuthController {
         message: 'User registered successfully',
         data: {
           user: result.user,
-          requiresVerification: result.requiresVerification
-        }
+          requiresVerification: result.requiresVerification,
+        },
       });
     } catch (error) {
-      logger.error('Registration failed', { error, userData: { ...req.body, password: '[REDACTED]' } });
+      logger.error('Registration failed', {
+        error,
+        userData: { ...req.body, password: '[REDACTED]' },
+      });
 
       res.status(400).json({
         success: false,
-        error: (error as Error).message
+        error: (error as Error).message,
       });
     }
   };
@@ -72,14 +80,14 @@ export class AuthController {
       if (!errors.isEmpty()) {
         res.status(400).json({
           error: 'Validation failed',
-          details: errors.array()
+          details: errors.array(),
         });
         return;
       }
 
       const loginData: LoginRequest = {
         ...req.body,
-        deviceFingerprint: this.extractDeviceFingerprint(req)
+        deviceFingerprint: this.extractDeviceFingerprint(req),
       };
 
       const result = await this.authService.login(loginData);
@@ -91,8 +99,8 @@ export class AuthController {
           data: {
             user: result.user,
             requiresMFA: true,
-            mfaMethods: result.mfaMethods
-          }
+            mfaMethods: result.mfaMethods,
+          },
         });
         return;
       }
@@ -102,14 +110,14 @@ export class AuthController {
         httpOnly: true,
         secure: process.env['NODE_ENV'] === 'production',
         sameSite: 'strict',
-        maxAge: 15 * 60 * 1000 // 15 minutes
+        maxAge: 15 * 60 * 1000, // 15 minutes
       });
 
       res.cookie('refreshToken', result.tokens.refreshToken, {
         httpOnly: true,
         secure: process.env['NODE_ENV'] === 'production',
         sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
 
       res.status(200).json({
@@ -118,15 +126,15 @@ export class AuthController {
         data: {
           user: result.user,
           tokens: result.tokens,
-          requiresMFA: false
-        }
+          requiresMFA: false,
+        },
       });
     } catch (error) {
       logger.error('Login failed', { error, username: req.body.username });
 
       res.status(401).json({
         success: false,
-        error: (error as Error).message
+        error: (error as Error).message,
       });
     }
   };
@@ -137,7 +145,7 @@ export class AuthController {
       if (!req.user || !req.session) {
         res.status(401).json({
           success: false,
-          error: 'Not authenticated'
+          error: 'Not authenticated',
         });
         return;
       }
@@ -150,14 +158,14 @@ export class AuthController {
 
       res.status(200).json({
         success: true,
-        message: 'Logout successful'
+        message: 'Logout successful',
       });
     } catch (error) {
       logger.error('Logout failed', { error });
 
       res.status(500).json({
         success: false,
-        error: 'Logout failed'
+        error: 'Logout failed',
       });
     }
   };
@@ -170,7 +178,7 @@ export class AuthController {
       if (!refreshToken) {
         res.status(401).json({
           success: false,
-          error: 'Refresh token required'
+          error: 'Refresh token required',
         });
         return;
       }
@@ -182,7 +190,7 @@ export class AuthController {
         httpOnly: true,
         secure: process.env['NODE_ENV'] === 'production',
         sameSite: 'strict',
-        maxAge: 15 * 60 * 1000 // 15 minutes
+        maxAge: 15 * 60 * 1000, // 15 minutes
       });
 
       // Optionally update refresh token cookie
@@ -191,32 +199,35 @@ export class AuthController {
           httpOnly: true,
           secure: process.env['NODE_ENV'] === 'production',
           sameSite: 'strict',
-          maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         });
       }
 
       res.status(200).json({
         success: true,
         message: 'Token refreshed successfully',
-        data: { tokens }
+        data: { tokens },
       });
     } catch (error) {
       logger.error('Token refresh failed', { error });
 
       res.status(401).json({
         success: false,
-        error: (error as Error).message
+        error: (error as Error).message,
       });
     }
   };
 
   // Get current user profile
-  getProfile = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  getProfile = async (
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> => {
     try {
       if (!req.user) {
         res.status(401).json({
           success: false,
-          error: 'Not authenticated'
+          error: 'Not authenticated',
         });
         return;
       }
@@ -225,25 +236,28 @@ export class AuthController {
 
       res.status(200).json({
         success: true,
-        data: { user: profile }
+        data: { user: profile },
       });
     } catch (error) {
       logger.error('Get profile failed', { error });
 
       res.status(500).json({
         success: false,
-        error: 'Failed to get profile'
+        error: 'Failed to get profile',
       });
     }
   };
 
   // Setup MFA
-  setupMFA = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  setupMFA = async (
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> => {
     try {
       if (!req.user) {
         res.status(401).json({
           success: false,
-          error: 'Not authenticated'
+          error: 'Not authenticated',
         });
         return;
       }
@@ -252,7 +266,7 @@ export class AuthController {
       if (!errors.isEmpty()) {
         res.status(400).json({
           error: 'Validation failed',
-          details: errors.array()
+          details: errors.array(),
         });
         return;
       }
@@ -263,25 +277,28 @@ export class AuthController {
       res.status(200).json({
         success: true,
         message: 'MFA setup initiated',
-        data: result
+        data: result,
       });
     } catch (error) {
       logger.error('MFA setup failed', { error, userId: req.user?._id });
 
       res.status(400).json({
         success: false,
-        error: (error as Error).message
+        error: (error as Error).message,
       });
     }
   };
 
   // Verify MFA
-  verifyMFA = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  verifyMFA = async (
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> => {
     try {
       if (!req.user) {
         res.status(401).json({
           success: false,
-          error: 'Not authenticated'
+          error: 'Not authenticated',
         });
         return;
       }
@@ -290,13 +307,16 @@ export class AuthController {
       if (!errors.isEmpty()) {
         res.status(400).json({
           error: 'Validation failed',
-          details: errors.array()
+          details: errors.array(),
         });
         return;
       }
 
       const verificationData: MFAVerificationRequest = req.body;
-      const isValid = await this.authService.verifyMFA(req.user._id, verificationData);
+      const isValid = await this.authService.verifyMFA(
+        req.user._id,
+        verificationData
+      );
 
       if (isValid) {
         // Update session to mark MFA as verified
@@ -307,12 +327,12 @@ export class AuthController {
 
         res.status(200).json({
           success: true,
-          message: 'MFA verification successful'
+          message: 'MFA verification successful',
         });
       } else {
         res.status(400).json({
           success: false,
-          error: 'Invalid MFA code'
+          error: 'Invalid MFA code',
         });
       }
     } catch (error) {
@@ -320,18 +340,21 @@ export class AuthController {
 
       res.status(500).json({
         success: false,
-        error: 'MFA verification failed'
+        error: 'MFA verification failed',
       });
     }
   };
 
   // Change password
-  changePassword = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  changePassword = async (
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> => {
     try {
       if (!req.user) {
         res.status(401).json({
           success: false,
-          error: 'Not authenticated'
+          error: 'Not authenticated',
         });
         return;
       }
@@ -340,7 +363,7 @@ export class AuthController {
       if (!errors.isEmpty()) {
         res.status(400).json({
           error: 'Validation failed',
-          details: errors.array()
+          details: errors.array(),
         });
         return;
       }
@@ -350,14 +373,14 @@ export class AuthController {
 
       res.status(200).json({
         success: true,
-        message: 'Password changed successfully'
+        message: 'Password changed successfully',
       });
     } catch (error) {
       logger.error('Password change failed', { error, userId: req.user?._id });
 
       res.status(400).json({
         success: false,
-        error: (error as Error).message
+        error: (error as Error).message,
       });
     }
   };
@@ -369,7 +392,7 @@ export class AuthController {
       if (!errors.isEmpty()) {
         res.status(400).json({
           error: 'Validation failed',
-          details: errors.array()
+          details: errors.array(),
         });
         return;
       }
@@ -380,7 +403,8 @@ export class AuthController {
       // Always return success to prevent user enumeration
       res.status(200).json({
         success: true,
-        message: 'If an account with that email exists, a password reset link has been sent'
+        message:
+          'If an account with that email exists, a password reset link has been sent',
       });
     } catch (error) {
       logger.error('Password reset request failed', { error });
@@ -388,7 +412,8 @@ export class AuthController {
       // Still return success to prevent user enumeration
       res.status(200).json({
         success: true,
-        message: 'If an account with that email exists, a password reset link has been sent'
+        message:
+          'If an account with that email exists, a password reset link has been sent',
       });
     }
   };
@@ -400,7 +425,7 @@ export class AuthController {
       if (!errors.isEmpty()) {
         res.status(400).json({
           error: 'Validation failed',
-          details: errors.array()
+          details: errors.array(),
         });
         return;
       }
@@ -410,14 +435,14 @@ export class AuthController {
 
       res.status(200).json({
         success: true,
-        message: 'Password reset successfully'
+        message: 'Password reset successfully',
       });
     } catch (error) {
       logger.error('Password reset confirmation failed', { error });
 
       res.status(400).json({
         success: false,
-        error: (error as Error).message
+        error: (error as Error).message,
       });
     }
   };
@@ -430,7 +455,7 @@ export class AuthController {
       if (!token || typeof token !== 'string') {
         res.status(400).json({
           success: false,
-          error: 'Verification token required'
+          error: 'Verification token required',
         });
         return;
       }
@@ -439,26 +464,33 @@ export class AuthController {
 
       res.status(200).json({
         success: true,
-        message: 'Email verified successfully'
+        message: 'Email verified successfully',
       });
     } catch (error) {
       logger.error('Email verification failed', { error });
 
       res.status(400).json({
         success: false,
-        error: (error as Error).message
+        error: (error as Error).message,
       });
     }
   };
 
   // Get authentication metrics
-  getMetrics = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  getMetrics = async (
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> => {
     try {
       // Only allow admins to access metrics
-      if (!req.user?.roles?.some((role: any) => ['admin', 'super_admin'].includes(role.name))) {
+      if (
+        !req.user?.roles?.some((role: any) =>
+          ['admin', 'super_admin'].includes(role.name)
+        )
+      ) {
         res.status(403).json({
           success: false,
-          error: 'Insufficient permissions'
+          error: 'Insufficient permissions',
         });
         return;
       }
@@ -467,14 +499,14 @@ export class AuthController {
 
       res.status(200).json({
         success: true,
-        data: { metrics }
+        data: { metrics },
       });
     } catch (error) {
       logger.error('Get metrics failed', { error });
 
       res.status(500).json({
         success: false,
-        error: 'Failed to get metrics'
+        error: 'Failed to get metrics',
       });
     }
   };
@@ -486,34 +518,37 @@ export class AuthController {
 
       res.status(health.status === 'healthy' ? 200 : 503).json({
         success: health.status === 'healthy',
-        data: health
+        data: health,
       });
     } catch (error) {
       logger.error('Health check failed', { error });
 
       res.status(503).json({
         success: false,
-        error: 'Health check failed'
+        error: 'Health check failed',
       });
     }
   };
 
   // Get rate limit status
-  getRateLimitStatus = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  getRateLimitStatus = async (
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> => {
     try {
       const key = this.generateRateLimitKey(req);
       const status = await this.rateLimitMiddleware.getRateLimitStatus(key);
 
       res.status(200).json({
         success: true,
-        data: { rateLimit: status }
+        data: { rateLimit: status },
       });
     } catch (error) {
       logger.error('Get rate limit status failed', { error });
 
       res.status(500).json({
         success: false,
-        error: 'Failed to get rate limit status'
+        error: 'Failed to get rate limit status',
       });
     }
   };
@@ -538,10 +573,12 @@ export class AuthController {
   }
 
   private getClientIP(req: Request): string {
-    return req.ip ||
-           req.connection.remoteAddress ||
-           req.socket.remoteAddress ||
-           (req.connection as any)?.socket?.remoteAddress ||
-           '127.0.0.1';
+    return (
+      req.ip ||
+      req.connection.remoteAddress ||
+      req.socket.remoteAddress ||
+      (req.connection as any)?.socket?.remoteAddress ||
+      '127.0.0.1'
+    );
   }
 }

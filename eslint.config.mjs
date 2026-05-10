@@ -32,6 +32,9 @@ export default [
       '*.config.js',
       '*.config.cjs',
       '*.config.mjs',
+      // k6 load-test scripts run externally with their own globals
+      // (`__ENV`, k6 modules) — not part of the Jest test pyramid.
+      'tests/performance/*.js',
     ],
   },
 

@@ -103,7 +103,14 @@ export class DiscoveryService extends BaseService {
     this.logOperation('Fetching namespaces');
 
     // Mock implementation
-    return ['default', 'kube-system', 'kube-public', 'noip', 'monitoring', 'logging'];
+    return [
+      'default',
+      'kube-system',
+      'kube-public',
+      'noip',
+      'monitoring',
+      'logging',
+    ];
   }
 
   async getNodeInfo(): Promise<any[]> {
@@ -149,16 +156,13 @@ export class DiscoveryService extends BaseService {
       clearInterval(this.scanInterval);
     }
 
-    this.scanInterval = setInterval(
-      async () => {
-        try {
-          await this.scanCluster();
-        } catch (error) {
-          this.logOperation('Scheduled scan failed', error);
-        }
-      },
-      config.services.discovery.scanInterval
-    );
+    this.scanInterval = setInterval(async () => {
+      try {
+        await this.scanCluster();
+      } catch (error) {
+        this.logOperation('Scheduled scan failed', error);
+      }
+    }, config.services.discovery.scanInterval);
 
     this.logOperation('Started automatic scanning', {
       interval: config.services.discovery.scanInterval,
