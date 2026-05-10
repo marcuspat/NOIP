@@ -125,8 +125,9 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
   });
 });
 
-// 404 handler
-app.use('*', (req, res) => {
+// 404 handler. Express 5 changed the path-to-regexp syntax: a bare `*`
+// is no longer a legal path. Use a named wildcard parameter instead.
+app.use('/{*splat}', (req, res) => {
   res.status(404).json({
     error: 'Endpoint not found',
     path: req.originalUrl,
