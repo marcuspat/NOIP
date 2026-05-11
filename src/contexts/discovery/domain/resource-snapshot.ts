@@ -36,6 +36,11 @@ export interface ResourceSnapshotPersistence {
   hash: string;
   counts: Counters;
   records: KubernetesResourceRecord[];
+  /** Archive metadata (added in the Snapshot Archiving follow-up). */
+  archived?: boolean;
+  archiveUri?: string;
+  archivedAt?: Date | string | null;
+  archiveSha256?: string;
 }
 
 /**
@@ -70,6 +75,13 @@ export function deriveCounters(records: KubernetesResourceRecord[]): Counters {
   return out;
 }
 
+/** Metadata attached when a snapshot is uploaded to cold storage. */
+export interface ArchiveMetadata {
+  archiveUri: string;
+  archivedAt: Date;
+  archiveSha256: string;
+}
+
 export class ResourceSnapshot {
   private readonly _id: SnapshotId;
   private readonly _clusterId: ClusterId;
@@ -78,6 +90,10 @@ export class ResourceSnapshot {
   private readonly _hash: ContentHash;
   private readonly _counts: Counters;
   private readonly _records: ReadonlyArray<KubernetesResourceRecord>;
+  private readonly _archived: boolean;
+  private readonly _archiveUri: string | null;
+  private readonly _archivedAt: Date | null;
+  private readonly _archiveSha256: string | null;
 
   private constructor(args: {
     id: SnapshotId;
@@ -87,6 +103,10 @@ export class ResourceSnapshot {
     hash: ContentHash;
     counts: Counters;
     records: ReadonlyArray<KubernetesResourceRecord>;
+    archived?: boolean;
+    archiveUri?: string | null;
+    archivedAt?: Date | null;
+    archiveSha256?: string | null;
   }) {
     this._id = args.id;
     this._clusterId = args.clusterId;
@@ -95,6 +115,10 @@ export class ResourceSnapshot {
     this._hash = args.hash;
     this._counts = args.counts;
     this._records = args.records;
+    this._archived = args.archived ?? false;
+    this._archiveUri = args.archiveUri ?? null;
+    this._archivedAt = args.archivedAt ?? null;
+    this._archiveSha256 = args.archiveSha256 ?? null;
     Object.freeze(this);
   }
 
@@ -148,6 +172,49 @@ export class ResourceSnapshot {
   get records(): ReadonlyArray<KubernetesResourceRecord> {
     return this._records;
   }
+  get archived(): boolean {
+    return this._archived;
+  }
+  get archiveUri(): string | null {
+    return this._archiveUri;
+  }
+  get archivedAt(): Date | null {
+    return this._archivedAt;
+  }
+  get archiveSha256(): string | null {
+    return this._archiveSha256;
+  }
+
+  /**
+   * Produces a new snapshot instance flipped to archived. The original
+   * instance is preserved (aggregate-as-value), and the resulting copy
+   * keeps every other field identical — this is the only mutation
+   * allowed on an otherwise immutable aggregate.
+   *
+   * The matching `discovery.snapshot.archived` event is NOT emitted
+   * here; the `SnapshotArchiver` publishes it after the repository
+   * write commits so the event reflects a durable side effect.
+   */
+  markArchived(meta: ArchiveMetadata): ResourceSnapshot {
+    if (this._archived) {
+      // Re-marking with the same uri is a no-op; with a different uri
+      // we keep the existing one to make the operation idempotent.
+      return this;
+    }
+    return new ResourceSnapshot({
+      id: this._id,
+      clusterId: this._clusterId,
+      scanId: this._scanId,
+      takenAt: this._takenAt,
+      hash: this._hash,
+      counts: this._counts,
+      records: this._records,
+      archived: true,
+      archiveUri: meta.archiveUri,
+      archivedAt: meta.archivedAt,
+      archiveSha256: meta.archiveSha256,
+    });
+  }
 
   /** Find a single record by ref. O(n); callers that need many lookups
    * should build their own map. */
@@ -177,11 +244,20 @@ export class ResourceSnapshot {
       hash: doc.hash as ContentHash,
       counts: doc.counts,
       records: Object.freeze(doc.records.slice()),
+      archived: doc.archived ?? false,
+      archiveUri: doc.archiveUri ?? null,
+      archivedAt:
+        doc.archivedAt == null
+          ? null
+          : doc.archivedAt instanceof Date
+            ? doc.archivedAt
+            : new Date(doc.archivedAt),
+      archiveSha256: doc.archiveSha256 ?? null,
     });
   }
 
   toPersistence(): ResourceSnapshotPersistence {
-    return {
+    const base: ResourceSnapshotPersistence = {
       id: this._id,
       clusterId: this._clusterId,
       scanId: this._scanId,
@@ -190,5 +266,13 @@ export class ResourceSnapshot {
       counts: this._counts,
       records: this._records.slice(),
     };
+    if (this._archived) {
+      base.archived = true;
+      if (this._archiveUri !== null) base.archiveUri = this._archiveUri;
+      if (this._archivedAt !== null) base.archivedAt = this._archivedAt;
+      if (this._archiveSha256 !== null)
+        base.archiveSha256 = this._archiveSha256;
+    }
+    return base;
   }
 }

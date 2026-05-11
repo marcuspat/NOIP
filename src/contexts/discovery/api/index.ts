@@ -25,6 +25,12 @@ import { MongooseClusterScanRepository } from '../infrastructure/persistence/clu
 import { MongooseResourceSnapshotRepository } from '../infrastructure/persistence/resource-snapshot.repository';
 import { MongooseDriftReportRepository } from '../infrastructure/persistence/drift-report.repository';
 import type { KubernetesClient } from '../domain/ports/kubernetes-client';
+import { SnapshotArchiver } from '../domain/snapshot-archiver';
+import type {
+  SnapshotArchiverConfig,
+  SnapshotArchiverLogger,
+} from '../domain/snapshot-archiver';
+import type { SnapshotArchiveStore } from '../domain/ports/snapshot-archive-store';
 import type { ResourceSnapshot } from '../domain/resource-snapshot';
 import type { DriftReport } from '../domain/drift-report';
 import type {
@@ -69,11 +75,44 @@ export type {
 } from '../domain/ports/kubernetes-client';
 export { DiscoveryService } from '../application/discovery.service';
 export { DiscoveryScheduler } from '../application/scheduler';
+export type { StartArchiveLoopOpts } from '../application/scheduler';
 export {
   KubernetesAdapter,
   type RawKubernetesClient,
 } from '../infrastructure/kubernetes/kubernetes-adapter';
 export { KubernetesClientFactory } from '../infrastructure/kubernetes/kubernetes-client-factory';
+
+// ---------------------------------------------------------------------------
+// Archive tier (DDD-06 follow-up)
+// ---------------------------------------------------------------------------
+export { SnapshotArchiver } from '../domain/snapshot-archiver';
+export type {
+  ArchiveOutcome,
+  ArchiveSummary,
+  SnapshotArchivedPayload,
+  SnapshotArchivedEvent,
+  SnapshotArchiverConfig,
+  SnapshotArchiverDeps,
+  SnapshotArchiverLogger,
+} from '../domain/snapshot-archiver';
+export type {
+  SnapshotArchiveStore,
+  SnapshotArchiveUploadOpts,
+  SnapshotArchiveUploadResult,
+} from '../domain/ports/snapshot-archive-store';
+export { buildArchiveKey } from '../domain/ports/snapshot-archive-store';
+export { NotConfiguredError, IntegrityError } from '../domain/archive-errors';
+export { S3SnapshotArchiveAdapter } from '../infrastructure/archive/s3-archive-adapter';
+export type {
+  S3ArchiveAdapterEnv,
+  S3ClientFactory,
+  S3ClientLike,
+  S3SnapshotArchiveAdapterOpts,
+} from '../infrastructure/archive/s3-archive-adapter';
+export { LocalFsSnapshotArchiveAdapter } from '../infrastructure/archive/local-fs-archive-adapter';
+export type { LocalFsArchiveAdapterOpts } from '../infrastructure/archive/local-fs-archive-adapter';
+export { createSnapshotArchiveStore } from '../infrastructure/archive/composite-archive-store';
+export type { CreateSnapshotArchiveStoreOpts } from '../infrastructure/archive/composite-archive-store';
 
 // ---------------------------------------------------------------------------
 // Public API contract per DDD-06
@@ -108,12 +147,25 @@ export interface ComposeDiscoveryDeps {
   bus: EventBus;
   clock: Clock;
   logger: DiscoveryServiceLogger;
+  /**
+   * Optional cold-tier object store. When supplied a `SnapshotArchiver`
+   * is built and attached to the scheduler so the composition root can
+   * call `scheduler.startArchiveLoop(...)`.
+   */
+  archiveStore?: SnapshotArchiveStore;
+  /** Tuning for the archiver. Defaults documented on
+   * `SnapshotArchiverConfig`. */
+  archiveConfig?: SnapshotArchiverConfig;
+  /** Override logger for archive operations (falls back to `logger`). */
+  archiveLogger?: SnapshotArchiverLogger;
 }
 
 export interface ComposedDiscovery {
   service: DiscoveryService;
   scheduler: DiscoveryScheduler;
   publicApi: DiscoveryPublicApi;
+  /** Present only when `archiveStore` was supplied. */
+  archiver?: SnapshotArchiver;
 }
 
 export function composeDiscovery(
@@ -135,6 +187,18 @@ export function composeDiscovery(
     logger: deps.logger,
   });
 
+  let archiver: SnapshotArchiver | undefined;
+  if (deps.archiveStore) {
+    archiver = new SnapshotArchiver({
+      repository: snapshots,
+      store: deps.archiveStore,
+      bus: deps.bus,
+      clock: deps.clock,
+      logger: deps.archiveLogger ?? deps.logger,
+      ...(deps.archiveConfig ? { config: deps.archiveConfig } : {}),
+    });
+  }
+
   const scheduler = new DiscoveryScheduler({
     discoveryService: service,
     clusters: async () => {
@@ -143,6 +207,7 @@ export function composeDiscovery(
     },
     clock: deps.clock,
     logger: deps.logger,
+    ...(archiver ? { archiver } : {}),
   });
 
   const publicApi: DiscoveryPublicApi = {
@@ -154,5 +219,7 @@ export function composeDiscovery(
     compareSnapshots: (prev, curr) => service.compareSnapshots(prev, curr),
   };
 
-  return { service, scheduler, publicApi };
+  const out: ComposedDiscovery = { service, scheduler, publicApi };
+  if (archiver) out.archiver = archiver;
+  return out;
 }
