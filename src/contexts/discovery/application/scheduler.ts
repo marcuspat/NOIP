@@ -15,6 +15,7 @@
 
 import type { Clock, ClusterId } from '../../../shared/kernel';
 import type { DiscoveryService } from './discovery.service';
+import type { SnapshotArchiver } from '../domain/snapshot-archiver';
 
 export interface DiscoverySchedulerLogger {
   info: (msg: string, meta?: Record<string, unknown>) => void;
@@ -27,6 +28,22 @@ export interface DiscoverySchedulerDeps {
   clusters: () => Promise<{ id: ClusterId; enabled: boolean }[]>;
   clock: Clock;
   logger?: DiscoverySchedulerLogger;
+  /** Optional — wired by the composition root when archive tiering is on. */
+  archiver?: SnapshotArchiver;
+}
+
+/**
+ * Configuration for the standalone archive loop. Cadence is separate
+ * from the scan loop because archive sweeps are much cheaper than
+ * scans and can run on a slower tick (hourly is the default in
+ * production).
+ */
+export interface StartArchiveLoopOpts {
+  intervalMs: number;
+  archiveAfterDays?: number;
+  retentionAfterArchiveDays?: number;
+  /** Per-tick batch size hint forwarded to the archiver. */
+  maxBatch?: number;
 }
 
 const NOOP_LOGGER: DiscoverySchedulerLogger = {
@@ -42,7 +59,10 @@ export class DiscoveryScheduler {
   >;
   private readonly clock: Clock;
   private readonly logger: DiscoverySchedulerLogger;
+  private readonly archiver: SnapshotArchiver | null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private archiveTimer: ReturnType<typeof setInterval> | null = null;
+  private archiveInflight = false;
   private inflight: Set<ClusterId> = new Set();
   private stopped = false;
 
@@ -51,6 +71,7 @@ export class DiscoveryScheduler {
     this.clusters = deps.clusters;
     this.clock = deps.clock;
     this.logger = deps.logger ?? NOOP_LOGGER;
+    this.archiver = deps.archiver ?? null;
   }
 
   start(intervalMs: number): void {
@@ -74,7 +95,90 @@ export class DiscoveryScheduler {
       clearInterval(this.timer);
       this.timer = null;
     }
+    if (this.archiveTimer !== null) {
+      clearInterval(this.archiveTimer);
+      this.archiveTimer = null;
+    }
     this.logger.info('DiscoveryScheduler.stop');
+  }
+
+  /**
+   * Start the cold-tier archive loop. Idempotent: a second call while
+   * a loop is already running is a no-op. The loop is NOT started by
+   * `start()`; the composition root must opt in.
+   */
+  startArchiveLoop(opts: StartArchiveLoopOpts): void {
+    if (this.archiveTimer !== null) return;
+    if (!this.archiver) {
+      this.logger.warn(
+        'DiscoveryScheduler.startArchiveLoop called without an archiver wired; ignoring'
+      );
+      return;
+    }
+    this.stopped = false;
+    this.logger.info('DiscoveryScheduler.startArchiveLoop', {
+      intervalMs: opts.intervalMs,
+      archiveAfterDays: opts.archiveAfterDays,
+      retentionAfterArchiveDays: opts.retentionAfterArchiveDays,
+    });
+    this.archiveTimer = setInterval(() => {
+      void this.archiveTick(opts);
+    }, opts.intervalMs);
+    if (typeof this.archiveTimer.unref === 'function')
+      this.archiveTimer.unref();
+  }
+
+  /**
+   * Public for tests. Runs one archive sweep + prune. Re-entrant calls
+   * are suppressed; the previous tick must complete first.
+   */
+  async archiveTick(opts: StartArchiveLoopOpts): Promise<{
+    archived: number;
+    pruned: number;
+    failed: number;
+  } | null> {
+    if (this.stopped) return null;
+    if (!this.archiver) return null;
+    if (this.archiveInflight) {
+      // Yield: the prior tick is still running. Don't double-up.
+      return null;
+    }
+    this.archiveInflight = true;
+    try {
+      const archiver = this.archiver;
+      const summary = await archiver.archiveOlderThan({
+        ...(opts.archiveAfterDays !== undefined
+          ? { olderThanDays: opts.archiveAfterDays }
+          : {}),
+        ...(opts.maxBatch !== undefined ? { maxBatch: opts.maxBatch } : {}),
+      });
+      // Yield between sweep + prune so we don't hog the event loop.
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const prune = await archiver.pruneArchivedOlderThan({
+        ...(opts.retentionAfterArchiveDays !== undefined
+          ? { olderThanDays: opts.retentionAfterArchiveDays }
+          : {}),
+        ...(opts.maxBatch !== undefined ? { maxBatch: opts.maxBatch } : {}),
+      });
+      this.logger.info('DiscoveryScheduler.archiveTick complete', {
+        archived: summary.archived,
+        skipped: summary.skipped,
+        failed: summary.failed,
+        pruned: prune.deleted,
+      });
+      return {
+        archived: summary.archived,
+        pruned: prune.deleted,
+        failed: summary.failed,
+      };
+    } catch (err) {
+      this.logger.error('DiscoveryScheduler.archiveTick failed', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return { archived: 0, pruned: 0, failed: 1 };
+    } finally {
+      this.archiveInflight = false;
+    }
   }
 
   /**
