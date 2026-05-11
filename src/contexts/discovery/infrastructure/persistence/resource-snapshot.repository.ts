@@ -21,6 +21,26 @@ import type {
 } from '../../domain/value-objects';
 import { ResourceSnapshotModel as DefaultModel } from './resource-snapshot.schema';
 
+/**
+ * Lightweight projection used by the archive sweeper. Mongo only
+ * returns the columns we need so the per-batch network cost stays
+ * flat regardless of snapshot record-count.
+ */
+export interface ArchiveCandidate {
+  id: SnapshotId;
+  clusterId: ClusterId;
+  takenAt: Date;
+  hash: ContentHash;
+  archived: boolean;
+}
+
+/** Patch applied by `markArchived`. */
+export interface ArchiveMarkPatch {
+  uri: string;
+  sha256: string;
+  at: Date;
+}
+
 export interface ResourceSnapshotRepository {
   save(snapshot: ResourceSnapshot): Promise<void>;
   findById(id: SnapshotId): Promise<ResourceSnapshot | null>;
@@ -39,6 +59,39 @@ export interface ResourceSnapshotRepository {
     ref: ResourceRef,
     at?: Date
   ): Promise<KubernetesResourceRecord | null>;
+
+  /**
+   * Project archive candidates older than `beforeDate`, filtered to
+   * `archived: false`. Uses the existing `(clusterId, takenAt: -1)`
+   * index — no new index needed.
+   */
+  findOlderThanForArchive(
+    beforeDate: Date,
+    limit: number,
+    clusterId?: ClusterId
+  ): Promise<ArchiveCandidate[]>;
+
+  /**
+   * Flip `archived = true` and stamp the archive metadata in one
+   * atomic update. No-op if the row no longer exists.
+   */
+  markArchived(id: SnapshotId, patch: ArchiveMarkPatch): Promise<void>;
+
+  /**
+   * Find already-archived snapshots whose `archivedAt < beforeDate`.
+   * These are candidates for the hard-delete pruner.
+   */
+  findArchivedOlderThan(
+    beforeDate: Date,
+    limit: number
+  ): Promise<ArchiveCandidate[]>;
+
+  /**
+   * Explicit batch hard-delete. Separated from any "delete by id"
+   * helper so callers cannot accidentally drop live snapshots —
+   * callers MUST go through the archiver's verification flow first.
+   */
+  hardDelete(ids: SnapshotId[]): Promise<{ deleted: number }>;
 }
 
 export class MongooseResourceSnapshotRepository
@@ -156,5 +209,90 @@ export class MongooseResourceSnapshotRepository
       }
     }
     return null;
+  }
+
+  async findOlderThanForArchive(
+    beforeDate: Date,
+    limit: number,
+    clusterId?: ClusterId
+  ): Promise<ArchiveCandidate[]> {
+    const filter: Record<string, unknown> = {
+      archived: { $ne: true },
+      takenAt: { $lt: beforeDate.toISOString() },
+    };
+    if (clusterId !== undefined) filter['clusterId'] = clusterId;
+    const docs = await this.model
+      .find(filter)
+      .sort({ takenAt: 1 })
+      .limit(limit)
+      .select({ id: 1, clusterId: 1, takenAt: 1, hash: 1, archived: 1 })
+      .lean<
+        Array<
+          Pick<
+            ResourceSnapshotPersistence,
+            'id' | 'clusterId' | 'takenAt' | 'hash' | 'archived'
+          >
+        >
+      >()
+      .exec();
+    return docs.map(d => ({
+      id: d.id as SnapshotId,
+      clusterId: d.clusterId as ClusterId,
+      takenAt: new Date(d.takenAt),
+      hash: d.hash as ContentHash,
+      archived: d.archived === true,
+    }));
+  }
+
+  async markArchived(id: SnapshotId, patch: ArchiveMarkPatch): Promise<void> {
+    await this.model
+      .updateOne(
+        { id },
+        {
+          $set: {
+            archived: true,
+            archiveUri: patch.uri,
+            archiveSha256: patch.sha256,
+            archivedAt: patch.at,
+          },
+        }
+      )
+      .exec();
+  }
+
+  async findArchivedOlderThan(
+    beforeDate: Date,
+    limit: number
+  ): Promise<ArchiveCandidate[]> {
+    const docs = await this.model
+      .find({ archived: true, archivedAt: { $lt: beforeDate } })
+      .sort({ archivedAt: 1 })
+      .limit(limit)
+      .select({ id: 1, clusterId: 1, takenAt: 1, hash: 1, archived: 1 })
+      .lean<
+        Array<
+          Pick<
+            ResourceSnapshotPersistence,
+            'id' | 'clusterId' | 'takenAt' | 'hash' | 'archived'
+          >
+        >
+      >()
+      .exec();
+    return docs.map(d => ({
+      id: d.id as SnapshotId,
+      clusterId: d.clusterId as ClusterId,
+      takenAt: new Date(d.takenAt),
+      hash: d.hash as ContentHash,
+      archived: d.archived === true,
+    }));
+  }
+
+  async hardDelete(ids: SnapshotId[]): Promise<{ deleted: number }> {
+    if (ids.length === 0) return { deleted: 0 };
+    const res = await this.model.deleteMany({ id: { $in: ids } }).exec();
+    // Mongoose returns a `DeleteResult` with `deletedCount`; defensively
+    // coerce because older drivers used `n`.
+    const r = res as { deletedCount?: number; n?: number };
+    return { deleted: r.deletedCount ?? r.n ?? 0 };
   }
 }

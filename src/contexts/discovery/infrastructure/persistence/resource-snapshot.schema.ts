@@ -46,6 +46,14 @@ const ResourceSnapshotSchema = new Schema<ResourceSnapshotPersistence>(
     hash: { type: String, required: true },
     counts: { type: CountersSchema, required: true },
     records: { type: [RecordSchema], default: [] },
+    // Archive tier metadata. See `SnapshotArchiver` (DDD-06 follow-up).
+    // `archived` defaults to false and is indexed because the archive
+    // sweep filters on `{ archived: false, takenAt: { $lt: cutoff } }`
+    // every tick.
+    archived: { type: Boolean, default: false, index: true },
+    archiveUri: { type: String },
+    archivedAt: { type: Date, index: true },
+    archiveSha256: { type: String },
   },
   {
     collection: 'resourceSnapshots',
