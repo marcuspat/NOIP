@@ -149,6 +149,21 @@ export class ProviderError extends DomainError {
   }
 }
 
+/**
+ * Raised when an external dependency (CLI binary, env-var, credential)
+ * is not installed or wired up. The HTTP edge maps this to 503 because
+ * the adapter is reachable in principle but currently unusable; the
+ * operator can resolve it by installing/configuring the dependency.
+ */
+export class NotConfiguredError extends DomainError {
+  constructor(
+    message = 'Dependency not configured',
+    details?: Record<string, unknown>
+  ) {
+    super(message, 'NOT_CONFIGURED', 503, details);
+  }
+}
+
 export class InternalError extends DomainError {
   constructor(
     message = 'Internal server error',
