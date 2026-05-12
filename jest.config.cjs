@@ -13,6 +13,9 @@ module.exports = {
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
+  // Contract suites are run via dedicated configs (e.g.
+  // jest.contract.security.config.cjs). Default test runs skip them.
+  testPathIgnorePatterns: ['/node_modules/', '/tests/contract/'],
   // Allow-list ESM-only packages so they get transformed by ts-jest. The
   // default Jest behavior is to skip everything in node_modules.
   transformIgnorePatterns: ['/node_modules/(?!(uuid|jose|nanoid)/)'],
