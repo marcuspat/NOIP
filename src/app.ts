@@ -55,6 +55,10 @@ import {
   type SharedRedisClient,
 } from './database/shared-redis';
 import { createBucketLimiter } from './middleware/rate-limit-redis';
+import { AuthService } from './services/auth.service';
+import { JWTManager, MFAService, PasswordService } from './utils/auth';
+import { adaptRedisManager } from './utils/auth/jwt.manager';
+import { createAuthRouter } from './routes/auth.routes';
 
 // Import route handlers
 import performanceRoutes from './routes/performance.routes';
@@ -186,6 +190,68 @@ setDefaultMFAEnforcer(
     availableMethods: ['totp', 'backup'],
   })
 );
+
+// ---------------------------------------------------------------------------
+// IAM service composition (deferred from Phase 1 wave 3)
+// ---------------------------------------------------------------------------
+// Compose the AuthService once per pod with the full DI surface:
+//   - Shared Redis client → JWT denylist (ADR-0006) + MFA challenges (ADR-0009)
+//   - EventBus            → `iam.*` DomainEvents (ADR-0018)
+//   - Shared PasswordService → backs MFA backup-code Argon2id hashing
+//
+// The composed instance is exported via `getAuthService()` so the auth
+// router factory (`createAuthRouter`) and any future controller that
+// needs an explicit handle can reuse the same singleton instead of
+// constructing a fresh service per request (which would skip the
+// denylist + challenge wiring).
+//
+// This block is intentionally isolated so the parallel Phase 5 agent
+// merging changes to other sections of app.ts has zero ambiguity about
+// ordering: it lands AFTER the MFA enforcer setup and BEFORE the bus
+// accessor exports. The Auth router is mounted further down under the
+// `// API Routes` block.
+const sharedPasswordService = new PasswordService();
+const sharedJwtManager = new JWTManager({
+  eventBus,
+  redis: adaptRedisManager(redisClient),
+});
+// The shared ioredis client's `set` signature is the full variadic
+// overload set; `MFARedisClient.set` is the narrow subset MFAService
+// actually invokes (`set(key, value, 'EX', seconds)`). The cast is
+// safe because the variadic overload structurally subsumes the narrow
+// form, but TS cannot prove that without an explicit assertion.
+const mfaRedisAdapter: import('./utils/auth').MFARedisClient = {
+  get: key => redisClient.get(key),
+  set: (key, value, mode, seconds) =>
+    mode === 'EX' && seconds !== undefined
+      ? redisClient.set(key, value, 'EX', seconds)
+      : redisClient.set(key, value),
+  del: key => redisClient.del(key),
+  incr: key => redisClient.incr(key),
+  expire: (key, seconds) => redisClient.expire(key, seconds),
+  ttl: key => redisClient.ttl(key),
+};
+const sharedMfaService = new MFAService({
+  redis: mfaRedisAdapter,
+  hasher: sharedPasswordService,
+});
+const authService = new AuthService({
+  eventBus,
+  eventClock,
+  jwtManager: sharedJwtManager,
+  mfaService: sharedMfaService,
+  passwordService: sharedPasswordService,
+});
+// Defensive re-wire of the bus through the JWT manager: composition
+// order means the constructor already saw it, but `setEventBus` is the
+// documented escape hatch and exercising it here keeps the manager and
+// the AuthService bus in sync if someone swaps the bus at runtime.
+authService.setEventBus(eventBus);
+
+/** Accessor for the singleton AuthService composed above. */
+export function getAuthService(): AuthService {
+  return authService;
+}
 
 /** Accessors so other modules (controllers, tests) can grab the live bus. */
 export function getEventBus(): EventBus {
@@ -427,6 +493,13 @@ app.use('/api/ai', composedAI.router);
 app.use('/api/dashboard', createDashboardRoutes(dashboardService));
 app.use('/api/performance', performanceRoutes);
 app.use('/api/compliance', composedSecurity.routers.compliance);
+app.use(
+  '/api/auth',
+  createAuthRouter({
+    authService,
+    redisClient,
+  })
+);
 
 // Error handling middleware
 app.use(

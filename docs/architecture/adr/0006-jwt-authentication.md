@@ -1,6 +1,7 @@
 # ADR-0006: JWT-based authentication with access + refresh token pair
 
 - **Status:** Accepted
+- **Implementation:** Complete (Phase 1 wave 3 follow-up, 2026-05-12) — `AuthService` now receives the JWT manager + shared Redis client from the composition root in `src/app.ts`, so the Redis-backed denylist is reached on every `/api/auth/*` request.
 - **Date:** 2026-05-09
 - **Deciders:** Platform engineering, Security
 - **Tags:** security, auth
@@ -78,6 +79,11 @@ Rotation rules:
 - Token denylist in Redis adds a Redis dependency to validation; we are
   willing to pay this cost for revocability and accept fail-closed behaviour
   on Redis outage.
+- Wiring is now at the composition root (`src/app.ts`): `AuthService` is
+  constructed once per pod with `jwtManager` + `mfaService` + shared Redis
+  client injected, replacing the legacy `new JWTManager()` / `new MFAService()`
+  defaults inside the service. Tests under `tests/unit/iam/jwt-denylist-wired.spec.ts`
+  exercise `logout()` end-to-end and assert the `noip:deny:<jti>` entry lands.
 
 ## Pros and Cons of the Options
 

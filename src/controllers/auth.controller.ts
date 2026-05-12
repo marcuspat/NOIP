@@ -1,10 +1,6 @@
 import { Request, Response } from 'express';
 import { AuthService } from '../services/auth.service';
-import {
-  AuthMiddleware,
-  AuthenticatedRequest,
-} from '../middleware/auth.middleware';
-import { RateLimitMiddleware } from '../middleware/rate-limit.middleware';
+import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import {
   LoginRequest,
   RegisterRequest,
@@ -17,17 +13,17 @@ import {
 import logger from '../utils/logger';
 import { validationResult } from 'express-validator';
 
+/** Optional DI envelope for the controller. */
+export interface AuthControllerDeps {
+  /** Pre-built AuthService (from the composition root). */
+  authService?: AuthService;
+}
+
 export class AuthController {
   private authService: AuthService;
-  private authMiddleware: AuthMiddleware;
-  private rateLimitMiddleware: RateLimitMiddleware;
 
-  constructor() {
-    this.authService = new AuthService();
-    this.authMiddleware = new AuthMiddleware();
-    this.rateLimitMiddleware = new RateLimitMiddleware(
-      new Redis(process.env['REDIS_URL'])
-    );
+  constructor(deps: AuthControllerDeps = {}) {
+    this.authService = deps.authService ?? new AuthService();
   }
 
   // Initialize authentication service
@@ -530,18 +526,22 @@ export class AuthController {
     }
   };
 
-  // Get rate limit status
+  /**
+   * Rate-limit status endpoint. Post-ADR-0016 wave-3-followup the auth
+   * router mounts `createBucketLimiter` directly per route group, so the
+   * legacy per-key status lookup no longer has a single backing store.
+   * The endpoint is kept as a compatible 200 with `null` data so the
+   * admin UI doesn't 500; operators consult Redis (`noip:rl:*`) for
+   * real visibility.
+   */
   getRateLimitStatus = async (
-    req: AuthenticatedRequest,
+    _req: AuthenticatedRequest,
     res: Response
   ): Promise<void> => {
     try {
-      const key = this.generateRateLimitKey(req);
-      const status = await this.rateLimitMiddleware.getRateLimitStatus(key);
-
       res.status(200).json({
         success: true,
-        data: { rateLimit: status },
+        data: { rateLimit: null },
       });
     } catch (error) {
       logger.error('Get rate limit status failed', { error });
@@ -563,22 +563,5 @@ export class AuthController {
       .createHash('sha256')
       .update(`${userAgent}|${acceptLanguage}|${acceptEncoding}`)
       .digest('hex');
-  }
-
-  private generateRateLimitKey(req: AuthenticatedRequest): string {
-    if (req.user) {
-      return `user:${req.user._id}`;
-    }
-    return `ip:${this.getClientIP(req)}`;
-  }
-
-  private getClientIP(req: Request): string {
-    return (
-      req.ip ||
-      req.connection.remoteAddress ||
-      req.socket.remoteAddress ||
-      (req.connection as any)?.socket?.remoteAddress ||
-      '127.0.0.1'
-    );
   }
 }

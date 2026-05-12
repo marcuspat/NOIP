@@ -12,6 +12,13 @@ export type {
 } from './jwt.manager';
 
 export { MFAService } from './mfa.service';
+export type {
+  MFARedisClient,
+  MFABackupHasher,
+  MFAClock,
+  MFALogger,
+  MFAServiceDeps,
+} from './mfa.service';
 export { PasswordService } from './password.service';
 export { DeviceFingerprintService } from './device-fingerprint.service';
 export { EmailService } from './email.service';
