@@ -7,13 +7,13 @@ work lands.
 **Phase 1 (this document)** establishes a green build baseline. Phases 2+
 will close the gaps below.
 
-## Verification gates after Phase 2
+## Verification gates after Phase 3 batch A
 
 | Gate | Status | Command |
 |---|---|---|
 | `tsc --noEmit` (strict-ish, see below) | **0 errors** | `npm run typecheck` |
-| ESLint | **0 errors, 267 warnings** | `npm run lint:check` |
-| Unit tests (`tests/unit/**`) | **82/82 pass** (was 17 in Phase 1) | `npx jest --testPathPatterns='tests/unit'` |
+| ESLint | **0 errors, 261 warnings** | `npm run lint:check` |
+| Unit tests (`tests/unit/**`) | **112/112 pass** (was 82 after Phase 2) | `npx jest --testPathPatterns='tests/unit'` |
 | Integration tests | **blocked — needs network for `mongodb-memory-server`** | n/a |
 | E2E tests (Playwright) | **not run** — needs deployed env | n/a |
 | Real benchmarks | **not run** — needs production-like deploy | n/a |
@@ -61,10 +61,16 @@ AuditLog exist. **Missing aggregates from the DDD docs**: `Cluster`,
 These are explicitly marked "planned" in the per-context DDD docs.
 
 ### ADR-0005 — Redis for cache, sessions, rate limiting
-**🟡** ioredis client wrapped in `src/database/redis.ts` with single-node
-and Cluster support. Used by `rate-limit.middleware.ts`. Still missing:
-Redis-backed session-revocation lookup in the auth hot path (today the
-session check goes to Mongo).
+**✅** ioredis client wrapped in `src/database/redis.ts`. Phase 3 A:
+- Rate limit now uses `rate-limit-redis` via
+  `src/utils/rate-limiter.ts`. Two limiters mounted from `app.ts`:
+  global (`/api/v1/*`) and auth-specific (`/api/v1/auth/*`, 5/15min
+  per IP per ADR-0014).
+- Session-revocation cache (`SessionCache` in
+  `src/services/session-cache.service.ts`) replicates the minimum
+  session state to Redis on login/refresh and revokes on
+  logout/replay. The auth middleware checks the cache first and
+  falls back to Mongo on miss/error.
 
 ### ADR-0006 — Stateless JWT + refresh-token rotation
 **✅** Access/refresh issuance in `src/services/auth.service.ts`.
@@ -85,10 +91,14 @@ present. **SMS provider integration is stub-only.** Channel-default flag
 and "warn when backup codes <3" UX are **not wired**.
 
 ### ADR-0009 — RBAC with conditional permissions
-**🟡** `Role` and `Permission` models exist; `requireAuth`,
-`requirePermission` middleware exists in `auth.middleware.ts`.
-**Conditional-permission evaluation** (the `conditions` JSON object with
-allow-listed keys) is **not implemented yet** — Phase 2.
+**✅** `Role` and `Permission` models exist; `requireAuth`,
+`requirePermission` middleware exists in `auth.middleware.ts`. Phase
+3 A: conditional-permission evaluator in
+`src/services/permission-evaluator.service.ts`. Conditions are flat
+literal-equal matches against an *allow-listed* set of context keys
+(`$user.id`, `$user.tenantId`, `$resource.id`, `$resource.tenantId`,
+`$resource.ownerId`, `$resource.kind`). Unknown keys hard-fail; no
+expression DSL. 14 unit tests.
 
 ### ADR-0010 — Anthropic Claude as AI provider
 **✅** `src/services/ai.service.ts` calls `https://api.anthropic.com` with
@@ -99,16 +109,15 @@ request/response body. Coverage: 32 unit tests in
 `tests/unit/utils/redact.test.ts`.
 
 ### ADR-0011 — AgentDB / ReasoningBank adapter pattern
-**🟡 → 🟢** Ports defined in `src/services/ai/ports.ts`
-(`IAgentDB`, `IReasoningBank`, `ILLMClient`). Mock adapters in
-`src/services/ai/{mock-agentdb,mock-reasoning-bank,mock-llm}.adapter.ts`
-with 19 passing unit tests. `AIService` accepts an optional
-`AIServicePorts` constructor argument; when an `ILLMClient` is injected,
-the axios direct path is bypassed (so tests run without network). The
-*legacy* in-class `AgentDBAdapter` / `ReasoningBank` interfaces are
-still present and still used by the existing learning paths — Phase 3
-will fully migrate `AIService` onto the new ports and delete the inline
-adapters.
+**✅** Ports defined in `src/services/ai/ports.ts` (`IAgentDB`,
+`IReasoningBank`, `ILLMClient`). Mock adapters in
+`src/services/ai/{mock-agentdb,mock-reasoning-bank,mock-llm}.adapter.ts`.
+Phase 3 A: `AIService` no longer declares its own adapter interfaces.
+All call sites use the port methods. When no port is injected, the
+service defaults to the mocks so unit tests have no external deps; the
+axios fallback path remains for production. String/pattern → vector
+conversion documented in `ai.service.ts` (SHA-256 → 16 floats in
+`[0, 1)`). 25 AI unit tests (19 ports + 6 service).
 
 ### ADR-0012 — Modular monolith with explicit bounded contexts
 **✅** Source layout matches the eight bounded contexts.
@@ -125,9 +134,11 @@ aggregates described in `docs/ddd/contexts/compliance-and-risk.md` are
 **not yet implemented**.
 
 ### ADR-0014 — Redis-backed sliding-window rate limiting
-**🟡** `rate-limit.middleware.ts` uses `express-rate-limit` with
-in-memory store today. Redis-backed sorted-set sliding window described in
-the ADR is **not wired**. Phase 2: swap in `rate-limit-redis` store.
+**✅** Phase 3 A: `rate-limit-redis` store is used by both limiters
+defined in `src/utils/rate-limiter.ts`. When no Redis client is
+provided (tests, dev), the limiter falls back to the in-memory store
+and emits a warning — the cross-replica guarantee is documented as
+lost in this mode.
 
 ### ADR-0015 — Structured logging with Winston + correlation IDs
 **✅** Winston logger configured (`src/utils/logger.ts`). Phase 2:
@@ -185,19 +196,33 @@ respond with `Deprecation: true`, `Sunset: <+1y>`, and `Link:
 7. ✅ **Lint rule for cross-context model imports** — controllers
    (error), services (warn pending Phase 3 cleanup).
 
-## Phase 2 — deferred to Phase 3
+## Phase 3 batch A — done in this iteration
 
-8. **Redis-backed rate-limit store** (ADR-0014). Today
-   `express-rate-limit` is in-process. Swap in `rate-limit-redis`.
-9. **Redis-backed session revocation lookup** in the auth hot path
-   (ADR-0005/0006). Today the active-session check goes to Mongo.
-10. **`AIService` migration onto the new ports** — fully drop the
-    inline `AgentDBAdapter`/`ReasoningBank` and use the injected
-    `IAgentDB`/`IReasoningBank` exclusively.
-11. **Conditional-permission evaluator** with allow-listed condition
-    keys (ADR-0009).
+8. ✅ **Redis-backed rate-limit store** (`rate-limit-redis`) via
+   `src/utils/rate-limiter.ts`; global + auth-specific limiters
+   wired in `app.ts`.
+9. ✅ **Redis-backed session-revocation lookup** —
+   `SessionCache` (`src/services/session-cache.service.ts`),
+   integrated into login / refresh / logout / replay paths and the
+   `auth.middleware` hot path with Mongo fallback.
+10. ✅ **`AIService` migration onto the new ports** — inline adapters
+    deleted; all paths go through `IAgentDB` / `IReasoningBank` /
+    `ILLMClient`. Mocks are the default fallback.
+11. ✅ **Conditional-permission evaluator** with allow-listed
+    condition keys (`src/services/permission-evaluator.service.ts`).
+
+## Phase 3 — remaining
+
 12. **Tighten tsconfig** back to the strict baseline by progressively
-    fixing call sites.
+    fixing call sites (`noPropertyAccessFromIndexSignature`,
+    `noUnusedLocals`, `noUnusedParameters`,
+    `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`).
+13. **Promote `no-restricted-imports`** for services from warn to
+    error after migrating any remaining cross-context model imports.
+14. **Bootstrap wiring**: have `src/index.ts` construct a
+    `SessionCache(redisClient)` and call `bindDefaultSessionCache(...)`
+    and `attachRateLimiters(redis)` at startup. Today this is
+    deferred to the runtime caller (so tests don't pay the Redis cost).
 
 ## Phase 3 — domain aggregate work
 
@@ -229,6 +254,42 @@ respond with `Deprecation: true`, `Sunset: <+1y>`, and `Link:
 4. **Optimisation pass** based on measured hotspots.
 
 ---
+
+## What was changed in Phase 3 batch A
+
+New modules:
+- `src/utils/rate-limiter.ts` — `buildRateLimiter`,
+  `buildGlobalLimiter`, `buildAuthLimiter`. Redis-backed via
+  `rate-limit-redis` when a Redis client is supplied; in-memory
+  fallback with a logged warning.
+- `src/services/session-cache.service.ts` — `SessionCache` over
+  Redis with Mongo fallback (`get`, `set`, `revoke`, `delete`).
+  Process-singleton accessor (`getDefaultSessionCache`,
+  `bindDefaultSessionCache`).
+- `src/services/permission-evaluator.service.ts` — pure
+  `evaluateConditions(conditions, ctx)` and
+  `findGrantingPermission(perms, resource, action, ctx)`. Allow-listed
+  condition keys; unknown keys hard-fail (no DSL).
+- `tests/unit/services/permission-evaluator.test.ts` — 14 tests.
+- `tests/unit/services/session-cache.test.ts` — 7 tests.
+- `tests/unit/utils/rate-limiter.test.ts` — 4 tests.
+
+Modified:
+- `src/app.ts` — uses `buildGlobalLimiter` + `buildAuthLimiter`;
+  exposes `attachRateLimiters(redis)` for the bootstrap to wire in.
+- `src/middleware/auth.middleware.ts` — auth hot path reads
+  `SessionCache` first; falls back to Mongo and repopulates on miss.
+  `evaluatePermissionConditions()` now delegates to the new
+  allow-listed evaluator.
+- `src/services/auth.service.ts` — login, refresh and logout write
+  / update / revoke the SessionCache; replay-detection revokes the
+  cache entry too.
+- `src/services/ai.service.ts` (via subagent) — fully migrated onto
+  `IAgentDB` / `IReasoningBank` / `ILLMClient` ports. Inline adapter
+  interfaces removed. Default fallback uses the mock adapters.
+- `package.json` — added `rate-limit-redis`.
+
+Tests after Phase 3 batch A: **112/112** unit-test pass (was 82).
 
 ## What was changed in Phase 2
 

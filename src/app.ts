@@ -2,11 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import rateLimit from 'express-rate-limit';
 import morgan from 'morgan';
+import type { Redis } from 'ioredis';
 import { config } from './config';
 import logger from './utils/logger';
 import { correlationMiddleware } from './middleware/correlation.middleware';
+import { buildGlobalLimiter, buildAuthLimiter } from './utils/rate-limiter';
 import { DiscoveryService } from './services/discovery.service';
 import { SecurityService } from './services/security.service';
 import { AIService } from './services/ai.service';
@@ -40,13 +41,29 @@ app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: config.security.rateLimit.windowMs,
-  max: config.security.rateLimit.max,
-  message: { error: 'Too many requests from this IP' },
+// Rate limiting — Redis-backed per ADR-0014. The Redis handle is plumbed
+// in by the bootstrap (src/index.ts) via `attachRateLimiters(app, redis)`;
+// during tests `redis` is null and limiters fall back to in-memory with a
+// loud warning.
+let activeRedisClient: Redis | null = null;
+export function attachRateLimiters(redis: Redis | null): void {
+  activeRedisClient = redis;
+  app.use(buildGlobalLimiter(redis));
+  // The stricter /auth budget is mounted directly against /api/v1/auth so
+  // it sees auth-only traffic (login, refresh, MFA challenge).
+  app.use('/api/v1/auth', buildAuthLimiter(redis));
+  app.use('/api/auth', buildAuthLimiter(redis));
+}
+
+// If the host hasn't called attachRateLimiters() by the time the first
+// request lands (e.g. in unit tests), apply the in-memory fallback now.
+app.use((req, res, next) => {
+  if (activeRedisClient === null && !(app as unknown as { _limitersAttached?: boolean })._limitersAttached) {
+    (app as unknown as { _limitersAttached?: boolean })._limitersAttached = true;
+    attachRateLimiters(null);
+  }
+  next();
 });
-app.use(limiter);
 
 // Logging
 if (config.app.environment !== 'test') {

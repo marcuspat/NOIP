@@ -35,6 +35,7 @@ import { PasswordService } from '../utils/auth/password.service';
 import { DeviceFingerprintService } from '../utils/auth/device-fingerprint.service';
 import { EmailService } from '../utils/auth/email.service';
 import { v4 as uuidv4 } from 'uuid';
+import { getDefaultSessionCache } from './session-cache.service';
 
 export class AuthService extends BaseService {
   private jwtManager: JWTManager;
@@ -279,6 +280,16 @@ export class AuthService extends BaseService {
       session.refreshTokenJti = tokens.refreshTokenJti;
       await session.save();
 
+      // Replicate to the Redis session cache so the auth hot path avoids
+      // a Mongo round-trip on every request (ADR-0005/0006).
+      await getDefaultSessionCache().set({
+        sessionId,
+        userId: String(user._id),
+        active: true,
+        refreshTokenJti: tokens.refreshTokenJti,
+        expiresAt: Math.floor(session.expiresAt.getTime() / 1000),
+      });
+
       // Update user last login
       user.lastLogin = new Date();
       await user.save();
@@ -314,7 +325,7 @@ export class AuthService extends BaseService {
     return this.unwrapWithErrorHandling(async () => {
       this.logOperation('Starting user logout', { userId, sessionId });
 
-      // Revoke session
+      // Revoke session in Mongo + the Redis cache.
       const session = await SessionModel.findOne({
         userId,
         sessionId,
@@ -323,6 +334,7 @@ export class AuthService extends BaseService {
       if (session) {
         await session.revoke();
       }
+      await getDefaultSessionCache().revoke(sessionId, 'logout');
 
       // Create security event
       await SecurityEventModel.createEvent(
@@ -375,6 +387,10 @@ export class AuthService extends BaseService {
         session.isActive = false;
         session.revokedReason = 'refresh_token_replay_detected';
         await session.save();
+        await getDefaultSessionCache().revoke(
+          payload.sessionId,
+          'refresh_token_replay_detected'
+        );
 
         await this.createSecurityEvent(
           SecurityEventType.REFRESH_TOKEN_REPLAY,
@@ -405,6 +421,15 @@ export class AuthService extends BaseService {
       session.refreshTokenJti = tokens.refreshTokenJti;
       await session.updateLastActivity();
       await session.save();
+
+      // Update the cache so subsequent hot-path lookups see the new jti.
+      await getDefaultSessionCache().set({
+        sessionId: payload.sessionId,
+        userId: String(payload.sub),
+        active: true,
+        refreshTokenJti: tokens.refreshTokenJti,
+        expiresAt: Math.floor(new Date(session.expiresAt).getTime() / 1000),
+      });
 
       this.logOperation('Token refreshed successfully', { userId: user._id });
 

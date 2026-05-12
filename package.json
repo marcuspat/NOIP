@@ -112,6 +112,7 @@
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "qrcode": "^1.5.4",
+    "rate-limit-redis": "^5.0.0",
     "redis": "^5.9.0",
     "speakeasy": "^2.0.0",
     "uuid": "^13.0.0"

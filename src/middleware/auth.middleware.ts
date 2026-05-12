@@ -7,6 +7,11 @@ import {
   SecurityEventSeverity,
 } from '../types/auth.types';
 import logger from '../utils/logger';
+import { getDefaultSessionCache } from '../services/session-cache.service';
+import {
+  evaluateConditions,
+  PermissionContext,
+} from '../services/permission-evaluator.service';
 
 export interface AuthenticatedRequest extends Request {
   user?: any;
@@ -62,22 +67,58 @@ export class AuthMiddleware {
         return;
       }
 
-      // Verify session exists and is active
-      const session = await SessionModel.findOne({
-        userId: payload.sub,
-        sessionId: payload.sessionId,
-        isActive: true,
-        expiresAt: { $gt: new Date() },
-      });
+      // Verify session exists and is active.
+      // ADR-0005/0006: prefer the Redis cache so the hot path avoids a
+      // Mongo round-trip. Fall back to Mongo on cache miss or Redis error.
+      const cache = getDefaultSessionCache();
+      const cached = await cache.get(payload.sessionId);
+      let session: typeof SessionModel.prototype | null = null;
 
-      if (!session) {
-        await this.createSecurityEvent(
-          req,
-          SecurityEventType.LOGIN_FAILURE,
-          'Invalid or expired session'
-        );
-        res.status(401).json({ error: 'Session expired or invalid' });
-        return;
+      if (cached) {
+        if (!cached.active) {
+          await this.createSecurityEvent(
+            req,
+            SecurityEventType.TOKEN_REVOKED,
+            `Use of revoked session: ${cached.revokedReason ?? 'unknown'}`
+          );
+          res.status(401).json({ error: 'Session has been revoked' });
+          return;
+        }
+        if (cached.expiresAt * 1000 < Date.now()) {
+          await this.createSecurityEvent(
+            req,
+            SecurityEventType.LOGIN_FAILURE,
+            'Session expired'
+          );
+          res.status(401).json({ error: 'Session expired or invalid' });
+          return;
+        }
+      } else {
+        // Cache miss — authoritative check against Mongo, then repopulate.
+        session = await SessionModel.findOne({
+          userId: payload.sub,
+          sessionId: payload.sessionId,
+          isActive: true,
+          expiresAt: { $gt: new Date() },
+        });
+        if (!session) {
+          await this.createSecurityEvent(
+            req,
+            SecurityEventType.LOGIN_FAILURE,
+            'Invalid or expired session'
+          );
+          res.status(401).json({ error: 'Session expired or invalid' });
+          return;
+        }
+        await cache.set({
+          sessionId: session.sessionId,
+          userId: String(session.userId),
+          active: true,
+          ...(session.refreshTokenJti
+            ? { refreshTokenJti: session.refreshTokenJti }
+            : {}),
+          expiresAt: Math.floor(new Date(session.expiresAt).getTime() / 1000),
+        });
       }
 
       // Get user
@@ -450,21 +491,54 @@ export class AuthMiddleware {
     req: Request,
     user: any
   ): boolean {
-    try {
-      // Evaluate permission conditions based on context
-      for (const [key, condition] of Object.entries(conditions)) {
-        if (!this.evaluateCondition(key, condition, req, user)) {
-          return false;
-        }
-      }
-      return true;
-    } catch (error) {
-      logger.error('Failed to evaluate permission conditions', {
-        error,
+    // Per ADR-0009: conditions are flat literal-equal matches against an
+    // allow-listed set of context keys. Unknown keys are a hard FAIL.
+    const ctx: PermissionContext = {
+      user: {
+        id: String(user?._id ?? user?.id ?? ''),
+        ...(user?.tenantId !== undefined
+          ? { tenantId: String(user.tenantId) }
+          : {}),
+        ...(Array.isArray(user?.roles)
+          ? { roles: user.roles.map((r: any) => r?.name ?? String(r)) }
+          : {}),
+      },
+      resource: {
+        ...((req.params as Record<string, string> | undefined)?.id
+          ? { id: (req.params as Record<string, string>).id }
+          : {}),
+        ...(((req as Request & { resource?: { tenantId?: string } }).resource
+          ?.tenantId)
+          ? {
+              tenantId: (
+                req as Request & { resource: { tenantId: string } }
+              ).resource.tenantId,
+            }
+          : {}),
+        ...(((req as Request & { resource?: { ownerId?: string } }).resource
+          ?.ownerId)
+          ? {
+              ownerId: (req as Request & { resource: { ownerId: string } })
+                .resource.ownerId,
+            }
+          : {}),
+        ...(((req as Request & { resource?: { kind?: string } }).resource?.kind)
+          ? {
+              kind: (req as Request & { resource: { kind: string } }).resource
+                .kind,
+            }
+          : {}),
+      },
+    };
+    const result = evaluateConditions(conditions, ctx);
+    if (!result.allowed) {
+      logger.warn('Permission condition denied', {
+        reason: result.reason,
         conditions,
+        userId: ctx.user.id,
       });
-      return false; // Fail securely
     }
+    return result.allowed;
   }
 
   private evaluateCondition(

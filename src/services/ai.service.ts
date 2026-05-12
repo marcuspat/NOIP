@@ -1,4 +1,5 @@
 import { BaseService } from './base.service';
+import { createHash } from 'crypto';
 import {
   AIAnalysisRequest,
   AIAnalysisResult,
@@ -13,27 +14,14 @@ import type {
   IReasoningBank,
   ILLMClient,
 } from './ai/ports';
-
-// AgentDB integration for advanced AI capabilities
-interface AgentDBAdapter {
-  insertPattern(pattern: AILearningPattern): Promise<void>;
-  retrieveWithReasoning(query: number[], options: any): Promise<any>;
-  retrieveContext(query: string, options: any): Promise<AIContext[]>;
-  updateContext(context: AIContext): Promise<void>;
-}
-
-interface ReasoningBank {
-  recordExperience(experience: any): Promise<void>;
-  recommendStrategy(task: string, context: any): Promise<any>;
-  learnPattern(pattern: any): Promise<void>;
-  getMetrics(): Promise<any>;
-}
+import { MockAgentDB } from './ai/mock-agentdb.adapter';
+import { MockReasoningBank } from './ai/mock-reasoning-bank.adapter';
 
 /**
  * Optional injection point for ADR-0011 ports. When provided, AIService
- * uses these instead of its built-in axios path (LLM) and inline adapters
- * (AgentDB / ReasoningBank). When omitted, the legacy in-class behaviour
- * is preserved so call sites need no change.
+ * uses these instead of its built-in axios path (LLM) and the default
+ * mock adapters for AgentDB / ReasoningBank. When omitted, the service
+ * falls back to in-process mocks so unit tests have no external deps.
  */
 export interface AIServicePorts {
   llm?: ILLMClient;
@@ -41,9 +29,38 @@ export interface AIServicePorts {
   reasoningBank?: IReasoningBank;
 }
 
+/**
+ * Convert an arbitrary string (e.g. a free-text query) into a deterministic
+ * fixed-dimension vector. We hash with SHA-256 and reinterpret the first 16
+ * bytes as 16 floats in `[0, 1)`. This is purely structural — the mock
+ * AgentDB does cosine similarity on these vectors and does not interpret
+ * them semantically.
+ */
+function stringToVector(input: string, dims: number = 16): number[] {
+  const digest = createHash('sha256').update(input).digest();
+  const out: number[] = new Array(dims);
+  for (let i = 0; i < dims; i++) {
+    out[i] = (digest[i % digest.length] as number) / 256;
+  }
+  return out;
+}
+
+/**
+ * Derive a deterministic vector from a learning pattern. Legacy code
+ * passes pre-computed `embeddings` on the pattern; when present we use
+ * those, otherwise we hash the pattern id so identical ids reproducibly
+ * map to the same vector.
+ */
+function patternToVector(pattern: AILearningPattern): number[] {
+  if (Array.isArray(pattern.embeddings) && pattern.embeddings.length > 0) {
+    return pattern.embeddings;
+  }
+  return stringToVector(pattern.id);
+}
+
 export class AIService extends BaseService {
-  private agentDB: AgentDBAdapter | null = null;
-  private reasoningBank: ReasoningBank | null = null;
+  private agentDB: IAgentDB | null = null;
+  private reasoningBank: IReasoningBank | null = null;
   private contextCache: Map<string, AIContext> = new Map();
   private learningEnabled: boolean = true;
   private contextMemory: AIContext[] = [];
@@ -61,21 +78,23 @@ export class AIService extends BaseService {
   async initialize(): Promise<void> {
     this.logOperation('Initializing Advanced AI service');
 
+    // ADR-0011: always wire up an IAgentDB and an IReasoningBank so the
+    // rest of the service can rely on them being non-null. If the caller
+    // injected ports via the constructor we use those; otherwise we fall
+    // back to the in-process mock adapters (safe for tests and local dev).
+    await this.initializeAgentDB();
+    await this.initializeReasoningBank();
+
     if (!config.services.ai.enabled) {
       this.logOperation('AI service disabled in configuration');
+      // Still load context memory so getters work in disabled mode.
+      await this.loadContextMemory();
       return;
     }
 
     if (!config.services.ai.apiKey) {
       this.logOperation('AI service API key not configured');
-      return;
     }
-
-    // Initialize AgentDB for advanced AI capabilities
-    await this.initializeAgentDB();
-
-    // Initialize ReasoningBank for adaptive learning
-    await this.initializeReasoningBank();
 
     // Load existing context memory
     await this.loadContextMemory();
@@ -84,90 +103,23 @@ export class AIService extends BaseService {
   }
 
   private async initializeAgentDB(): Promise<void> {
-    try {
-      // Initialize AgentDB adapter for vector search and pattern storage
-      if ((config.services.ai as any).agentDBEnabled) {
-        // In production, this would use actual AgentDB
-        this.agentDB = {
-          insertPattern: async (pattern: AILearningPattern) => {
-            // Mock implementation - would use actual AgentDB
-            this.logOperation('Pattern inserted into AgentDB', {
-              patternId: pattern.id,
-            });
-          },
-          retrieveWithReasoning: async (query: number[], options: any) => {
-            // Mock implementation with vector similarity search
-            return {
-              patterns: [],
-              context: 'Mock reasoning result',
-              confidence: 0.85,
-            };
-          },
-          retrieveContext: async (query: string, options: any) => {
-            // Retrieve relevant context from memory
-            return this.contextMemory
-              .filter(ctx =>
-                ctx.content.toLowerCase().includes(query.toLowerCase())
-              )
-              .slice(0, options.limit || 5);
-          },
-          updateContext: async (context: AIContext) => {
-            const index = this.contextMemory.findIndex(
-              ctx => ctx.id === context.id
-            );
-            if (index >= 0) {
-              this.contextMemory[index] = context;
-            } else {
-              this.contextMemory.push(context);
-            }
-          },
-        };
-        this.logOperation('AgentDB initialized for advanced AI capabilities');
-      }
-    } catch (error) {
-      this.logOperation('Failed to initialize AgentDB', error);
+    if (this.agentDBPort) {
+      this.agentDB = this.agentDBPort;
+      this.logOperation('AgentDB port injected (ADR-0011)');
+      return;
     }
+    this.agentDB = new MockAgentDB();
+    this.logOperation('AgentDB defaulted to in-process MockAgentDB');
   }
 
   private async initializeReasoningBank(): Promise<void> {
-    try {
-      // Initialize ReasoningBank for adaptive learning
-      if ((config.services.ai as any).learningEnabled) {
-        this.reasoningBank = {
-          recordExperience: async (experience: any) => {
-            this.logOperation('Experience recorded in ReasoningBank', {
-              task: experience.task,
-              outcome: experience.outcome?.success,
-            });
-          },
-          recommendStrategy: async (task: string, context: any) => {
-            // Mock strategy recommendation based on historical patterns
-            return {
-              strategy: 'context_aware_analysis',
-              confidence: 0.88,
-              reasoning:
-                'Based on similar past tasks, context-aware analysis yields best results',
-            };
-          },
-          learnPattern: async (pattern: any) => {
-            this.logOperation('Pattern learned by ReasoningBank', {
-              pattern: pattern.pattern,
-            });
-          },
-          getMetrics: async () => {
-            return {
-              totalExperiences: 150,
-              patternsLearned: 45,
-              strategySuccessRate: 0.87,
-              improvementOverTime: 0.23,
-            };
-          },
-        };
-        this.logOperation('ReasoningBank initialized for adaptive learning');
-      }
-    } catch (error) {
-      this.logOperation('Failed to initialize ReasoningBank', error);
+    if (this.reasoningBankPort) {
+      this.reasoningBank = this.reasoningBankPort;
+      this.logOperation('ReasoningBank port injected (ADR-0011)');
+      return;
     }
+    this.reasoningBank = new MockReasoningBank();
+    this.logOperation('ReasoningBank defaulted to in-process MockReasoningBank');
   }
 
   private async loadContextMemory(): Promise<void> {
@@ -194,6 +146,20 @@ export class AIService extends BaseService {
           embeddings: new Array(1536).fill(0.1), // Mock embedding
         },
       ];
+
+      // Mirror the bootstrap contexts into AgentDB so port-backed lookups
+      // can find them. We hash the content for the vector (the legacy
+      // 1536-dim flat embeddings are not useful for similarity search).
+      if (this.agentDB) {
+        for (const ctx of this.contextMemory) {
+          const vector = stringToVector(ctx.content);
+          await this.agentDB.upsert(vector, ctx, {
+            contextId: ctx.id,
+            type: ctx.type,
+          });
+        }
+      }
+
       this.logOperation('Context memory loaded', {
         contexts: this.contextMemory.length,
       });
@@ -206,30 +172,35 @@ export class AIService extends BaseService {
     const startTime = Date.now();
 
     try {
-      // Get recommended strategy from ReasoningBank
-      const strategy = this.reasoningBank
-        ? await this.reasoningBank.recommendStrategy(
-            'infrastructure_analysis',
-            {
-              dataSize: JSON.stringify(data).length,
-              clusterNodes: data.nodes?.length || 0,
-              hasMetrics: !!data.metrics,
-            }
-          )
-        : null;
+      // Get recommended strategy from ReasoningBank. The legacy contract
+      // returned a single strategy object; the port returns a ranked list,
+      // so we take the head and adapt the shape.
+      const reasoningContext = {
+        task: 'infrastructure_analysis',
+        dataSize: JSON.stringify(data).length,
+        clusterNodes: data.nodes?.length || 0,
+        hasMetrics: !!data.metrics,
+      };
 
-      // Retrieve relevant context for infrastructure analysis
-      const relevantContext = this.agentDB
-        ? await this.agentDB.retrieveContext('infrastructure performance', {
-            limit: 5,
-          })
+      const recommendations = this.reasoningBank
+        ? await this.reasoningBank.recommendStrategy(reasoningContext)
         : [];
+      const topStrategy = recommendations[0]?.strategy;
+
+      // Retrieve relevant context for infrastructure analysis. The legacy
+      // call was a string-keyed lookup; the port takes a vector, so we
+      // hash the query string into a fixed-dimension vector (see
+      // `stringToVector` above) for a stable nearest-neighbour search.
+      const relevantContext = await this.retrieveContext(
+        'infrastructure performance',
+        5
+      );
 
       const request: AIAnalysisRequest = {
         type: 'performance',
         data,
         context: 'Kubernetes cluster infrastructure analysis',
-        strategy: strategy?.strategy,
+        strategy: topStrategy?.id,
         relevantContext,
         learningEnabled: this.learningEnabled,
       };
@@ -238,18 +209,16 @@ export class AIService extends BaseService {
 
       // Learn from this analysis if enabled
       if (this.learningEnabled && this.reasoningBank) {
+        const strategyUsed = topStrategy ?? {
+          id: 'standard_analysis',
+          description: 'Default analysis strategy',
+        };
         await this.reasoningBank.recordExperience({
-          task: 'infrastructure_analysis',
-          approach: strategy?.strategy || 'standard_analysis',
+          context: reasoningContext,
+          strategy: strategyUsed,
           outcome: {
             success: true,
-            confidence: result.confidence,
-            processingTime: Date.now() - startTime,
-            insightsCount: result.insights.length,
-          },
-          context: {
-            dataSize: JSON.stringify(data).length,
-            hasRecommendations: result.recommendations.length > 0,
+            notes: `confidence=${result.confidence}; insights=${result.insights.length}; ms=${Date.now() - startTime}`,
           },
         });
       }
@@ -259,6 +228,28 @@ export class AIService extends BaseService {
       this.logOperation('Advanced infrastructure analysis failed', error);
       throw error;
     }
+  }
+
+  /**
+   * Internal helper: convert a string query to a vector and call
+   * `IAgentDB.query`, then project the stored payloads back to AIContext
+   * shapes. Returns an empty array if AgentDB is not yet initialized.
+   */
+  private async retrieveContext(
+    query: string,
+    limit: number
+  ): Promise<AIContext[]> {
+    if (!this.agentDB) return [];
+    const vector = stringToVector(query);
+    const hits = await this.agentDB.query(vector, limit);
+    const contexts: AIContext[] = [];
+    for (const hit of hits) {
+      const payload = hit.payload as Partial<AIContext> | null | undefined;
+      if (payload && typeof payload === 'object' && 'content' in payload) {
+        contexts.push(payload as AIContext);
+      }
+    }
+    return contexts;
   }
 
   async analyzeSecurity(scanResults: any[]): Promise<AIAnalysisResult> {
@@ -796,8 +787,9 @@ export class AIService extends BaseService {
     advancedFeatures: any;
   }> {
     const reasoningBankMetrics = this.reasoningBank
-      ? await this.reasoningBank.getMetrics()
+      ? { totalExperiences: await this.reasoningBank.count() }
       : null;
+    const agentDBCount = this.agentDB ? await this.agentDB.count() : 0;
 
     return {
       status: 'healthy',
@@ -807,6 +799,7 @@ export class AIService extends BaseService {
         config.services.ai.apiKey !== 'your-api-key',
       advancedFeatures: {
         agentDBEnabled: !!this.agentDB,
+        agentDBEntries: agentDBCount,
         reasoningBankEnabled: !!this.reasoningBank,
         learningEnabled: this.learningEnabled,
         contextMemorySize: this.contextMemory.length,
@@ -837,7 +830,14 @@ export class AIService extends BaseService {
         lastUsed: new Date(),
       };
 
-      await this.agentDB.insertPattern(learningPattern);
+      // Legacy `insertPattern(pattern)` had no vector arg. The port
+      // requires a vector; we derive a deterministic one from the
+      // pattern's `embeddings` (when present) or hash its id.
+      const vector = patternToVector(learningPattern);
+      await this.agentDB.upsert(vector, learningPattern, {
+        type: learningPattern.type,
+        patternId: learningPattern.id,
+      });
     }
   }
 
@@ -1046,7 +1046,17 @@ export class AIService extends BaseService {
   // Context Management Methods
   async updateContextMemory(context: AIContext): Promise<void> {
     if (this.agentDB) {
-      await this.agentDB.updateContext(context);
+      // Legacy `updateContext(ctx)` mapped to a port `upsert(vector,
+      // payload, metadata)`. Use the context's own embedding if it has
+      // one, otherwise hash its content for a stable vector.
+      const vector =
+        Array.isArray(context.embeddings) && context.embeddings.length > 0
+          ? context.embeddings
+          : stringToVector(context.content || context.id);
+      await this.agentDB.upsert(vector, context, {
+        contextId: context.id,
+        type: context.type,
+      });
     }
 
     // Update local cache
@@ -1063,7 +1073,10 @@ export class AIService extends BaseService {
     limit: number = 5
   ): Promise<AIContext[]> {
     if (this.agentDB) {
-      return await this.agentDB.retrieveContext(query, { limit });
+      // Legacy `retrieveContext(query, opts)` mapped to `query(vector,
+      // k, filter)`. We hash the string query to a vector here.
+      const fromDB = await this.retrieveContext(query, limit);
+      if (fromDB.length > 0) return fromDB;
     }
 
     // Fallback to local search
@@ -1078,12 +1091,12 @@ export class AIService extends BaseService {
       return { learningEnabled: false };
     }
 
-    const metrics = await this.reasoningBank.getMetrics();
+    const totalExperiences = await this.reasoningBank.count();
     return {
       learningEnabled: this.learningEnabled,
       contextMemorySize: this.contextMemory.length,
       agentDBEnabled: !!this.agentDB,
-      reasoningBankMetrics: metrics,
+      reasoningBankMetrics: { totalExperiences },
     };
   }
 
