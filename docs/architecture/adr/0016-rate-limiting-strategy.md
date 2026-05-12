@@ -1,6 +1,7 @@
 # ADR-0016: Tiered rate limiting strategy
 
 - **Status:** Accepted
+- **Implementation:** Complete (Phase 1 wave 3 follow-up, 2026-05-12) — the auth router (`/api/auth/*`) now mounts `createBucketLimiter` per route group with explicit `auth` / `password-reset` / `mfa` buckets, all fail-CLOSED. The legacy `RateLimitMiddleware` class has been retired.
 - **Date:** 2026-05-09
 - **Deciders:** Platform engineering, Security
 - **Tags:** security, performance
@@ -82,12 +83,15 @@ Content-Type: application/json
 
 ### Negative Consequences / Trade-offs
 
-- Multiple middleware instances on the same router; we encapsulate them in
-  `src/middleware/rate-limit.middleware.ts`.
+- Multiple middleware instances on the same router; the composition root
+  in `src/app.ts` injects a `createBucketLimiter` factory into
+  `createAuthRouter(...)` so each bucket is mounted exactly once and shared
+  across the routes that belong to it.
 - Composite keys (IP + user) require careful normalisation to avoid bypass.
 
 ## References
 
-- `src/middleware/rate-limit.middleware.ts`
+- `src/middleware/rate-limit-redis.ts` — `createBucketLimiter` factory + failure-mode wrapper.
+- `src/routes/auth.routes.ts` — `createAuthRouter` factory, mounts the auth / password-reset / mfa buckets.
 - `src/config/index.ts:security.rateLimit`
 - ADR-0005 (Redis)
