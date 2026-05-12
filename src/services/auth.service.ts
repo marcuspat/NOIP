@@ -34,6 +34,8 @@ import {
   DeviceFingerprintService,
   EmailService,
 } from '../utils/auth';
+import type { RedisLike } from '../utils/auth/jwt.manager';
+import type { MFARedisClient } from '../utils/auth/mfa.service';
 import {
   compose,
   SystemClock,
@@ -43,6 +45,15 @@ import {
 } from '../shared/kernel';
 import { v4 as uuidv4 } from 'uuid';
 
+/**
+ * Dependency-injection envelope for {@link AuthService}.
+ *
+ * Every collaborator is optional so legacy callers (`new AuthService()`)
+ * keep working. The composition root in `src/app.ts` passes a fully
+ * wired bundle (`eventBus`, `jwtManager`, `mfaService`, shared Redis,
+ * etc.) so the Redis-backed JWT denylist (ADR-0006) and the per-user
+ * MFA challenge keys (ADR-0009) are reached on real requests.
+ */
 export interface AuthServiceDeps {
   /** Optional EventBus. When supplied, IAM domain events are published. */
   eventBus?: EventBus;
@@ -50,6 +61,24 @@ export interface AuthServiceDeps {
   eventClock?: Clock;
   /** Pre-built JWT manager (lets the composition root share one bus). */
   jwtManager?: JWTManager;
+  /**
+   * Pre-built MFA service. When omitted but `redis` is supplied the
+   * constructor synthesises one wired with the shared Redis client and
+   * the supplied password service as the Argon2id hasher.
+   */
+  mfaService?: MFAService;
+  /** Pre-built password service (also doubles as the MFA backup-code hasher). */
+  passwordService?: PasswordService;
+  /** Pre-built email service. */
+  emailService?: EmailService;
+  /** Pre-built device fingerprint service. */
+  deviceFingerprintService?: DeviceFingerprintService;
+  /**
+   * Shared Redis client. When supplied, it is threaded into the JWT
+   * denylist (ADR-0006) and the MFA challenge namespace (ADR-0009)
+   * when those collaborators are constructed lazily.
+   */
+  redis?: RedisLike & MFARedisClient;
 }
 
 export class AuthService extends BaseService {
@@ -63,13 +92,66 @@ export class AuthService extends BaseService {
 
   constructor(deps: AuthServiceDeps = {}) {
     super('AuthService');
-    this.jwtManager =
-      deps.jwtManager ??
-      new JWTManager(deps.eventBus ? { eventBus: deps.eventBus } : {});
-    this.mfaService = new MFAService();
-    this.passwordService = new PasswordService();
-    this.deviceFingerprintService = new DeviceFingerprintService();
-    this.emailService = new EmailService();
+
+    this.passwordService = deps.passwordService ?? new PasswordService();
+    this.deviceFingerprintService =
+      deps.deviceFingerprintService ?? new DeviceFingerprintService();
+    this.emailService = deps.emailService ?? new EmailService();
+
+    // JWT manager: prefer injected, else construct one — threading the
+    // shared Redis client through so the denylist + family-state table
+    // are actually wired (ADR-0006). When neither is supplied we fall
+    // back to a bare manager, preserving the legacy `new AuthService()`
+    // codepath used by unit tests.
+    if (deps.jwtManager !== undefined) {
+      this.jwtManager = deps.jwtManager;
+    } else {
+      const jwtOpts: ConstructorParameters<typeof JWTManager>[0] = {};
+      if (deps.eventBus !== undefined) {
+        jwtOpts.eventBus = deps.eventBus;
+      }
+      if (deps.redis !== undefined) {
+        jwtOpts.redis = deps.redis;
+      }
+      this.jwtManager = new JWTManager(jwtOpts);
+    }
+
+    // MFA service: prefer injected, else construct one with the shared
+    // Redis client and the PasswordService as hasher (ADR-0009). The
+    // bare `new MFAService()` fallback only fires when neither `redis`
+    // nor `mfaService` is supplied — that keeps the legacy boot path
+    // working but the in-memory MFA store warns once.
+    if (deps.mfaService !== undefined) {
+      this.mfaService = deps.mfaService;
+    } else if (deps.redis !== undefined) {
+      this.mfaService = new MFAService({
+        redis: deps.redis,
+        hasher: this.passwordService,
+        ...(deps.eventBus !== undefined
+          ? {
+              eventBus: {
+                publish: (
+                  type: string,
+                  payload: Record<string, unknown>
+                ): void => {
+                  // Bridge MFAService's narrow event shape onto the
+                  // platform's DomainEvent envelope so the audit
+                  // subscriber sees a normal `iam.mfa.*` event.
+                  this.publishIam(
+                    type,
+                    'user',
+                    String(payload['userId'] ?? ''),
+                    payload
+                  );
+                },
+              },
+            }
+          : {}),
+      });
+    } else {
+      this.mfaService = new MFAService();
+    }
+
     if (deps.eventBus !== undefined) {
       this.eventBus = deps.eventBus;
     }
@@ -80,6 +162,29 @@ export class AuthService extends BaseService {
   setEventBus(bus: EventBus | undefined): void {
     this.eventBus = bus;
     this.jwtManager.setEventBus(bus);
+  }
+
+  /**
+   * Read-only accessor: the JWT manager wired into this service.
+   *
+   * Exposed so the composition root / tests can assert that the
+   * production wireup carried through and the Redis-backed denylist
+   * (ADR-0006) is actually reached on real requests. Marked
+   * intentionally as `getJwtManager` to discourage callers reaching
+   * into a private field.
+   */
+  getJwtManager(): JWTManager {
+    return this.jwtManager;
+  }
+
+  /** Read-only accessor: the MFAService wired into this service. */
+  getMfaService(): MFAService {
+    return this.mfaService;
+  }
+
+  /** Read-only accessor: the PasswordService wired into this service. */
+  getPasswordService(): PasswordService {
+    return this.passwordService;
   }
 
   async initialize(): Promise<void> {
