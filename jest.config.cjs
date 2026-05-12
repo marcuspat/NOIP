@@ -13,6 +13,11 @@ module.exports = {
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
+  // Contract suites live in tests/contract/** and run against real
+  // external services (e.g. ChromaDB). They are explicitly excluded
+  // from the default `npm test` run and are invoked via
+  // `npm run test:contract` against jest.contract.config.cjs.
+  testPathIgnorePatterns: ['/node_modules/', '/tests/contract/'],
   // Allow-list ESM-only packages so they get transformed by ts-jest. The
   // default Jest behavior is to skip everything in node_modules.
   transformIgnorePatterns: ['/node_modules/(?!(uuid|jose|nanoid)/)'],

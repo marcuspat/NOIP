@@ -10,6 +10,7 @@
     "test:e2e": "playwright test",
     "test:integration": "jest --testPathPatterns=integration",
     "test:unit": "jest --testPathPatterns=unit",
+    "test:contract": "jest --config=jest.contract.config.cjs --runInBand --testTimeout=30000",
     "build": "tsc",
     "lint": "eslint src/**/*.ts tests/**/*.ts --fix",
     "lint:check": "eslint src/**/*.ts tests/**/*.ts",
