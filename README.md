@@ -1,561 +1,275 @@
 # NetOps Intelligence Platform (NOIP)
 
-<div align="center">
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub release](https://img.shields.io/github/release/marcuspat/NOIP.svg)](https://github.com/marcuspat/NOIP/releases)
-[![GitHub stars](https://img.shields.io/github/stars/marcuspat/NOIP.svg?style=social&label=Star)](https://github.com/marcuspat/NOIP)
-[![GitHub forks](https://img.shields.io/github/forks/marcuspat/NOIP.svg?style=social&label=Fork)](https://github.com/marcuspat/NOIP/fork)
-[![Build Status](https://github.com/marcuspat/NOIP/workflows/CI%2FCD/badge.svg)](https://github.com/marcuspat/NOIP/actions)
-[![codecov](https://codecov.io/gh/marcuspat/NOIP/branch/main/graph/badge.svg)](https://codecov.io/gh/marcuspat/NOIP)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=marcuspat_NOIP&metric=security_rating)](https://sonarcloud.io/dashboard?id=marcuspat_NOIP)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=marcuspat_NOIP&metric=alert_status)](https://sonarcloud.io/dashboard?id=marcuspat_NOIP)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9+-blue.svg)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
-[![Docker](https://img.shields.io/badge/Docker-ready-blue.svg)](https://www.docker.com/)
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-compatible-blue.svg)](https://kubernetes.io/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Chat on GitHub](https://img.shields.io/badge/chat-on%20github-blue.svg)](https://github.com/marcuspat/NOIP/discussions)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
 
-**Enterprise-Grade Infrastructure Intelligence Platform**
-*Automated Discovery • Security Scanning • AI Analysis • Beautiful Dashboards*
+A TypeScript/Node.js platform that continuously discovers Kubernetes
+infrastructure, runs security and compliance scans, augments findings with
+Claude-based AI analysis, and serves dashboards and reports over a REST API.
 
-[**Quick Start**](#-quick-start) • [**Features**](#-features) • [**Documentation**](#-documentation) • [**Installation**](#-installation) • [**Contributing**](#-contributing)
-
-</div>
-
-🚀 **Enterprise-Grade Infrastructure Intelligence Platform** that combines automated discovery, security scanning, AI analysis, and beautiful dashboards.
+The architecture is a **modular monolith** organised by bounded context,
+governed by Architecture Decision Records (ADRs) under
+[`docs/architecture/adr/`](docs/architecture/adr/) and Domain-Driven Design
+artefacts under [`docs/architecture/ddd/`](docs/architecture/ddd/). Mission
+state lives in [`PRODUCTION_READINESS.md`](PRODUCTION_READINESS.md).
 
 ---
 
-## 🎯 Quick Start
+## Architecture at a glance
 
-### **One-Command Demo**
+The platform is composed of seven bounded contexts. Detailed per-context
+docs are in [`docs/architecture/ddd/`](docs/architecture/ddd/); cross-cutting
+decisions are recorded in [`docs/architecture/adr/`](docs/architecture/adr/).
+
+| Bounded context | Subdomain type | One-liner | Source |
+|-----------------|----------------|-----------|--------|
+| Identity & Access Management (IAM) | Generic | JWT auth, RBAC permission resolver, MFA (TOTP + backup), session and refresh-token state. | `src/services/auth.service.ts`, `src/utils/auth/`, `src/services/iam/`, `src/middleware/{auth,require-permission,require-mfa-verified}.middleware.ts` |
+| Infrastructure Discovery | Core | Continuous Kubernetes cluster snapshots; drift detection; archive of historical snapshots. | `src/contexts/discovery/` |
+| Security & Compliance | Core | Vulnerability, secret, and config scanning; policy engine; compliance framework coverage. | `src/contexts/security/` |
+| AI Analysis | Core | Anthropic Claude adapter with retry/circuit breaker; RAG via ChromaDB; prompt composer; cost guard. | `src/contexts/ai/` |
+| Performance | Supporting | SLO computation, probes, load-test orchestration, Prometheus metric adapter. | `src/contexts/performance/` |
+| Dashboard & Reporting | Supporting | Dashboard / Widget / Report aggregates; multi-format renderer; widget data resolver. | `src/contexts/dashboard/` |
+| Audit & Observability | Generic | Tamper-evident hash-chained audit log, security-event store, transparency log, structured logs, Prometheus registry. | `src/contexts/audit/`, `src/services/audit/`, `src/observability/` |
+
+Read [`docs/architecture/ddd/01-strategic-design.md`](docs/architecture/ddd/01-strategic-design.md)
+first for the platform narrative, then
+[`docs/architecture/ddd/04-context-map.md`](docs/architecture/ddd/04-context-map.md)
+for cross-context integration.
+
+---
+
+## Stack
+
+- **Language / runtime:** TypeScript 5.9, Node.js 18+ (ADR-0002)
+- **Web framework:** Express 5 (ADR-0003)
+- **Primary datastore:** MongoDB 6+ via Mongoose (ADR-0004)
+- **Cache, sessions, rate-limit counters:** Redis 6+ via ioredis (ADR-0005)
+- **Auth:** JWT with `kid` rotation (ADR-0006), Argon2id (ADR-0007), RBAC
+  (ADR-0008), MFA TOTP + backup codes (ADR-0009)
+- **AI:** Anthropic Claude SDK (ADR-0012), ChromaDB RAG (ADR-0013)
+- **Deployment:** Kubernetes-native manifests (ADR-0014), multi-stage Docker
+  (ADR-0015)
+- **Observability:** `prom-client` registry + `/metrics` endpoint (ADR-0023),
+  Winston structured logs, `/health/{live,ready,startup}` probes (ADR-0020)
+- **Security headers:** Helmet with explicit CSP/HSTS/COOP/COEP + CORS
+  allow-list (ADR-0024)
+- **Secrets:** External Secrets Operator + SOPS (ADR-0025)
+
+---
+
+## Install
+
+### Prerequisites
+
+- Node.js **18+** (LTS recommended)
+- MongoDB **6+** running locally or reachable via `MONGODB_URI`
+- Redis **6+** running locally or reachable via `REDIS_HOST`/`REDIS_PORT`
+- (Optional) Docker + Docker Compose to spin up Mongo and Redis locally
+
+### Clone and install dependencies
+
 ```bash
-# Run the complete NOIP demo pipeline
-make demo
+git clone https://github.com/marcuspat/NOIP.git
+cd NOIP
+npm ci
+npm run prepare    # installs husky + repo git hooks (detect-secrets)
+cp .env.example .env   # if present; otherwise see "Run" below
 ```
 
-### **Manual Setup**
+### Run datastores locally with Docker
+
 ```bash
-# Clone and setup
-git clone https://github.com/your-org/noip.git
-cd noip
-make setup
-
-# Configure credentials
-export ANTHROPIC_API_KEY="your-anthropic-key-here"
-export KUBECONFIG="$HOME/.kube/config"
-
-# Run pipeline
-make scan && make analyze && make dashboard
+docker compose -f docker/docker-compose.yml up -d mongodb redis
 ```
 
----
-
-## 🏗️ Platform Overview
-
-The NetOps Intelligence Platform transforms infrastructure management through:
-
-### 🔍 **Automated Discovery**
-- **Kubernetes Cluster Analysis** - Real-time cluster state and resource monitoring
-- **Network Topology Mapping** - Automatic network discovery and visualization
-- **Cloud Resource Inventory** - Multi-cloud asset tracking and management
-- **Configuration Drift Detection** - Identify unauthorized infrastructure changes
-
-### 🛡️ **Security & Compliance**
-- **Secret Detection** - Scan for exposed credentials and sensitive data
-- **Vulnerability Assessment** - Comprehensive security scanning and reporting
-- **Compliance Validation** - Automated compliance checks against industry standards
-- **File Integrity Monitoring** - Tamper detection and audit trail maintenance
-
-### 🤖 **AI-Powered Intelligence**
-- **Claude AI Integration** - Advanced analysis using Anthropic's Claude API
-- **Anomaly Detection** - Machine learning powered pattern recognition
-- **Predictive Insights** - Proactive issue identification and resolution
-- **Executive Summaries** - Automated report generation with actionable insights
-
-### 📊 **Beautiful Dashboards**
-- **Real-time Visualization** - Interactive dashboards with live data
-- **Executive Reporting** - Professional summaries and trend analysis
-- **Custom Metrics** - Flexible monitoring and alerting
-- **Export Capabilities** - Multiple formats (JSON, CSV, PDF)
+The full local stack (`docker compose up` with no args) also starts an API
+container, Prometheus, and Grafana. See
+[`docs/INSTALL.md`](docs/INSTALL.md) for environment-by-environment install
+paths (dev, CI, production).
 
 ---
 
-## 📁 Architecture
+## Run
 
-```
-netops-intelligence-platform/
-├── .github/workflows/          # CI/CD Pipeline
-│   ├── infrastructure-scan.yml  # Automated discovery
-│   ├── security-audit.yml       # Security scanning
-│   └── ai-analysis.yml          # AI analysis
-├── scripts/                     # Core Platform Scripts
-│   ├── ai_analysis.py           # Claude AI analysis
-│   ├── generate_dashboard.py    # Dashboard generation
-│   ├── update_rag.py            # RAG database management
-│   ├── file-hasher.py           # File integrity
-│   ├── cargocrypt-integration.py # Cryptographic operations
-│   └── security-testing-framework.py # Security testing
-├── inventory/                   # Infrastructure Data
-│   ├── kubernetes/              # K8s cluster state
-│   ├── network/                  # Network topology
-│   └── cloud/                    # Cloud resources
-├── rag/                         # Knowledge Base
-│   ├── embeddings/              # Vector embeddings
-│   └── vectors/                  # RAG data
-├── reports/                     # Analysis Reports
-│   ├── daily/                   # Daily summaries
-│   ├── incidents/               # Security incidents
-│   └── dashboard.html           # Live dashboard
-└── docs/                        # Documentation
-```
-
----
-
-## 🚀 Features
-
-### **🔍 Discovery & Monitoring**
-- **Kubernetes Diagnostics** - Cluster health, resource utilization, pod analysis
-- **Network Mapping** - Automatic topology discovery and dependency tracking
-- **Cloud Asset Management** - Multi-cloud inventory and cost optimization
-- **Configuration Drift** - Detect and alert on unauthorized changes
-
-### **🛡️ Security Operations**
-- **Secret Scanning** - Detect hardcoded credentials, API keys, tokens
-- **Vulnerability Assessment** - CVE scanning, security posture analysis
-- **Compliance Checking** - SOC2, ISO27001, GDPR compliance validation
-- **Threat Detection** - Anomaly-based security monitoring
-
-### **🤖 AI & Analytics**
-- **Claude Integration** - Natural language analysis of infrastructure data
-- **Predictive Analytics** - Trend analysis and capacity planning
-- **Automated Reporting** - Executive summaries and technical reports
-- **Root Cause Analysis** - AI-powered incident investigation
-
-### **📊 Visualization**
-- **Interactive Dashboards** - Real-time metrics and KPIs
-- **Custom Reports** - Flexible reporting and data export
-- **Trend Analysis** - Historical data visualization
-- **Alert Integration** - Slack, Teams, email notifications
-
----
-
-## 🔧 Installation
-
-### **Prerequisites**
-- Python 3.11+
-- Node.js 18+
-- Docker (optional)
-- kubectl (for Kubernetes features)
-- Anthropic API Key
-
-### **Quick Install**
 ```bash
-# Clone repository
-git clone https://github.com/your-org/noip.git
-cd noip
-
-# Automatic setup
-make setup
-
-# Verify installation
-make test
+npm run dev      # ts-node, watches src/app.ts
+npm start        # runs dist/app.js (requires npm run build first)
+npm run build    # tsc → dist/
 ```
 
-### **Manual Install**
+`npm run dev` and `npm start` both run the composition root in
+[`src/app.ts`](src/app.ts), which wires:
+
+1. The in-process `EventBus` and audit subscribers (ADR-0018).
+2. The shared Redis client (ADR-0005) — used for the JWT denylist, refresh
+   token families, permission cache, MFA challenges, rate-limit counters,
+   and sessions.
+3. The IAM, Discovery, Security, AI, Dashboard, and Performance contexts
+   through their `api/index.ts` barrels.
+4. HTTP routes, `/metrics`, and `/health/{live,ready,startup}` probes.
+
+### Environment variables (essentials)
+
+Full list is enumerated in [`src/config/index.ts`](src/config/index.ts) and
+validated at import time by [`src/config/validation.ts`](src/config/validation.ts).
+Deeper documentation is planned in `docs/CONFIGURATION.md`; the most
+load-bearing variables are:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `NODE_ENV` | `development` | Switches strict config validation, log format, dev shortcuts. |
+| `PORT` | `3000` | HTTP listen port. |
+| `MONGODB_URI` | `mongodb://localhost:27017/noip` | Primary datastore (ADR-0004). |
+| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | Shared Redis client (ADR-0005). |
+| `JWT_SECRET` | placeholder (rejected in prod) | Active JWT signing secret (ADR-0006). |
+| `JWT_PRIOR_KIDS` | unset | Dual-kid rotation window: `kid1:secret1,kid2:secret2` (`src/utils/auth/jwt-key-rotation.ts`). |
+| `AI_API_KEY` | empty | Anthropic Claude API key (ADR-0012). |
+| `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated CORS allow-list (ADR-0024). |
+| `ENABLE_HSTS` | `true` | HSTS header toggle; force `true` in prod (ADR-0024). |
+| `LOG_LEVEL` | `info` | Winston level. |
+
+When `NODE_ENV=production`, `validateConfig` refuses placeholder secrets,
+short JWT keys, and unsafe CORS combinations; the process throws before
+serving traffic. In non-production the failures degrade to warnings.
+
+---
+
+## Test
+
+NOIP uses Jest for unit + integration suites and Playwright for e2e
+(ADR-0021). The default `npm test` runs the unit suite only; contract and
+benchmark suites are opt-in via dedicated configs.
+
+| Command | Scope | State |
+|---------|-------|-------|
+| `npm test` | Unit suite under `src/**` and `tests/unit/**` | **1025/1025 across 113 suites green** |
+| `npm run test:contract` | `tests/contract/ai/**` — Claude / Chroma wire tests. Skip-gated on `CHROMA_URL`. | Skip-clean without env. |
+| `npm run test:contract:security` | `tests/contract/security/**` — Trivy, kube-bench, kube-linter, gitleaks. Skip-gated on binary availability. | Skip-clean without binaries. |
+| `npx jest --testPathPatterns=tests/performance` | Benchmarks under `tests/performance/*.bench.test.ts`. Opt-in (jest skips them by default). | All green; baseline in `PRODUCTION_READINESS.md` §5. |
+| `npm run test:integration` | `tests/integration/**` and `tests/auth/**` — require Mongo + Redis. | **Currently failing** (legacy refactor remnants; tracked in `PRODUCTION_READINESS.md` §6.7). |
+| `npm run test:e2e` | Playwright | Tracked under ADR-0021. |
+
+Full per-layer guidance, fixtures, and skip-gate semantics are in
+[`docs/TESTING.md`](docs/TESTING.md).
+
+### Build gates
+
 ```bash
-# Python dependencies
-pip install -r requirements.txt
-
-# Node.js dependencies
-npm install
-
-# Create directories
-mkdir -p inventory/{kubernetes,network,cloud}
-mkdir -p rag/{embeddings,vectors}
-mkdir -p reports/{daily,incidents}
+npm run lint:check   # eslint (0 errors expected)
+npm run typecheck    # tsc --noEmit (0 errors expected)
+npm run build        # tsc emit; exits 0
 ```
+
+`npm run pretest` and `npm run prebuild` chain these gates automatically.
 
 ---
 
-## 🔑 Configuration
+## Deploy
 
-### **Environment Variables**
+### Single-host (Docker Compose)
+
 ```bash
-# Required
-export ANTHROPIC_API_KEY="your-anthropic-api-key"
-export KUBECONFIG="$HOME/.kube/config"
-
-# Optional
-export SLACK_WEBHOOK="your-slack-webhook-url"
-export GITHUB_TOKEN="your-github-token"
-export LOG_LEVEL="INFO"
-export RAG_PERSIST_DIR="./rag"
+docker compose -f docker/docker-compose.prod.yml up -d
 ```
 
-### **Platform Settings**
-```yaml
-# config/noip.yaml
-platform:
-  scan_interval: "6h"          # Infrastructure scan frequency
-  retention_days: 30            # Data retention period
-  parallel_scans: 5             # Concurrent scan limit
+The prod compose file pins images, mounts production configmaps, and runs
+the API container, MongoDB, Redis, Prometheus, and Grafana. Configure via
+the env vars listed above (or a `.env` next to the compose file).
 
-security:
-  secret_scanning: true          # Enable secret detection
-  vulnerability_scan: true      # Enable vulnerability checks
-  compliance_checks: true       # Enable compliance validation
+### Kubernetes
 
-ai:
-  model: "claude-3-sonnet-20240229"  # Claude model
-  max_tokens: 4000             # Response token limit
-  temperature: 0.1              # Analysis creativity
-
-dashboard:
-  refresh_interval: 300         # Dashboard refresh (seconds)
-  export_formats: ["json", "csv", "pdf"]
-  theme: "dark"                 # UI theme
-```
-
----
-
-## 🚀 Usage
-
-### **Command Line Interface**
 ```bash
-# Full pipeline execution
-make demo
-
-# Individual components
-make scan          # Infrastructure discovery
-make analyze        # AI analysis
-make report         # Generate reports
-make dashboard      # Create dashboard
-
-# Manual script execution
-python scripts/ai_analysis.py --analysis-type comprehensive
-python scripts/generate_dashboard.py reports/ --export json
-python scripts/update_rag.py inventory/ rag/
+kubectl apply -f k8s/namespace/
+kubectl apply -f k8s/configmaps/
+kubectl apply -f k8s/secrets/             # placeholders; use ESO in prod
+kubectl apply -f k8s/database/            # MongoDB StatefulSet + Redis
+kubectl apply -f k8s/services/
+kubectl apply -f k8s/deployments/
+kubectl apply -f k8s/ingress/
+kubectl apply -f k8s/monitoring/
 ```
 
-### **GitHub Actions**
-The platform includes automated workflows:
+Production deployments **must not** apply `k8s/secrets/secrets.yaml`
+directly; use the External Secrets Operator manifests under
+`k8s/secrets/external-secrets/` (ADR-0025). The
+[`scripts/deploy.sh`](scripts/deploy.sh) wrapper orders these steps and
+waits on readiness for each layer.
 
-- **Infrastructure Scan** - Runs every 6 hours or on demand
-- **Security Audit** - Comprehensive security scanning
-- **AI Analysis** - Intelligent analysis using Claude API
-
-### **Dashboard Access**
-```bash
-# Generate and open dashboard
-make dashboard open
-
-# View dashboard
-open reports/dashboard.html
-```
+The day-2 playbook — boot order, graceful shutdown, common failure modes,
+JWT rotation, audit-chain integrity checks, scaling, and backup/restore —
+is in [`docs/RUNBOOK.md`](docs/RUNBOOK.md).
 
 ---
 
-## 📊 Dashboard Features
+## Security model
 
-### **Real-time Metrics**
-- **Security Posture** - Critical issues, risk score, compliance status
-- **Infrastructure Health** - Node health, resource utilization, drift status
-- **Performance Metrics** - Response times, throughput, error rates
-- **Cost Analysis** - Resource costs, optimization opportunities
+The security posture is defined by these ADRs (status as of branch
+`claude/adr-ddd-documentation-uNdZ2`):
 
-### **Interactive Elements**
-- **Filterable Data** - Time range, severity, component filtering
-- **Export Options** - JSON, CSV, PDF export capabilities
-- **Drill-down Analysis** - Click to investigate specific issues
-- **Alert Integration** - Real-time notifications for critical events
+| ADR | Topic | Implementation |
+|-----|-------|----------------|
+| [0006](docs/architecture/adr/0006-jwt-authentication.md) | JWT auth + Redis denylist + refresh-family theft detection + `kid` rotation | Complete |
+| [0007](docs/architecture/adr/0007-argon2-password-hashing.md) | Argon2id password hashing with bcrypt-prefix fallback | Complete |
+| [0008](docs/architecture/adr/0008-rbac-authorization-model.md) | RBAC permission resolver + Redis cache + `requirePermission` middleware | Complete |
+| [0009](docs/architecture/adr/0009-mfa-totp-strategy.md) | MFA (TOTP + backup codes) with Redis-backed challenges and grace period | Complete |
+| [0016](docs/architecture/adr/0016-rate-limiting-strategy.md) | Per-bucket Redis-backed rate limiters on `/api/auth/*` | Complete |
+| [0017](docs/architecture/adr/0017-audit-logging-strategy.md) | Hash-chained append-only audit log with sanitiser | Complete |
+| [0024](docs/architecture/adr/0024-helmet-cors-security-headers.md) | Explicit Helmet CSP/HSTS/COOP/COEP + CORS allow-list | Complete |
+| [0025](docs/architecture/adr/0025-secrets-management.md) | External Secrets Operator + SOPS + `detect-secrets` pre-commit + JWT dual-kid helper | Complete |
 
-### **Custom Views**
-```python
-# Custom dashboard generation
-python scripts/generate_dashboard.py \
-  --reports-dir reports/ \
-  --output-dir web/ \
-  --export pdf \
-  --open-browser
-```
+Report vulnerabilities per [`SECURITY.md`](SECURITY.md) — do **not** open
+public GitHub issues for security bugs.
 
 ---
 
-## 🔒 Security Features
+## Observability
 
-### **Secret Detection**
-- **Multi-Scanner Engine** - Combines multiple secret detection tools
-- **Pattern Recognition** - Advanced regex and ML-based detection
-- **False Positive Reduction** - Intelligent validation and context analysis
-- **Automated Remediation** - Automatic secret rotation and alerts
-
-### **Compliance Validation**
-- **Framework Support** - SOC2, ISO27001, GDPR, HIPAA, PCI-DSS
-- **Automated Checks** - Continuous compliance monitoring
-- **Audit Trail** - Complete change tracking and reporting
-- **Evidence Collection** - Automatic evidence gathering for audits
-
-### **File Integrity Monitoring**
-- **Cryptographic Verification** - SHA-256, SHA-512, MD5 hashing
-- **Real-time Monitoring** - Immediate detection of unauthorized changes
-- **Baseline Management** - Automatic baseline creation and updates
-- **Comprehensive Reporting** - Detailed integrity reports and alerts
-
----
-
-## 🤖 AI Integration
-
-### **Claude AI Analysis**
-```python
-# Run AI analysis
-python scripts/ai_analysis.py \
-  --analysis-type comprehensive \
-  --data-dir reports/ \
-  --output-format markdown
-```
-
-### **Analysis Types**
-- **Comprehensive** - Complete infrastructure analysis
-- **Security-Focused** - Security posture and vulnerabilities
-- **Performance-Optimization** - Performance bottlenecks and improvements
-- **Cost-Optimization** - Cost reduction opportunities and ROI
-
-### **RAG Knowledge Base**
-The platform maintains a knowledge base using ChromaDB for:
-- **Historical Analysis** - Track trends and patterns over time
-- **Context-Aware Insights** - Leverage historical data for better analysis
-- **Continuous Learning** - Improve analysis accuracy over time
-- **Knowledge Search** - Query historical infrastructure data
+- **Metrics:** Prometheus exposition at `GET /metrics` (ADR-0023). The
+  registry lives in [`src/observability/registry.ts`](src/observability/registry.ts);
+  typed counters and histograms are defined in
+  [`src/observability/metrics.ts`](src/observability/metrics.ts) and emitted
+  by the Kubernetes adapter, Anthropic adapter, rate-limit middleware,
+  security service, `requirePermission` middleware, auth service, MFA
+  service, and audit subscribers. Node default metrics (event loop, GC,
+  RSS) are collected at boot via `collectNodeDefaultMetrics()`.
+- **Health probes (ADR-0020):**
+  - `GET /health/live` — process responsiveness; 503 only when the pod
+    should be killed.
+  - `GET /health/ready` — all required dependencies reachable AND startup
+    complete; 503 stops Kubernetes routing traffic.
+  - `GET /health/startup` — bootstrap finished (config validated,
+    subscribers installed, Redis connected).
+  - `GET /health` — composite human payload.
+- **Logs:** Winston structured logs via `src/utils/logger.ts`. JSON output
+  in production; pretty output in development.
+- **Graceful shutdown:** SIGTERM handlers in `src/app.ts` mark
+  `ready=false`, stop scheduled scanners, drain HTTP connections,
+  disconnect Mongo and Redis, then exit 0. Hard-timeout via
+  `SHUTDOWN_HARD_TIMEOUT_MS` (default 30 s).
 
 ---
 
-## 🔧 Development
+## Contributing
 
-### **Local Development**
-```bash
-# Development setup
-make dev-setup
+Contribution workflow, branch naming, commit-message format, and the
+ADR-driven decision process are documented in
+[`CONTRIBUTING.md`](CONTRIBUTING.md). The short version:
 
-# Run tests
-make test
-
-# Lint code
-make lint
-
-# Type check
-make typecheck
-```
-
-### **Contributing**
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### **Testing**
-```bash
-# Unit tests
-pytest tests/unit/
-
-# Integration tests
-pytest tests/integration/
-
-# E2E tests
-pytest tests/e2e/
-
-# Coverage report
-pytest --cov=scripts --cov-report=html
-```
+- Branch from `claude/adr-ddd-documentation-uNdZ2` (mission branch) or
+  `main`. Topic branches use `feat/<short-name>`, `fix/<short-name>`,
+  `docs/<short-name>`, `chore/<short-name>`.
+- Material design changes land an ADR under
+  `docs/architecture/adr/` first, following the
+  [`template.md`](docs/architecture/adr/template.md) shape (MADR 3.0 lite).
+- All PRs must keep `npm run lint:check`, `npm run typecheck`,
+  `npm run build`, and `npm test` exiting 0. Coverage threshold is 80%
+  on the unit suite.
+- Pre-commit hooks run `detect-secrets` against staged files (ADR-0025);
+  do not bypass with `--no-verify`.
 
 ---
 
-## 🐛 Troubleshooting
+## License
 
-### **Common Issues**
-
-**API Key Issues**
-```bash
-# Verify Anthropic API key
-echo $ANTHROPIC_API_KEY
-
-# Test API connectivity
-python -c "import anthropic; print('API accessible')"
-```
-
-**Kubernetes Connection**
-```bash
-# Check kubectl configuration
-kubectl cluster-info
-
-# Test cluster access
-kubectl get nodes
-```
-
-**Dashboard Generation**
-```bash
-# Verify report data exists
-ls -la reports/
-
-# Test dashboard generation
-python scripts/generate_dashboard.py reports/ --preview-only
-```
-
-### **Debug Mode**
-```bash
-# Enable debug logging
-export LOG_LEVEL=DEBUG
-
-# Run with verbose output
-python scripts/ai_analysis.py --verbose
-
-# Check system requirements
-python scripts/requirements_check.py
-```
-
----
-
-## 📈 Performance
-
-### **Scalability**
-- **Small Deployments** - Single server, <100 resources
-- **Medium Deployments** - Multi-server, <1,000 resources
-- **Large Deployments** - Cluster-based, <10,000 resources
-- **Enterprise Deployments** - Distributed, 100,000+ resources
-
-### **Resource Requirements**
-- **CPU**: 2-8 cores depending on infrastructure size
-- **Memory**: 4-32GB RAM
-- **Storage**: 50GB-1TB (for data retention)
-- **Network**: 1-10 Gbps connectivity
-
-### **Benchmark Results**
-- **Scan Time**: <5 minutes for 1,000 resources
-- **AI Analysis**: <30 seconds for comprehensive analysis
-- **Dashboard Generation**: <10 seconds for complex dashboards
-- **Data Ingestion**: <1 second per resource
-
----
-
-## 📚 Documentation
-
-### **User Guides**
-- [Getting Started](docs/getting-started.md)
-- [Configuration Guide](docs/configuration.md)
-- [Security Setup](docs/security.md)
-- [Dashboard Usage](docs/dashboards.md)
-
-### **Developer Documentation**
-- [Architecture Overview](docs/architecture.md)
-- [API Reference](docs/api-reference.md)
-- [Contributing Guide](docs/contributing.md)
-- [Testing Guide](docs/testing.md)
-
-### **Operations**
-- [Deployment Guide](docs/deployment.md)
-- [Monitoring Setup](docs/monitoring.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Backup & Recovery](docs/backup.md)
-
----
-
-## 🤝 Support
-
-### **Community Support**
-- **GitHub Issues** - Report bugs and request features
-- **Discussions** - Community discussions and Q&A
-- **Wiki** - Community-contributed documentation
-- **Examples** - Sample configurations and use cases
-
-### **Enterprise Support**
-- **Email Support** - Priority email support
-- **Slack Community** - Real-time chat support
-- **Onboarding** - Enterprise setup and training
-- **Custom Development** - Feature development and integration
-
-### **Resources**
-- **Documentation** - Comprehensive guides and API reference
-- **Video Tutorials** - Step-by-step video guides
-- **Webinars** - Live training and demonstrations
-- **Blog** - Best practices and case studies
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-### **Commercial Use**
-- Free for personal and academic use
-- Commercial license required for enterprise deployments
-- Contact sales@noip-platform.com for enterprise pricing
-
-### **Third-Party Licenses**
-- **Anthropic Claude** - Separate API terms and pricing
-- **ChromaDB** - Apache 2.0 License
-- **Plotly** - MIT License
-
----
-
-## 🏆 Acknowledgments
-
-### **Core Technologies**
-- **Anthropic Claude** - AI-powered analysis and insights
-- **ChromaDB** - Vector database for RAG implementation
-- **Plotly** - Interactive dashboards and visualization
-- **Python & Node.js** - Core development platforms
-
-### **Inspiration**
-- **DevOps Best Practices** - Modern infrastructure management
-- **Security-First Design** - Comprehensive security posture
-- **AI-Driven Operations** - Intelligent automation and analysis
-- **Community Feedback** - User-driven feature development
-
----
-
-## 📈 Roadmap
-
-### **Q4 2024**
-- [ ] Multi-cloud provider support (AWS, Azure, GCP)
-- [ ] Advanced anomaly detection using ML
-- [ ] Mobile app for infrastructure monitoring
-- [ ] API-first architecture for third-party integrations
-
-### **Q1 2025**
-- [ ] Predictive maintenance capabilities
-- [ ] Automated remediation workflows
-- [ ] Enterprise SSO integration
-- [ ] Advanced compliance reporting
-
-### **Q2 2025**
-- [ ] IoT device monitoring integration
-- [ ] Blockchain-based audit trails
-- [ ] Advanced threat hunting capabilities
-- [ ] Global infrastructure mapping
-
----
-
-## 🚀 Ready to Transform Your Infrastructure Management?
-
-**Get Started Today:**
-```bash
-git clone https://github.com/your-org/noip.git
-cd noip
-make demo
-```
-
-**Experience the future of infrastructure intelligence with NOIP!**
-
----
-
-<div align="center">
-
-**NetOps Intelligence Platform**
-*Enterprise-Grade Infrastructure Intelligence & Security*
-
-[Documentation](docs/) • [API Reference](docs/api-reference.md) • [Community](https://github.com/your-org/noip/discussions) • [Support](mailto:support@noip-platform.com)
-
-</div>
+MIT — see [`LICENSE`](LICENSE).
