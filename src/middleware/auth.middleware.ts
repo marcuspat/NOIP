@@ -156,7 +156,7 @@ export class AuthMiddleware {
 
   optionalAuth = async (
     req: AuthenticatedRequest,
-    res: Response,
+    _res: Response,
     next: NextFunction
   ): Promise<void> => {
     try {
@@ -576,9 +576,9 @@ export class AuthMiddleware {
   }
 
   private async checkOwnership(
-    userId: string,
-    resourceId: string,
-    resourcePath: string
+    _userId: string,
+    _resourceId: string,
+    _resourcePath: string
   ): Promise<boolean> {
     // In a real implementation, this would check if the user owns the resource
     // This would involve database queries specific to the resource type

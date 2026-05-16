@@ -508,7 +508,7 @@ export class AuthController {
   };
 
   // Health check
-  healthCheck = async (req: Request, res: Response): Promise<void> => {
+  healthCheck = async (_req: Request, res: Response): Promise<void> => {
     try {
       const health = await this.authService.healthCheck();
 

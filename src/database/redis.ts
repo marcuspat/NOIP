@@ -1,5 +1,5 @@
-import Redis from 'ioredis';
-import { logger } from '../utils/logger';
+import Redis, { Cluster, type RedisOptions } from 'ioredis';
+import logger from '../utils/logger';
 
 export interface RedisConfig {
   host: string;
@@ -24,7 +24,7 @@ export interface RedisConfig {
 export class RedisManager {
   private static instance: RedisManager;
   private redis: Redis | null = null;
-  private redisCluster: Redis.Cluster | null = null;
+  private redisCluster: Cluster | null = null;
   private config: RedisConfig;
   private isConnected: boolean = false;
   private reconnectAttempts: number = 0;
@@ -70,23 +70,46 @@ export class RedisManager {
         cluster: this.config.clusterEnabled,
       });
 
+      // `retryDelayOnFailover` and `maxMemoryPolicy` no longer exist on
+      // `ioredis@5`'s `RedisOptions`. We retain them on our config
+      // surface for back-compat (callers may still set them) but drop
+      // them when building the driver options. `maxLoadingTimeout` was
+      // renamed `maxLoadingRetryTime`.
+      const sharedRedisOptions: RedisOptions = {
+        ...(this.config.password !== undefined
+          ? { password: this.config.password }
+          : {}),
+        ...(this.config.db !== undefined ? { db: this.config.db } : {}),
+        ...(this.config.keyPrefix !== undefined
+          ? { keyPrefix: this.config.keyPrefix }
+          : {}),
+        ...(this.config.maxRetriesPerRequest !== undefined
+          ? { maxRetriesPerRequest: this.config.maxRetriesPerRequest }
+          : {}),
+        ...(this.config.lazyConnect !== undefined
+          ? { lazyConnect: this.config.lazyConnect }
+          : {}),
+        ...(this.config.keepAlive !== undefined
+          ? { keepAlive: this.config.keepAlive }
+          : {}),
+        ...(this.config.family !== undefined
+          ? { family: this.config.family }
+          : {}),
+        ...(this.config.connectTimeout !== undefined
+          ? { connectTimeout: this.config.connectTimeout }
+          : {}),
+        ...(this.config.commandTimeout !== undefined
+          ? { commandTimeout: this.config.commandTimeout }
+          : {}),
+        ...(this.config.enableReadyCheck !== undefined
+          ? { enableReadyCheck: this.config.enableReadyCheck }
+          : {}),
+      };
+
       if (this.config.clusterEnabled && this.config.clusterNodes) {
         // Connect to Redis Cluster
-        this.redisCluster = new Redis.Cluster(this.config.clusterNodes, {
-          redisOptions: {
-            password: this.config.password,
-            db: this.config.db,
-            keyPrefix: this.config.keyPrefix,
-            retryDelayOnFailover: this.config.retryDelayOnFailover,
-            maxRetriesPerRequest: this.config.maxRetriesPerRequest,
-            lazyConnect: this.config.lazyConnect,
-            keepAlive: this.config.keepAlive,
-            family: this.config.family,
-            connectTimeout: this.config.connectTimeout,
-            commandTimeout: this.config.commandTimeout,
-            maxLoadingTimeout: this.config.maxLoadingTimeout,
-            enableReadyCheck: this.config.enableReadyCheck,
-          },
+        this.redisCluster = new Cluster(this.config.clusterNodes, {
+          redisOptions: sharedRedisOptions,
         });
 
         this.setupClusterEventListeners();
@@ -95,19 +118,7 @@ export class RedisManager {
         this.redis = new Redis({
           host: this.config.host,
           port: this.config.port,
-          password: this.config.password,
-          db: this.config.db,
-          keyPrefix: this.config.keyPrefix,
-          retryDelayOnFailover: this.config.retryDelayOnFailover,
-          maxRetriesPerRequest: this.config.maxRetriesPerRequest,
-          lazyConnect: this.config.lazyConnect,
-          keepAlive: this.config.keepAlive,
-          family: this.config.family,
-          connectTimeout: this.config.connectTimeout,
-          commandTimeout: this.config.commandTimeout,
-          maxLoadingTimeout: this.config.maxLoadingTimeout,
-          enableReadyCheck: this.config.enableReadyCheck,
-          maxMemoryPolicy: this.config.maxMemoryPolicy,
+          ...sharedRedisOptions,
         });
 
         this.setupEventListeners();
@@ -155,7 +166,7 @@ export class RedisManager {
     }
   }
 
-  public getClient(): Redis | Redis.Cluster {
+  public getClient(): Redis | Cluster {
     return (
       this.redisCluster ||
       this.redis ||
@@ -516,7 +527,7 @@ export class RedisManager {
       this.attemptReconnect();
     });
 
-    this.redis.on('reconnecting', delay => {
+    this.redis.on('reconnecting', (delay: number) => {
       logger.info(`Redis reconnecting in ${delay}ms`);
     });
 
@@ -539,7 +550,7 @@ export class RedisManager {
       logger.info('Redis cluster connection ready');
     });
 
-    this.redisCluster.on('error', error => {
+    this.redisCluster.on('error', (error: Error) => {
       logger.error('Redis cluster connection error', error);
       this.isConnected = false;
     });
@@ -550,7 +561,7 @@ export class RedisManager {
       this.attemptReconnect();
     });
 
-    this.redisCluster.on('reconnecting', delay => {
+    this.redisCluster.on('reconnecting', (delay: number) => {
       logger.info(`Redis cluster reconnecting in ${delay}ms`);
     });
 
@@ -559,9 +570,12 @@ export class RedisManager {
       this.isConnected = false;
     });
 
-    this.redisCluster.on('node error', (error, node) => {
-      logger.error('Redis cluster node error', { error, node });
-    });
+    this.redisCluster.on(
+      'node error',
+      (error: Error, node: { options?: { host?: string; port?: number } }) => {
+        logger.error('Redis cluster node error', { error, node });
+      }
+    );
   }
 
   private async attemptReconnect(): Promise<void> {

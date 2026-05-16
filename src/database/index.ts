@@ -4,10 +4,10 @@ import {
   createMongoDBConnection,
 } from './mongodb';
 import { RedisManager, RedisConfig, createRedisManager } from './redis';
-import { MigrationManager, Migration } from './migrations/migration';
+import { MigrationManager } from './migrations/migration';
 import { initialSchemaMigration } from './migrations/001_initial_schema';
 import { config } from '../config';
-import { logger } from '../utils/logger';
+import logger from '../utils/logger';
 
 export class DatabaseManager {
   private static instance: DatabaseManager;
@@ -263,7 +263,7 @@ export class DatabaseManager {
       maxRetriesPerRequest: config.database.redis.maxRetriesPerRequest || 3,
       lazyConnect: config.database.redis.lazyConnect !== false,
       keepAlive: config.database.redis.keepAlive || 30000,
-      family: config.database.redis.family || 4,
+      family: ((config.database.redis.family || 4) === 6 ? 6 : 4) as 4 | 6,
       connectTimeout: config.database.redis.connectTimeout || 10000,
       commandTimeout: config.database.redis.commandTimeout || 5000,
       maxLoadingTimeout: config.database.redis.maxLoadingTimeout || 5000,

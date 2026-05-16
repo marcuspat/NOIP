@@ -1,11 +1,9 @@
 import { BaseService } from './base.service';
 import {
-  User,
   LoginRequest,
   LoginResponse,
   RegisterRequest,
   UserProfile,
-  JWTTokenPair,
   AuthTokens,
   MFASetupRequest,
   MFASetupResponse,
@@ -13,7 +11,6 @@ import {
   PasswordChangeRequest,
   PasswordResetRequest,
   PasswordResetConfirmRequest,
-  SecurityEvent,
   SecurityEventType,
   SecurityEventSeverity,
   UserStatus,
@@ -204,7 +201,7 @@ export class AuthService extends BaseService {
   async register(
     userData: RegisterRequest
   ): Promise<{ user: UserProfile; requiresVerification: boolean }> {
-    return this.withErrorHandling(async () => {
+    return this.withTypedErrors(async () => {
       this.logOperation('Starting user registration', {
         username: userData.username,
         email: userData.email,
@@ -276,7 +273,7 @@ export class AuthService extends BaseService {
         'registration',
         'auth-service',
         {
-          userId: user._id,
+          userId: String(user._id),
           details: { username: user.username, email: user.email },
         }
       );
@@ -293,7 +290,7 @@ export class AuthService extends BaseService {
   }
 
   async login(loginRequest: LoginRequest): Promise<LoginResponse> {
-    return this.withErrorHandling(async () => {
+    return this.withTypedErrors(async () => {
       this.logOperation('Starting user login', {
         username: loginRequest.username,
       });
@@ -381,18 +378,22 @@ export class AuthService extends BaseService {
 
       // Check if MFA is required
       if (user.mfaEnabled && !loginRequest.mfaCode) {
-        return {
+        const mfaMethods = (await this.getMFAMethods(
+          String(user._id)
+        )) as NonNullable<LoginResponse['mfaMethods']>;
+        const mfaResponse: LoginResponse = {
           user: this.getUserProfile(user),
           tokens: {} as AuthTokens,
           requiresMFA: true,
-          mfaMethods: await this.getMFAMethods(user._id),
+          mfaMethods,
         };
+        return mfaResponse;
       }
 
       // Verify MFA if provided
       if (user.mfaEnabled && loginRequest.mfaCode) {
         const mfaValid = await this.mfaService.verifyCode(
-          user._id,
+          String(user._id),
           loginRequest.mfaCode
         );
         if (!mfaValid) {
@@ -491,7 +492,7 @@ export class AuthService extends BaseService {
     sessionId: string,
     tokens?: { accessToken?: string; refreshToken?: string }
   ): Promise<void> {
-    return this.withErrorHandling(async () => {
+    return this.withTypedErrors(async () => {
       this.logOperation('Starting user logout', { userId, sessionId });
 
       // Revoke session
@@ -553,7 +554,7 @@ export class AuthService extends BaseService {
   }
 
   async refreshToken(refreshToken: string): Promise<AuthTokens> {
-    return this.withErrorHandling(async () => {
+    return this.withTypedErrors(async () => {
       this.logOperation('Refreshing token');
 
       // ADR-0006 rotation: the manager performs verification, denylist
@@ -610,7 +611,7 @@ export class AuthService extends BaseService {
     userId: string,
     setupRequest: MFASetupRequest
   ): Promise<MFASetupResponse> {
-    return this.withErrorHandling(async () => {
+    return this.withTypedErrors(async () => {
       this.logOperation('Setting up MFA', {
         userId,
         method: setupRequest.method,
@@ -671,7 +672,7 @@ export class AuthService extends BaseService {
     userId: string,
     verificationRequest: MFAVerificationRequest
   ): Promise<boolean> {
-    return this.withErrorHandling(async () => {
+    return this.withTypedErrors(async () => {
       this.logOperation('Verifying MFA', {
         userId,
         method: verificationRequest.method,
@@ -727,7 +728,7 @@ export class AuthService extends BaseService {
     userId: string,
     passwordRequest: PasswordChangeRequest
   ): Promise<void> {
-    return this.withErrorHandling(async () => {
+    return this.withTypedErrors(async () => {
       this.logOperation('Changing password', { userId });
 
       const user = await UserModel.findById(userId).select('+passwordHash');
@@ -793,7 +794,7 @@ export class AuthService extends BaseService {
   async requestPasswordReset(
     resetRequest: PasswordResetRequest
   ): Promise<void> {
-    return this.withErrorHandling(async () => {
+    return this.withTypedErrors(async () => {
       this.logOperation('Requesting password reset', {
         email: resetRequest.email,
       });
@@ -844,7 +845,7 @@ export class AuthService extends BaseService {
   async confirmPasswordReset(
     confirmRequest: PasswordResetConfirmRequest
   ): Promise<void> {
-    return this.withErrorHandling(async () => {
+    return this.withTypedErrors(async () => {
       this.logOperation('Confirming password reset');
 
       // Hash the provided token to compare with stored hash
@@ -872,14 +873,16 @@ export class AuthService extends BaseService {
         throw new Error('New password does not meet security requirements');
       }
 
-      // Update password
+      // Update password. `exactOptionalPropertyTypes` rejects direct
+      // `= undefined` on optional fields; `$unset` via `set` keeps the
+      // Mongoose typing happy and tells the driver to drop the keys.
       user.passwordHash = confirmRequest.newPassword;
-      user.passwordResetToken = undefined;
-      user.passwordResetExpires = undefined;
+      user.set('passwordResetToken', undefined);
+      user.set('passwordResetExpires', undefined);
       await user.save();
 
       // Revoke all sessions
-      await SessionModel.revokeAllByUser(user._id);
+      await SessionModel.revokeAllByUser(String(user._id));
 
       // ADR-0018: publish iam.password.reset_confirmed.
       const confirmUserId = String(user._id);
@@ -907,7 +910,7 @@ export class AuthService extends BaseService {
   }
 
   async verifyEmail(token: string): Promise<void> {
-    return this.withErrorHandling(async () => {
+    return this.withTypedErrors(async () => {
       this.logOperation('Verifying email');
 
       // Hash the provided token to compare with stored hash
@@ -927,7 +930,7 @@ export class AuthService extends BaseService {
 
       // Verify email
       user.emailVerified = true;
-      user.emailVerificationToken = undefined;
+      user.set('emailVerificationToken', undefined);
 
       // Activate account if pending verification
       if (user.status === UserStatus.PENDING_VERIFICATION) {
@@ -951,7 +954,7 @@ export class AuthService extends BaseService {
   }
 
   async getProfile(userId: string): Promise<UserProfile> {
-    return this.withErrorHandling(async () => {
+    return this.withTypedErrors(async () => {
       const user =
         await UserModel.findById(userId).populate('roles permissions');
       if (!user) {
@@ -963,7 +966,7 @@ export class AuthService extends BaseService {
   }
 
   async getAuthenticationMetrics(): Promise<AuthenticationMetrics> {
-    return this.withErrorHandling(async () => {
+    return this.withTypedErrors(async () => {
       const now = new Date();
       const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
@@ -1082,7 +1085,7 @@ export class AuthService extends BaseService {
     return Array.from(permissions);
   }
 
-  private async getMFAMethods(userId: string): Promise<any[]> {
+  private async getMFAMethods(_userId: string): Promise<unknown[]> {
     // Implementation would return available MFA methods for the user
     return [
       {
@@ -1096,17 +1099,44 @@ export class AuthService extends BaseService {
     ];
   }
 
+  /**
+   * Persist a `SecurityEvent`. Accepts either:
+   *  - a `request`-like object (we extract ip/UA when present), OR
+   *  - an explicit IP string followed by a UA string.
+   *
+   * Both legacy call-shapes are kept because the audit/event pipeline
+   * is mid-refactor and a sibling agent rewires these. Drop the
+   * 5-arg form once that lands.
+   */
   private async createSecurityEvent(
     type: SecurityEventType,
     description: string,
-    request: any,
-    details: Record<string, any>
+    requestOrIp: unknown,
+    userAgentOrDetails: string | Record<string, unknown>,
+    maybeDetails?: Record<string, unknown>
   ): Promise<void> {
+    let ipAddress = '127.0.0.1';
+    let userAgent = 'auth-service';
+    let details: Record<string, unknown>;
+    if (typeof requestOrIp === 'string') {
+      // 5-arg form: (type, desc, ip, ua, details)
+      ipAddress = requestOrIp;
+      if (typeof userAgentOrDetails === 'string') {
+        userAgent = userAgentOrDetails;
+      }
+      details = maybeDetails ?? {};
+    } else {
+      // 4-arg form: (type, desc, request, details)
+      details = (userAgentOrDetails as Record<string, unknown>) ?? {};
+      const req = requestOrIp as { ipAddress?: string; userAgent?: string } | undefined;
+      if (req?.ipAddress !== undefined) ipAddress = req.ipAddress;
+      if (req?.userAgent !== undefined) userAgent = req.userAgent;
+    }
     await SecurityEventModel.createEvent(
       type,
       description,
-      '127.0.0.1', // Should be extracted from request
-      'auth-service', // Should be extracted from request
+      ipAddress,
+      userAgent,
       {
         severity: this.getEventSeverity(type),
         details,
@@ -1232,7 +1262,7 @@ export class AuthService extends BaseService {
         await RoleModel.createSystemRole(
           roleData.name,
           roleData.description,
-          permissions.map(p => p._id)
+          permissions.map(p => String(p._id))
         );
       }
     }

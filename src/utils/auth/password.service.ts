@@ -1,6 +1,5 @@
 import argon2 from 'argon2';
 import crypto from 'crypto';
-import { config } from '../../config';
 import logger from '../logger';
 
 export interface PasswordPolicy {
@@ -297,7 +296,7 @@ export class PasswordService {
   async migratePasswordHash(
     currentHash: string,
     plainPassword: string,
-    newHashingOptions?: any
+    _newHashingOptions?: unknown
   ): Promise<string> {
     // Check if the current hash uses an outdated algorithm
     const isOldHash = this.isOldPasswordHash(currentHash);

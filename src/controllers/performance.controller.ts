@@ -4,6 +4,31 @@ import {
   LoadTestConfig,
 } from '../services/performance.service';
 import { ServiceResponse } from '../types';
+import { messageOf } from '../shared/errors/from-unknown';
+
+// Local helper: assemble the boilerplate ServiceResponse envelope from
+// the request id so every handler stops repeating the same dozen lines.
+function envelope<T>(
+  req: Request,
+  body: { success: true; data: T } | { success: false; error: string }
+): ServiceResponse<T> {
+  const requestId =
+    (req.headers['x-request-id'] as string | undefined) ?? 'unknown';
+  if (body.success) {
+    return {
+      success: true,
+      data: body.data,
+      timestamp: new Date(),
+      requestId,
+    };
+  }
+  return {
+    success: false,
+    error: body.error,
+    timestamp: new Date(),
+    requestId,
+  };
+}
 
 export class PerformanceController {
   private performanceService: PerformanceService;
@@ -16,21 +41,16 @@ export class PerformanceController {
   async initialize(req: Request, res: Response): Promise<void> {
     try {
       await this.performanceService.initialize();
-      const response: ServiceResponse = {
-        success: true,
-        data: { message: 'Performance service initialized successfully' },
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(200).json(response);
+      res.status(200).json(
+        envelope(req, {
+          success: true,
+          data: { message: 'Performance service initialized successfully' },
+        })
+      );
     } catch (error) {
-      const response: ServiceResponse = {
-        success: false,
-        error: error.message,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(500).json(response);
+      res
+        .status(500)
+        .json(envelope(req, { success: false, error: messageOf(error) }));
     }
   }
 
@@ -38,21 +58,11 @@ export class PerformanceController {
   async getCurrentMetrics(req: Request, res: Response): Promise<void> {
     try {
       const metrics = await this.performanceService.getCurrentMetrics();
-      const response: ServiceResponse = {
-        success: true,
-        data: metrics,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(200).json(response);
+      res.status(200).json(envelope(req, { success: true, data: metrics }));
     } catch (error) {
-      const response: ServiceResponse = {
-        success: false,
-        error: error.message,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(500).json(response);
+      res
+        .status(500)
+        .json(envelope(req, { success: false, error: messageOf(error) }));
     }
   }
 
@@ -63,14 +73,13 @@ export class PerformanceController {
 
       // Validate configuration
       if (!config.targetUrl || !config.concurrentUsers || !config.duration) {
-        const response: ServiceResponse = {
-          success: false,
-          error:
-            'Missing required configuration: targetUrl, concurrentUsers, duration',
-          timestamp: new Date(),
-          requestId: (req.headers['x-request-id'] as string) || 'unknown',
-        };
-        res.status(400).json(response);
+        res.status(400).json(
+          envelope(req, {
+            success: false,
+            error:
+              'Missing required configuration: targetUrl, concurrentUsers, duration',
+          })
+        );
         return;
       }
 
@@ -80,81 +89,57 @@ export class PerformanceController {
       config.scenarios = config.scenarios || this.getDefaultScenarios();
 
       const result = await this.performanceService.runLoadTest(config);
-
-      const response: ServiceResponse = {
-        success: true,
-        data: result,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(200).json(response);
+      res.status(200).json(envelope(req, { success: true, data: result }));
     } catch (error) {
-      const response: ServiceResponse = {
-        success: false,
-        error: error.message,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(500).json(response);
+      res
+        .status(500)
+        .json(envelope(req, { success: false, error: messageOf(error) }));
     }
   }
 
   // Get test history
   async getTestHistory(req: Request, res: Response): Promise<void> {
     try {
-      const limit = parseInt(req.query.limit as string) || 10;
+      // `req.query` is typed as an index signature under
+      // `noPropertyAccessFromIndexSignature` — use bracket access and
+      // parseInt's NaN fallback for invalid input.
+      const limitParam = req.query['limit'];
+      const limit = parseInt(limitParam as string) || 10;
       const history = await this.performanceService.getTestHistory(limit);
-
-      const response: ServiceResponse = {
-        success: true,
-        data: history,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(200).json(response);
+      res.status(200).json(envelope(req, { success: true, data: history }));
     } catch (error) {
-      const response: ServiceResponse = {
-        success: false,
-        error: error.message,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(500).json(response);
+      res
+        .status(500)
+        .json(envelope(req, { success: false, error: messageOf(error) }));
     }
   }
 
   // Get specific test result
   async getTestById(req: Request, res: Response): Promise<void> {
     try {
-      const { testId } = req.params;
+      const testId = req.params['testId'];
+      if (testId === undefined) {
+        res
+          .status(400)
+          .json(
+            envelope(req, { success: false, error: 'Missing testId param' })
+          );
+        return;
+      }
       const result = await this.performanceService.getTestById(testId);
 
       if (!result) {
-        const response: ServiceResponse = {
-          success: false,
-          error: 'Test not found',
-          timestamp: new Date(),
-          requestId: (req.headers['x-request-id'] as string) || 'unknown',
-        };
-        res.status(404).json(response);
+        res
+          .status(404)
+          .json(envelope(req, { success: false, error: 'Test not found' }));
         return;
       }
 
-      const response: ServiceResponse = {
-        success: true,
-        data: result,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(200).json(response);
+      res.status(200).json(envelope(req, { success: true, data: result }));
     } catch (error) {
-      const response: ServiceResponse = {
-        success: false,
-        error: error.message,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(500).json(response);
+      res
+        .status(500)
+        .json(envelope(req, { success: false, error: messageOf(error) }));
     }
   }
 
@@ -162,22 +147,11 @@ export class PerformanceController {
   async getPerformanceSummary(req: Request, res: Response): Promise<void> {
     try {
       const summary = await this.performanceService.getPerformanceSummary();
-
-      const response: ServiceResponse = {
-        success: true,
-        data: summary,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(200).json(response);
+      res.status(200).json(envelope(req, { success: true, data: summary }));
     } catch (error) {
-      const response: ServiceResponse = {
-        success: false,
-        error: error.message,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(500).json(response);
+      res
+        .status(500)
+        .json(envelope(req, { success: false, error: messageOf(error) }));
     }
   }
 
@@ -185,29 +159,18 @@ export class PerformanceController {
   async getStandardConfigs(req: Request, res: Response): Promise<void> {
     try {
       const configs = this.performanceService.getStandardLoadTestConfigs();
-
-      const response: ServiceResponse = {
-        success: true,
-        data: configs,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(200).json(response);
+      res.status(200).json(envelope(req, { success: true, data: configs }));
     } catch (error) {
-      const response: ServiceResponse = {
-        success: false,
-        error: error.message,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(500).json(response);
+      res
+        .status(500)
+        .json(envelope(req, { success: false, error: messageOf(error) }));
     }
   }
 
   // Run predefined load test
   async runPredefinedTest(req: Request, res: Response): Promise<void> {
     try {
-      const { testType } = req.params;
+      const testType = req.params['testType'];
       const configs = this.performanceService.getStandardLoadTestConfigs();
 
       let configIndex = 0;
@@ -222,34 +185,30 @@ export class PerformanceController {
           configIndex = 2; // 10000 concurrent users
           break;
         default:
-          const response: ServiceResponse = {
-            success: false,
-            error: 'Invalid test type. Use: light, medium, heavy',
-            timestamp: new Date(),
-            requestId: (req.headers['x-request-id'] as string) || 'unknown',
-          };
-          res.status(400).json(response);
+          res.status(400).json(
+            envelope(req, {
+              success: false,
+              error: 'Invalid test type. Use: light, medium, heavy',
+            })
+          );
           return;
       }
 
       const config = configs[configIndex];
+      if (config === undefined) {
+        res
+          .status(500)
+          .json(
+            envelope(req, { success: false, error: 'Config slot is empty' })
+          );
+        return;
+      }
       const result = await this.performanceService.runLoadTest(config);
-
-      const response: ServiceResponse = {
-        success: true,
-        data: result,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(200).json(response);
+      res.status(200).json(envelope(req, { success: true, data: result }));
     } catch (error) {
-      const response: ServiceResponse = {
-        success: false,
-        error: error.message,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(500).json(response);
+      res
+        .status(500)
+        .json(envelope(req, { success: false, error: messageOf(error) }));
     }
   }
 
@@ -257,59 +216,41 @@ export class PerformanceController {
   async healthCheck(req: Request, res: Response): Promise<void> {
     try {
       const health = await this.performanceService.healthCheck();
-
-      const response: ServiceResponse = {
-        success: true,
-        data: health,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(200).json(response);
+      res.status(200).json(envelope(req, { success: true, data: health }));
     } catch (error) {
-      const response: ServiceResponse = {
-        success: false,
-        error: error.message,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(500).json(response);
+      res
+        .status(500)
+        .json(envelope(req, { success: false, error: messageOf(error) }));
     }
   }
 
   // Generate performance report
   async generateReport(req: Request, res: Response): Promise<void> {
     try {
-      const { testId } = req.params;
+      const testId = req.params['testId'];
+      if (testId === undefined) {
+        res
+          .status(400)
+          .json(
+            envelope(req, { success: false, error: 'Missing testId param' })
+          );
+        return;
+      }
       const test = await this.performanceService.getTestById(testId);
 
       if (!test) {
-        const response: ServiceResponse = {
-          success: false,
-          error: 'Test not found',
-          timestamp: new Date(),
-          requestId: (req.headers['x-request-id'] as string) || 'unknown',
-        };
-        res.status(404).json(response);
+        res
+          .status(404)
+          .json(envelope(req, { success: false, error: 'Test not found' }));
         return;
       }
 
       const report = this.generatePerformanceReport(test);
-
-      const response: ServiceResponse = {
-        success: true,
-        data: report,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(200).json(response);
+      res.status(200).json(envelope(req, { success: true, data: report }));
     } catch (error) {
-      const response: ServiceResponse = {
-        success: false,
-        error: error.message,
-        timestamp: new Date(),
-        requestId: (req.headers['x-request-id'] as string) || 'unknown',
-      };
-      res.status(500).json(response);
+      res
+        .status(500)
+        .json(envelope(req, { success: false, error: messageOf(error) }));
     }
   }
 
@@ -343,7 +284,32 @@ export class PerformanceController {
     ];
   }
 
-  private generatePerformanceReport(test: any) {
+  private generatePerformanceReport(test: {
+    testId: string;
+    startTime: Date;
+    duration: number;
+    config: { targetUrl: string; concurrentUsers: number };
+    totalRequests: number;
+    successfulRequests: number;
+    failedRequests: number;
+    requestsPerSecond: number;
+    throughput: number;
+    averageResponseTime: number;
+    minResponseTime: number;
+    maxResponseTime: number;
+    p50ResponseTime: number;
+    p90ResponseTime: number;
+    p95ResponseTime: number;
+    p99ResponseTime: number;
+    bottlenecks: Array<{ severity: string }>;
+    recommendations: unknown[];
+    errors: Array<{
+      type: string;
+      count: number;
+      percentage: number;
+      message: string;
+    }>;
+  }) {
     const successRate = (
       (test.successfulRequests / test.totalRequests) *
       100
@@ -381,15 +347,14 @@ export class PerformanceController {
       },
       analysis: {
         bottlenecks: test.bottlenecks.length,
-        criticalIssues: test.bottlenecks.filter(
-          (b: any) => b.severity === 'critical'
-        ).length,
+        criticalIssues: test.bottlenecks.filter(b => b.severity === 'critical')
+          .length,
         recommendations: test.recommendations.length,
         overallPerformance: this.calculatePerformanceScore(test),
       },
       bottlenecks: test.bottlenecks,
       recommendations: test.recommendations,
-      errors: test.errors.map((error: any) => ({
+      errors: test.errors.map(error => ({
         type: error.type,
         count: error.count,
         percentage: `${error.percentage.toFixed(2)}%`,
@@ -398,7 +363,13 @@ export class PerformanceController {
     };
   }
 
-  private calculatePerformanceScore(test: any): string {
+  private calculatePerformanceScore(test: {
+    p95ResponseTime: number;
+    failedRequests: number;
+    totalRequests: number;
+    requestsPerSecond: number;
+    bottlenecks: unknown[];
+  }): string {
     let score = 100;
 
     // Deduct points for high response times

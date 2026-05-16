@@ -1,5 +1,6 @@
-import { logger } from '../utils/logger';
-import { MongoDBConnection } from './mongodb';
+import mongoose from 'mongoose';
+import logger from '../../utils/logger';
+import { MongoDBConnection } from '../mongodb';
 
 export interface Migration {
   id: string;
@@ -37,6 +38,9 @@ export class MigrationManager {
         throw new Error('MongoDB not connected');
       }
 
+      if (!connection.db) {
+        throw new Error('MongoDB connection has no Db handle');
+      }
       this.db = connection.db;
 
       // Create migrations collection if it doesn't exist
@@ -89,7 +93,8 @@ export class MigrationManager {
 
     const { targetVersion, force = false, dryRun = false } = options;
     const executed: Migration[] = [];
-    const skipped: Migration[] = [];
+    // Skipped migrations are derived below from `executed` + `failed`;
+    // no need to track them inline.
     const failed: Migration[] = [];
     const errors: string[] = [];
 
@@ -349,7 +354,9 @@ export class MigrationManager {
     if (!this.db) return;
 
     const collections = await this.db.listCollections().toArray();
-    const exists = collections.some(c => c.name === this.collectionName);
+    const exists = collections.some(
+      (c: { name?: string }) => c.name === this.collectionName
+    );
 
     if (!exists) {
       await this.db.createCollection(this.collectionName);
@@ -393,7 +400,10 @@ export class MigrationManager {
     if (!this.db) return;
 
     await this.db.collection(this.collectionName).insertOne({
-      _id: `${migration.id}_${Date.now()}`,
+      // Mongo expects an ObjectId for `_id` by default; cast through
+      // `unknown` so we can use the deterministic string id without the
+      // driver coercing it.
+      _id: `${migration.id}_${Date.now()}` as unknown as mongoose.mongo.BSON.ObjectId,
       id: migration.id,
       name: migration.name,
       version: migration.version,

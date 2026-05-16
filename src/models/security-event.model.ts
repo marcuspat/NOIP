@@ -1,14 +1,51 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Model } from 'mongoose';
 import {
   SecurityEvent,
   SecurityEventType,
   SecurityEventSeverity,
 } from '../types/auth.types';
 
-export interface SecurityEventDocument extends SecurityEvent, Document {
-  markResolved(): Promise<void>;
+// Drop `_id` to defer to `Document` typing — eliminates the TS2320
+// collision between the domain interface and the `Document` base.
+type SecurityEventBase = Omit<SecurityEvent, '_id'>;
+
+interface SecurityEventMethods {
+  markResolved(resolvedBy?: string, notes?: string): Promise<void>;
   escalateSeverity(severity: SecurityEventSeverity): Promise<void>;
-  addContext(context: Record<string, any>): Promise<void>;
+  addContext(context: Record<string, unknown>): Promise<void>;
+}
+
+export interface SecurityEventDocument
+  extends SecurityEventBase,
+    Document,
+    SecurityEventMethods {}
+
+export interface SecurityEventModelType extends Model<SecurityEventDocument> {
+  findCriticalEvents(): Promise<SecurityEventDocument[]>;
+  findByUser(
+    userId: string,
+    limit?: number
+  ): Promise<SecurityEventDocument[]>;
+  findByType(
+    type: SecurityEventType,
+    limit?: number
+  ): Promise<SecurityEventDocument[]>;
+  findSuspiciousLogins(hours?: number): Promise<SecurityEventDocument[]>;
+  getStatistics(days?: number): Promise<Record<string, unknown>>;
+  createEvent(
+    type: SecurityEventType,
+    description: string,
+    ipAddress: string,
+    userAgent: string,
+    options?: {
+      userId?: string;
+      sessionId?: string;
+      severity?: SecurityEventSeverity;
+      details?: Record<string, unknown>;
+    }
+  ): Promise<SecurityEventDocument>;
+  cleanupOldEvents(days?: number): Promise<number>;
+  autoResolveLowRiskEvents(): Promise<number>;
 }
 
 const SecurityEventSchema = new Schema(
@@ -87,8 +124,8 @@ const SecurityEventSchema = new Schema(
   {
     timestamps: true,
     toJSON: {
-      transform: function (doc, ret) {
-        delete ret.__v;
+      transform: function (_doc, ret: Record<string, unknown>) {
+        delete ret['__v'];
         return ret;
       },
     },
@@ -108,7 +145,8 @@ SecurityEventSchema.index({ type: 1, severity: 1, createdAt: -1 });
 SecurityEventSchema.index({ userId: 1, resolved: 1, createdAt: -1 });
 
 // Method to mark event as resolved
-SecurityEventSchema.methods.markResolved = async function (
+SecurityEventSchema.methods['markResolved'] = async function (
+  this: SecurityEventDocument,
   resolvedBy?: string,
   notes?: string
 ): Promise<void> {
@@ -124,7 +162,8 @@ SecurityEventSchema.methods.markResolved = async function (
 };
 
 // Method to escalate event severity
-SecurityEventSchema.methods.escalateSeverity = async function (
+SecurityEventSchema.methods['escalateSeverity'] = async function (
+  this: SecurityEventDocument,
   severity: SecurityEventSeverity
 ): Promise<void> {
   this.severity = severity;
@@ -132,15 +171,16 @@ SecurityEventSchema.methods.escalateSeverity = async function (
 };
 
 // Method to add context information
-SecurityEventSchema.methods.addContext = async function (
-  context: Record<string, any>
+SecurityEventSchema.methods['addContext'] = async function (
+  this: SecurityEventDocument,
+  context: Record<string, unknown>
 ): Promise<void> {
   this.details = { ...this.details, ...context };
   await this.save();
 };
 
 // Static method to find critical events
-SecurityEventSchema.statics.findCriticalEvents = function () {
+SecurityEventSchema.statics['findCriticalEvents'] = function () {
   return this.find({
     severity: SecurityEventSeverity.CRITICAL,
     resolved: false,
@@ -148,7 +188,7 @@ SecurityEventSchema.statics.findCriticalEvents = function () {
 };
 
 // Static method to find events by user
-SecurityEventSchema.statics.findByUser = function (
+SecurityEventSchema.statics['findByUser'] = function (
   userId: string,
   limit: number = 100
 ) {
@@ -156,7 +196,7 @@ SecurityEventSchema.statics.findByUser = function (
 };
 
 // Static method to find events by type
-SecurityEventSchema.statics.findByType = function (
+SecurityEventSchema.statics['findByType'] = function (
   type: SecurityEventType,
   limit: number = 100
 ) {
@@ -164,7 +204,7 @@ SecurityEventSchema.statics.findByType = function (
 };
 
 // Static method to find suspicious login patterns
-SecurityEventSchema.statics.findSuspiciousLogins = function (
+SecurityEventSchema.statics['findSuspiciousLogins'] = function (
   hours: number = 24
 ) {
   const since = new Date(Date.now() - hours * 60 * 60 * 1000);
@@ -182,7 +222,9 @@ SecurityEventSchema.statics.findSuspiciousLogins = function (
 };
 
 // Static method to get security statistics
-SecurityEventSchema.statics.getStatistics = async function (days: number = 30) {
+SecurityEventSchema.statics['getStatistics'] = async function (
+  days: number = 30
+) {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   const [
@@ -233,7 +275,7 @@ SecurityEventSchema.statics.getStatistics = async function (days: number = 30) {
 };
 
 // Static method to create security event
-SecurityEventSchema.statics.createEvent = async function (
+SecurityEventSchema.statics['createEvent'] = async function (
   type: SecurityEventType,
   description: string,
   ipAddress: string,
@@ -242,7 +284,7 @@ SecurityEventSchema.statics.createEvent = async function (
     userId?: string;
     sessionId?: string;
     severity?: SecurityEventSeverity;
-    details?: Record<string, any>;
+    details?: Record<string, unknown>;
   } = {}
 ) {
   return this.create({
@@ -255,7 +297,7 @@ SecurityEventSchema.statics.createEvent = async function (
 };
 
 // Static method to cleanup old resolved events
-SecurityEventSchema.statics.cleanupOldEvents = async function (
+SecurityEventSchema.statics['cleanupOldEvents'] = async function (
   days: number = 90
 ): Promise<number> {
   const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -270,15 +312,16 @@ SecurityEventSchema.statics.cleanupOldEvents = async function (
 
 // Pre-save middleware to validate event data
 SecurityEventSchema.pre('save', function (next) {
+  const doc = this as unknown as SecurityEventDocument;
   // Auto-set resolvedAt if resolved is set to true
-  if (this.isModified('resolved') && this.resolved && !this.resolvedAt) {
-    this.resolvedAt = new Date();
+  if (doc.isModified('resolved') && doc.resolved && !doc.resolvedAt) {
+    doc.resolvedAt = new Date();
   }
 
   // Ensure critical events have detailed descriptions
   if (
-    this.severity === SecurityEventSeverity.CRITICAL &&
-    this.description.length < 20
+    doc.severity === SecurityEventSeverity.CRITICAL &&
+    doc.description.length < 20
   ) {
     const error = new Error(
       'Critical events must have detailed descriptions (at least 20 characters)'
@@ -290,7 +333,7 @@ SecurityEventSchema.pre('save', function (next) {
 });
 
 // Static method to auto-resolve low-risk events
-SecurityEventSchema.statics.autoResolveLowRiskEvents =
+SecurityEventSchema.statics['autoResolveLowRiskEvents'] =
   async function (): Promise<number> {
     const cutoffDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // 7 days ago
 
@@ -310,7 +353,10 @@ SecurityEventSchema.statics.autoResolveLowRiskEvents =
     return result.modifiedCount;
   };
 
-export const SecurityEventModel = mongoose.model<SecurityEventDocument>(
+export const SecurityEventModel = mongoose.model<
+  SecurityEventDocument,
+  SecurityEventModelType
+>(
   'SecurityEvent',
-  SecurityEventSchema
+  SecurityEventSchema as unknown as Schema<SecurityEventDocument>
 );

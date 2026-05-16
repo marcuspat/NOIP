@@ -109,7 +109,7 @@ export class DashboardService extends BaseService {
     return removed;
   }
 
-  async getWidgetData(widgetId: string): Promise<any> {
+  async getWidgetData(_widgetId: string): Promise<any> {
     // Mock widget data generation based on widget type
     const mockDataGenerators = {
       chart: () => ({
