@@ -4,6 +4,7 @@
 - **Date:** 2026-05-09
 - **Deciders:** Security
 - **Tags:** security, http
+- **Implementation:** Complete (2026-05-16) — wired via securityHeadersMiddleware() + corsAllowList() factories.
 
 ## Context and Problem Statement
 

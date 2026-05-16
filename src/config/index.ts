@@ -155,18 +155,33 @@ export const config = {
       maxBodySize: parseInt(process.env['AUDIT_MAX_BODY_SIZE'] || '10240'),
       retentionDays: parseInt(process.env['AUDIT_RETENTION_DAYS'] || '365'),
     },
+    // ADR-0024: explicit Helmet policy knobs. The four `enable*` flags
+    // mirror env toggles from the ADR; when false the corresponding
+    // helmet option is *omitted* (not set to `false`) so helmet's own
+    // defaults aren't re-enabled accidentally.
     headers: {
       enableHSTS: process.env['ENABLE_HSTS'] !== 'false',
       enableCSP: process.env['ENABLE_CSP'] !== 'false',
       enableXFrameOptions: process.env['ENABLE_XFRAME'] !== 'false',
       enableXContentType: process.env['ENABLE_XCONTENT'] !== 'false',
+      // 1 year, includeSubDomains + preload per the ADR (overridable for
+      // staging/canary domains that can't yet commit to preload).
+      hstsMaxAge: parseInt(process.env['HSTS_MAX_AGE'] || '31536000'),
+      hstsIncludeSubDomains: process.env['HSTS_INCLUDE_SUBDOMAINS'] !== 'false',
+      hstsPreload: process.env['HSTS_PRELOAD'] !== 'false',
     },
+    // ADR-0024: CORS allow-list. `credentials` is only honoured when
+    // CORS_CREDENTIALS=true AND the origin is in the allow-list — the
+    // factory enforces that combination at request time.
     cors: {
       enabled: process.env['CORS_ENABLED'] !== 'false',
       origins: process.env['CORS_ORIGINS']
         ? process.env['CORS_ORIGINS'].split(',')
         : ['http://localhost:3000'],
-      credentials: process.env['CORS_CREDENTIALS'] !== 'false',
+      // Default-off: the ADR requires opt-in via env, never echoed-back
+      // when paired with `*`. Use `=== 'true'` so the default is `false`.
+      credentials: process.env['CORS_CREDENTIALS'] === 'true',
+      maxAge: parseInt(process.env['CORS_MAX_AGE'] || '600'),
     },
   },
 
