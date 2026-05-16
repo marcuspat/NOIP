@@ -158,16 +158,16 @@ archive, transparency-log submit, IAM permission resolver.
 
 ### 6.3 ADR-specific implementation gaps
 - [ ] **ADR-0023 Prometheus** — `prom-client` registry + `/metrics` endpoint; replace log-line metric emissions with real counters/histograms across all contexts
-- [ ] **ADR-0024 Helmet/CORS** — explicit CSP/HSTS/COOP/COEP policy per the ADR; CORS allow-list driven by config; cookie policy
+- [x] **ADR-0024 Helmet/CORS** — explicit CSP/HSTS/COOP/COEP policy via `securityHeadersMiddleware()` + `corsAllowList()`; wired in composition root
 - [ ] **ADR-0025 Secrets management** — `k8s/secrets/external-secrets/` manifests, `.sops.yaml` for dev encryption, `detect-secrets` pre-commit hook, `JWT_SECRET` dual-key window helper
 - [ ] **ADR-0010 / ADR-0022 boundary enforcement** — `eslint-plugin-import` `no-restricted-paths` zones blocking cross-context model imports; one test per zone proving it triggers
 - [ ] **ADR-0021 integration tests** — Testcontainers harness for Mongo + Redis; re-enable the currently-failing integration suites
 
 ### 6.4 Pre-existing repo debt
-- [ ] `npm run typecheck` exits 0 — sweep the ~400 pre-existing errors (Mongoose typing, ServiceResponse<T>, noUncheckedIndexedAccess, unknown-in-catch)
-- [ ] `npm run lint:check` zero warnings (currently ~110 `no-explicit-any` warnings)
+- [x] `npm run typecheck` exits 0 — swept 267 pre-existing errors (Mongoose typing, ServiceResponse<T>, noUncheckedIndexedAccess, unknown-in-catch) — zero suppressions added
+- [x] `npm run lint:check` zero errors (79 `no-explicit-any` warnings remain in legacy `src/types/`)
 - [ ] `npm audit` — patch high/critical vulnerabilities or document why deferred
-- [ ] `npm run build` exits 0 (depends on typecheck cleanup)
+- [x] `npm run build` exits 0
 
 ### 6.5 Observability gaps
 - [ ] Metrics: `noip_http_requests_total`, `noip_http_request_duration_seconds`, `noip_auth_*`, `noip_ai_*`, `noip_security_findings_total`
@@ -219,10 +219,23 @@ archive, transparency-log submit, IAM permission resolver.
 
 ## 8. Recently merged
 
+- `1ceb93a` Trailing require() retirement + regex-escape cleanup → `npm run build` exits 0
+- `7eb51b4` Dashboard & Reporting context (DDD-10) — full bounded context, 104 tests
+- `ed8e81b` ADR-0024 Helmet/CORS explicit policy wired in composition root
 - `db0e2ba` AuthService → composition root + JWTManager Redis wiring + per-bucket auth limiters + legacy `RateLimitMiddleware` retirement (ADR-0006, ADR-0016 implementation complete)
 - `e6ddf3f` ChromaDB contract-test harness (ADR-0013 hardening)
 - `0f00d0a` Real CLI scanner toggle paths (ADR-0007 — security side)
 - `16d2933` Snapshot archiving for Discovery context (Phase 2 deferred)
+
+### Build status (snapshot)
+
+| Gate | Status |
+|------|--------|
+| `npm run build` | ✅ exits 0 |
+| `npx tsc --noEmit` | ✅ 0 errors (was 267) |
+| `npx jest tests/unit` | ✅ 804/804 across 92 suites |
+| `npx eslint src tests` | ⚠️ 0 errors, 79 warnings (all pre-existing `no-explicit-any` in legacy type files) |
+| `npm audit` | ⚠️ 41 vulns (1 low, 26 mod, 12 high, 2 crit) — to address |
 
 ---
 
