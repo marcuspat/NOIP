@@ -20,7 +20,7 @@ import { InMemoryRawKubernetesClient } from './contexts/discovery/infrastructure
 import { composeSecurity } from './contexts/security/api';
 import { composeAI } from './contexts/ai/api';
 import { DashboardService } from './services/dashboard.service';
-import { PerformanceService } from './services/performance.service';
+import { composePerformance } from './contexts/performance/api';
 import {
   InMemoryEventBus,
   SystemClock,
@@ -64,7 +64,6 @@ import { adaptRedisManager } from './utils/auth/jwt.manager';
 import { createAuthRouter } from './routes/auth.routes';
 
 // Import route handlers
-import performanceRoutes from './routes/performance.routes';
 import { createHealthRoutes } from './routes/health.routes';
 
 const app = express();
@@ -369,7 +368,16 @@ const aiSubscriptions = composedAI.subscriptions;
 
 // Initialize services
 const dashboardService = new DashboardService();
-const performanceService = new PerformanceService();
+
+// Performance context (DDD-09): composePerformance wires the
+// SLOComputer, probe runner, load-test engines, Prometheus client,
+// and Mongoose repositories behind a single composePerformance() call.
+const composedPerformance = composePerformance({
+  bus: eventBus,
+  clock: eventClock,
+  logger: auditLogger,
+});
+const performanceService = composedPerformance.service;
 
 // Middleware
 // ADR-0024: explicit Helmet policy + CORS allow-list. nonceMiddleware
@@ -498,7 +506,7 @@ app.use('/api/discovery', discoveryRoutes(discoveryService));
 app.use('/api/security', composedSecurity.routers.security);
 app.use('/api/ai', composedAI.router);
 app.use('/api/dashboard', createDashboardRoutes(dashboardService));
-app.use('/api/performance', performanceRoutes);
+app.use('/api/performance', composedPerformance.router);
 app.use('/api/compliance', composedSecurity.routers.compliance);
 app.use(
   '/api/auth',
@@ -628,7 +636,7 @@ async function initializeServices() {
       discoveryService.initialize(),
       securityService.initialize(),
       dashboardService.initialize(),
-      performanceService.initialize(),
+      // Performance context (DDD-09) is self-bootstrapping via composePerformance().
       complianceService.initialize(),
     ]);
 
