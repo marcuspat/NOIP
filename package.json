@@ -81,7 +81,7 @@
     "@types/winston": "^2.4.4",
     "@typescript-eslint/eslint-plugin": "^8.46.2",
     "@typescript-eslint/parser": "^8.46.2",
-    "axios": "^1.12.2",
+    "axios": "^1.16.1",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -93,7 +93,7 @@
     "helmet": "^8.1.0",
     "husky": "^9.1.7",
     "jest": "^30.2.0",
-    "jsonwebtoken": "^9.0.2",
+    "jsonwebtoken": "^9.0.3",
     "lint-staged": "^16.2.6",
     "playwright": "^1.55.1",
     "prettier": "^3.6.2",
@@ -108,7 +108,7 @@
     "@kubernetes/client-node": "^0.21.0",
     "@types/argon2": "^0.14.1",
     "@types/mongoose": "^5.11.96",
-    "@types/nodemailer": "^7.0.3",
+    "@types/nodemailer": "^7.0.11",
     "@types/passport": "^1.0.17",
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
@@ -116,14 +116,14 @@
     "@types/uuid": "^10.0.0",
     "argon2": "^0.44.0",
     "compression": "^1.8.1",
-    "express-rate-limit": "^8.1.0",
+    "express-rate-limit": "^8.5.2",
     "express-validator": "^7.3.0",
     "ioredis": "^5.8.2",
     "jose": "^6.1.0",
-    "mongoose": "^8.19.2",
+    "mongoose": "^8.24.0",
     "morgan": "^1.10.1",
     "node-cron": "^4.2.1",
-    "nodemailer": "^7.0.10",
+    "nodemailer": "^8.0.7",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
@@ -132,6 +132,110 @@
     "rate-limit-redis": "^4.0.0",
     "redis": "^5.9.0",
     "speakeasy": "^2.0.0",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.2"
+  },
+  "overridesNotes": {
+    "_intro": "Documentation for the `overrides` block below. npm forbids unknown keys inside `overrides`, so the per-package rationale lives here instead. Reviewed 2026-05-16 against `npm audit` after direct-dep upgrades. Each override stays inside the consumer's current major to avoid breaking-API churn; nested form is used where parents pin incompatible ranges (e.g. minimatch 3.x vs 9.x). See `docs/SECURITY_ADVISORIES.md` for the full audit trail.",
+    "handlebars": "ts-jest -> handlebars: 8 CVEs incl. critical AST type-confusion / prototype-pollution XSS / DoS. 4.7.9 patches all; ts-jest uses handlebars internally as a templating helper - no breaking changes within 4.x.",
+    "flatted": "eslint -> file-entry-cache -> flat-cache -> flatted: prototype pollution + unbounded recursion DoS (GHSA-25h7-pfq9-p65f, GHSA-rf6f-7fwh-wjgh). 3.4.2 patches both; drop-in compatible.",
+    "lodash": "express-validator -> lodash: 3 high CVEs incl. prototype pollution and code injection (GHSA-xxjr-mmjv-4gpg, GHSA-r5fr-rjxr-66jc, GHSA-f23m-r3pf-42rh). 4.18.x is forward-compatible with 4.17.x for the surface express-validator consumes.",
+    "validator": "express-validator -> validator: incomplete filtering of special elements (GHSA-vghf-hv5q-vc2g). 13.15.22+ patches; same major.",
+    "path-to-regexp": "express 5 -> router -> path-to-regexp: 2 ReDoS CVEs (GHSA-j3q9-mxjg-w52f, GHSA-27v5-c462-wpq7). 8.4.2 patches both; same major as express 5's range.",
+    "body-parser": "express -> body-parser: DoS via header parsing (chained via qs). 2.2.2 patches; same major.",
+    "qs": "express + supertest -> qs: prototype pollution via __proto__ in 6.x. 6.15.1 patches; semver-compatible.",
+    "yaml": "lint-staged -> yaml: stack overflow via deeply nested collections (GHSA-48c2-rrv3-qjmp). 2.8.3+ patches; same major.",
+    "glob": "jest internals -> glob: command injection via -c CLI flag (GHSA-5j98-mcp5-4vw2). 10.5.0 patches; jest uses glob as a library not via CLI so impact was nil, but patched for completeness within 10.x.",
+    "picomatch_notes": "jest-util / micromatch / anymatch -> picomatch: method-injection + ReDoS (GHSA-3v7f-55p6-f55p, GHSA-c2c7-rcm5-vvqj). Nested overrides keep major-version compatibility: jest-util consumes 4.x; micromatch/lint-staged/anymatch (via jest-haste-map) consume 2.x.",
+    "minimatch_notes": "eslint and jest -> minimatch: ReDoS + globstar backtracking. minimatch 3.x and 9.x have incompatible default-export APIs so we override per parent.",
+    "brace-expansion_notes": "minimatch chains -> brace-expansion: ReDoS. Nested overrides bump 1.x to 1.1.13+ and 2.x to 2.0.3+ (both patches stay within their major).",
+    "ajv_notes": "eslint -> ajv: prototype pollution in 6.x (advisory range: ajv <6.14.0). 6.15.0 patches; same major.",
+    "js-yaml_notes": "ts-jest -> @istanbuljs/load-nyc-config -> js-yaml 3.x; eslint -> js-yaml 4.x. Both lines vulnerable; patched per major via nested overrides.",
+    "diff_notes": "ts-node -> diff: ReDoS in 4.x patch lines; 4.0.4 patches without bumping ts-node's pinned major.",
+    "follow-redirects_note": "axios -> follow-redirects already on 1.15.11 which is the fixed version per the advisory; no override needed post-axios upgrade.",
+    "ip-address_note": "express-rate-limit -> ip-address: patched by the express-rate-limit direct-dep upgrade; no override needed."
+  },
+  "overrides": {
+    "handlebars": "^4.7.9",
+    "flatted": "^3.4.2",
+    "lodash": "^4.18.1",
+    "validator": "^13.15.35",
+    "path-to-regexp": "^8.4.2",
+    "body-parser": "^2.2.2",
+    "qs": "^6.15.1",
+    "yaml": "^2.9.0",
+    "glob": "^10.5.0",
+    "jsonpath-plus": "^10.3.0",
+    "tough-cookie": "^5.0.0",
+    "form-data": "^4.0.4",
+    "request": "npm:@cypress/request@^3.0.5",
+    "@eslint/config-array": {
+      "minimatch": {
+        ".": "3.1.5",
+        "brace-expansion": "1.1.14"
+      }
+    },
+    "@eslint/eslintrc": {
+      "minimatch": {
+        ".": "3.1.5",
+        "brace-expansion": "1.1.14"
+      },
+      "ajv": "6.15.0",
+      "js-yaml": "4.1.1"
+    },
+    "eslint": {
+      "minimatch": {
+        ".": "3.1.5",
+        "brace-expansion": "1.1.14"
+      }
+    },
+    "test-exclude": {
+      "minimatch": "3.1.5"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": {
+        ".": "9.0.9",
+        "brace-expansion": "2.1.0"
+      }
+    },
+    "@jest/reporters": {
+      "glob": {
+        "minimatch": {
+          ".": "9.0.9",
+          "brace-expansion": "2.1.0"
+        }
+      }
+    },
+    "jest-config": {
+      "glob": {
+        "minimatch": {
+          ".": "9.0.9",
+          "brace-expansion": "2.1.0"
+        }
+      }
+    },
+    "jest-runtime": {
+      "glob": {
+        "minimatch": {
+          ".": "9.0.9",
+          "brace-expansion": "2.1.0"
+        }
+      }
+    },
+    "jest-util": {
+      "picomatch": "4.0.4"
+    },
+    "micromatch": {
+      "picomatch": "2.3.2"
+    },
+    "anymatch": {
+      "picomatch": "2.3.2"
+    },
+    "@istanbuljs/load-nyc-config": {
+      "js-yaml": "3.14.2"
+    },
+    "ts-node": {
+      "diff": "4.0.4"
+    },
+    "ajv@6": "6.15.0"
   }
 }
