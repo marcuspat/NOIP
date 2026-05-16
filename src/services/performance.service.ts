@@ -115,7 +115,15 @@ export class PerformanceService extends BaseService {
   async initialize(): Promise<void> {
     this.logOperation('Initializing Performance service');
 
-    if (config.services.performance?.enabled) {
+    // `config.services.performance` is not declared on the config
+    // surface; tolerate its absence via a bracket-access cast onto a
+    // permissive index signature so this slated-for-deletion file keeps
+    // compiling against the strict tsconfig.
+    const services = config.services as unknown as Record<
+      string,
+      { enabled?: boolean } | undefined
+    >;
+    if (services['performance']?.enabled) {
       this.startPerformanceMonitoring();
       this.logOperation('Performance monitoring started');
     }
@@ -125,7 +133,6 @@ export class PerformanceService extends BaseService {
 
   async runLoadTest(config: LoadTestConfig): Promise<LoadTestResult> {
     const testId = `test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const startTime = new Date();
 
     this.logOperation('Starting load test', {
       testId,
@@ -192,7 +199,6 @@ export class PerformanceService extends BaseService {
     };
 
     const responseTimes: number[] = [];
-    const activeConnections = new Set<string>();
     let totalBytes = 0;
 
     // Simulate load test execution
@@ -233,7 +239,12 @@ export class PerformanceService extends BaseService {
           );
         } catch (error) {
           result.failedRequests++;
-          this.recordError(result, 'NETWORK_ERROR', error.message, second);
+          this.recordError(
+            result,
+            'NETWORK_ERROR',
+            error instanceof Error ? error.message : String(error),
+            second
+          );
         }
 
         result.totalRequests++;
@@ -266,13 +277,17 @@ export class PerformanceService extends BaseService {
       }
     }
 
-    return scenarios[0];
+    const first = scenarios[0];
+    if (first === undefined) {
+      throw new Error('selectScenario called with empty scenarios array');
+    }
+    return first;
   }
 
   private async simulateRequest(
-    targetUrl: string,
+    _targetUrl: string,
     scenario: LoadTestScenario,
-    requestId: string
+    _requestId: string
   ): Promise<{ responseTime: number; responseSize: number; success: boolean }> {
     const startTime = Date.now();
 
@@ -335,12 +350,18 @@ export class PerformanceService extends BaseService {
     result.averageResponseTime =
       responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
 
-    // Percentiles
+    // Percentiles — `noUncheckedIndexedAccess` returns `T | undefined`
+    // from array indexing, so coalesce to 0 when the percentile slot
+    // lands past the end of the (already non-empty) array.
     const sortedTimes = responseTimes.sort((a, b) => a - b);
-    result.p50ResponseTime = sortedTimes[Math.floor(sortedTimes.length * 0.5)];
-    result.p90ResponseTime = sortedTimes[Math.floor(sortedTimes.length * 0.9)];
-    result.p95ResponseTime = sortedTimes[Math.floor(sortedTimes.length * 0.95)];
-    result.p99ResponseTime = sortedTimes[Math.floor(sortedTimes.length * 0.99)];
+    result.p50ResponseTime =
+      sortedTimes[Math.floor(sortedTimes.length * 0.5)] ?? 0;
+    result.p90ResponseTime =
+      sortedTimes[Math.floor(sortedTimes.length * 0.9)] ?? 0;
+    result.p95ResponseTime =
+      sortedTimes[Math.floor(sortedTimes.length * 0.95)] ?? 0;
+    result.p99ResponseTime =
+      sortedTimes[Math.floor(sortedTimes.length * 0.99)] ?? 0;
 
     // Requests per second
     result.requestsPerSecond = result.totalRequests / result.duration;
@@ -539,12 +560,12 @@ export class PerformanceService extends BaseService {
     return this.testHistory.find(test => test.testId === testId) || null;
   }
 
-  async getPerformanceSummary(): Promise<any> {
-    if (this.testHistory.length === 0) {
+  async getPerformanceSummary(): Promise<Record<string, unknown>> {
+    const latestTest = this.testHistory[this.testHistory.length - 1];
+    if (!latestTest) {
       return { message: 'No tests performed yet' };
     }
 
-    const latestTest = this.testHistory[this.testHistory.length - 1];
     const currentMetrics = await this.getCurrentMetrics();
 
     return {
@@ -567,7 +588,9 @@ export class PerformanceService extends BaseService {
   getStandardLoadTestConfigs(): LoadTestConfig[] {
     return [
       {
-        targetUrl: config.baseUrl || 'http://localhost:3000',
+        targetUrl:
+          (config as unknown as { baseUrl?: string }).baseUrl ||
+          'http://localhost:3000',
         concurrentUsers: 100,
         duration: 300, // 5 minutes
         rampUpTime: 60,
@@ -616,7 +639,9 @@ export class PerformanceService extends BaseService {
         ],
       },
       {
-        targetUrl: config.baseUrl || 'http://localhost:3000',
+        targetUrl:
+          (config as unknown as { baseUrl?: string }).baseUrl ||
+          'http://localhost:3000',
         concurrentUsers: 1000,
         duration: 600, // 10 minutes
         rampUpTime: 120,
@@ -666,7 +691,9 @@ export class PerformanceService extends BaseService {
         ],
       },
       {
-        targetUrl: config.baseUrl || 'http://localhost:3000',
+        targetUrl:
+          (config as unknown as { baseUrl?: string }).baseUrl ||
+          'http://localhost:3000',
         concurrentUsers: 10000,
         duration: 1800, // 30 minutes
         rampUpTime: 300,
