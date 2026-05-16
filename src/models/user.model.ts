@@ -1,14 +1,26 @@
-import mongoose, { Schema, Document } from 'mongoose';
-import bcrypt from 'bcryptjs';
-import { User, UserStatus, Role, Permission } from '../types/auth.types';
+import mongoose, { Schema, Document, Model } from 'mongoose';
+import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
+import { User, UserStatus } from '../types/auth.types';
 
-export interface UserDocument extends User, Document {
+// Drop `_id` to defer to `Document` typing — eliminates the TS2320 clash
+// between our domain `User` and Mongoose's `Document` base.
+type UserBase = Omit<User, '_id'>;
+
+interface UserMethods {
   comparePassword(candidatePassword: string): Promise<boolean>;
   generatePasswordResetToken(): string;
   generateEmailVerificationToken(): string;
   isLocked(): boolean;
   incrementLoginAttempts(): Promise<void>;
   resetLoginAttempts(): Promise<void>;
+}
+
+export interface UserDocument extends UserBase, Document, UserMethods {}
+
+export interface UserModelType extends Model<UserDocument> {
+  findActive(): Promise<UserDocument[]>;
+  findByRole(roleName: string): Promise<UserDocument[]>;
 }
 
 const DeviceInfoSchema = new Schema(
@@ -179,14 +191,14 @@ const UserSchema = new Schema(
   {
     timestamps: true,
     toJSON: {
-      transform: function (doc, ret) {
-        delete ret.passwordHash;
-        delete ret.mfaSecret;
-        delete ret.mfaBackupCodes;
-        delete ret.emailVerificationToken;
-        delete ret.passwordResetToken;
-        delete ret.passwordResetExpires;
-        delete ret.__v;
+      transform: function (_doc, ret: Record<string, unknown>) {
+        delete ret['passwordHash'];
+        delete ret['mfaSecret'];
+        delete ret['mfaBackupCodes'];
+        delete ret['emailVerificationToken'];
+        delete ret['passwordResetToken'];
+        delete ret['passwordResetExpires'];
+        delete ret['__v'];
         return ret;
       },
     },
@@ -205,19 +217,21 @@ UserSchema.index({ createdAt: -1 });
 UserSchema.index({ lastLogin: -1 });
 
 // Password comparison method
-UserSchema.methods.comparePassword = async function (
+UserSchema.methods['comparePassword'] = async function (
+  this: UserDocument,
   candidatePassword: string
 ): Promise<boolean> {
   try {
     return await bcrypt.compare(candidatePassword, this.passwordHash);
-  } catch (error) {
+  } catch {
     throw new Error('Password comparison failed');
   }
 };
 
 // Generate password reset token
-UserSchema.methods.generatePasswordResetToken = function (): string {
-  const crypto = require('crypto');
+UserSchema.methods['generatePasswordResetToken'] = function (
+  this: UserDocument
+): string {
   const resetToken = crypto.randomBytes(32).toString('hex');
 
   this.passwordResetToken = crypto
@@ -231,8 +245,9 @@ UserSchema.methods.generatePasswordResetToken = function (): string {
 };
 
 // Generate email verification token
-UserSchema.methods.generateEmailVerificationToken = function (): string {
-  const crypto = require('crypto');
+UserSchema.methods['generateEmailVerificationToken'] = function (
+  this: UserDocument
+): string {
   const verificationToken = crypto.randomBytes(32).toString('hex');
 
   this.emailVerificationToken = crypto
@@ -244,46 +259,57 @@ UserSchema.methods.generateEmailVerificationToken = function (): string {
 };
 
 // Check if user is locked
-UserSchema.methods.isLocked = function (): boolean {
-  return !!(this.lockedUntil && this.lockedUntil > Date.now());
+UserSchema.methods['isLocked'] = function (this: UserDocument): boolean {
+  return !!(this.lockedUntil && this.lockedUntil.getTime() > Date.now());
 };
 
 // Increment login attempts
-UserSchema.methods.incrementLoginAttempts = async function (): Promise<void> {
+UserSchema.methods['incrementLoginAttempts'] = async function (
+  this: UserDocument
+): Promise<void> {
   // If we have a previous lock that has expired, restart at 1
-  if (this.lockedUntil && this.lockedUntil < Date.now()) {
-    return this.updateOne({
+  if (this.lockedUntil && this.lockedUntil.getTime() < Date.now()) {
+    await this.updateOne({
       $unset: { lockedUntil: 1 },
       $set: { loginAttempts: 1 },
     });
+    return;
   }
 
-  const updates: any = { $inc: { loginAttempts: 1 } };
+  const updates: {
+    $inc: { loginAttempts: number };
+    $set?: { lockedUntil: number };
+  } = {
+    $inc: { loginAttempts: 1 },
+  };
 
   // Lock account after 5 failed attempts for 2 hours
   if (this.loginAttempts + 1 >= 5 && !this.isLocked()) {
     updates.$set = { lockedUntil: Date.now() + 2 * 60 * 60 * 1000 }; // 2 hours
   }
 
-  return this.updateOne(updates);
+  await this.updateOne(updates);
 };
 
 // Reset login attempts
-UserSchema.methods.resetLoginAttempts = async function (): Promise<void> {
-  return this.updateOne({
+UserSchema.methods['resetLoginAttempts'] = async function (
+  this: UserDocument
+): Promise<void> {
+  await this.updateOne({
     $unset: { loginAttempts: 1, lockedUntil: 1 },
   });
 };
 
 // Pre-save middleware to hash password
 UserSchema.pre('save', async function (next) {
+  const doc = this as unknown as UserDocument;
   // Only hash the password if it has been modified (or is new)
-  if (!this.isModified('passwordHash')) return next();
+  if (!doc.isModified('passwordHash')) return next();
 
   try {
     // Hash password with cost of 12
     const salt = await bcrypt.genSalt(12);
-    this.passwordHash = await bcrypt.hash(this.passwordHash, salt);
+    doc.passwordHash = await bcrypt.hash(doc.passwordHash, salt);
     next();
   } catch (error) {
     next(error as Error);
@@ -292,32 +318,36 @@ UserSchema.pre('save', async function (next) {
 
 // Pre-save middleware to update passwordChangedAt
 UserSchema.pre('save', function (next) {
-  if (!this.isModified('passwordHash') || this.isNew) return next();
+  const doc = this as unknown as UserDocument;
+  if (!doc.isModified('passwordHash') || doc.isNew) return next();
 
-  this.passwordChangedAt = new Date(Date.now() - 1000); // Subtract 1 second to ensure token is created after password change
+  doc.passwordChangedAt = new Date(Date.now() - 1000); // Subtract 1 second to ensure token is created after password change
   next();
 });
 
 // Static method to find active users
-UserSchema.statics.findActive = function () {
+UserSchema.statics['findActive'] = function () {
   return this.find({ status: UserStatus.ACTIVE });
 };
 
 // Static method to find users by role
-UserSchema.statics.findByRole = function (roleName: string) {
+UserSchema.statics['findByRole'] = function (roleName: string) {
   return this.find({ roles: { $in: [roleName] } });
 };
 
 // Virtual for full name
-UserSchema.virtual('fullName').get(function () {
+UserSchema.virtual('fullName').get(function (this: UserDocument) {
   return `${this.firstName} ${this.lastName}`;
 });
 
 // Virtual for active sessions
-UserSchema.virtual('activeSessions').get(function () {
-  return this.sessions.filter(
-    (session: any) => session.isActive && session.expiresAt > new Date()
-  );
+UserSchema.virtual('activeSessions').get(function (this: UserDocument) {
+  return (
+    this.sessions as unknown as Array<{ isActive: boolean; expiresAt: Date }>
+  ).filter(session => session.isActive && session.expiresAt > new Date());
 });
 
-export const UserModel = mongoose.model<UserDocument>('User', UserSchema);
+export const UserModel = mongoose.model<UserDocument, UserModelType>(
+  'User',
+  UserSchema as unknown as Schema<UserDocument>
+);

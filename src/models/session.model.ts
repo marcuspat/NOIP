@@ -1,12 +1,36 @@
-import mongoose, { Schema, Document } from 'mongoose';
-import { UserSession, DeviceInfo, GeoLocation } from '../types/auth.types';
+import mongoose, { Schema, Document, Model } from 'mongoose';
+import { UserSession } from '../types/auth.types';
 
-export interface SessionDocument extends UserSession, Document {
+// Drop `_id` to let Mongoose's `Document` own the typing — eliminates the
+// TS2320 conflict between the domain interface and the `Document` base.
+type SessionBase = Omit<UserSession, '_id'>;
+
+interface SessionMethods {
   isExpired(): boolean;
   extendSession(duration?: number): Promise<void>;
   revoke(): Promise<void>;
   updateLastActivity(): Promise<void>;
-  addSecurityEvent(event: string, details?: any): Promise<void>;
+  addSecurityEvent(
+    event: string,
+    details?: Record<string, unknown>
+  ): Promise<void>;
+}
+
+export interface SessionDocument
+  extends SessionBase,
+    Document,
+    SessionMethods {}
+
+export interface SessionModelType extends Model<SessionDocument> {
+  findActiveByUser(userId: string): Promise<SessionDocument[]>;
+  findByDeviceFingerprint(
+    deviceFingerprint: string
+  ): Promise<SessionDocument[]>;
+  findByIpAddress(ipAddress: string): Promise<SessionDocument[]>;
+  revokeAllByUser(userId: string): Promise<void>;
+  revokeAllExcept(userId: string, currentSessionId: string): Promise<void>;
+  cleanupExpired(): Promise<number>;
+  getStatistics(): Promise<Record<string, unknown>>;
 }
 
 const DeviceInfoSchema = new Schema(
@@ -127,8 +151,8 @@ const SessionSchema = new Schema(
   {
     timestamps: true,
     toJSON: {
-      transform: function (doc, ret) {
-        delete ret.__v;
+      transform: function (_doc, ret: Record<string, unknown>) {
+        delete ret['__v'];
         return ret;
       },
     },
@@ -144,12 +168,15 @@ SessionSchema.index({ ipAddress: 1 });
 SessionSchema.index({ createdAt: -1 });
 
 // Method to check if session is expired
-SessionSchema.methods.isExpired = function (): boolean {
+SessionSchema.methods['isExpired'] = function (
+  this: SessionDocument
+): boolean {
   return this.expiresAt < new Date();
 };
 
 // Method to extend session duration
-SessionSchema.methods.extendSession = async function (
+SessionSchema.methods['extendSession'] = async function (
+  this: SessionDocument,
   duration: number = 30 * 60 * 1000
 ): Promise<void> {
   // Default: extend by 30 minutes
@@ -159,35 +186,41 @@ SessionSchema.methods.extendSession = async function (
 };
 
 // Method to revoke session
-SessionSchema.methods.revoke = async function (): Promise<void> {
+SessionSchema.methods['revoke'] = async function (
+  this: SessionDocument
+): Promise<void> {
   this.isActive = false;
   await this.save();
 };
 
 // Method to update last activity
-SessionSchema.methods.updateLastActivity = async function (): Promise<void> {
+SessionSchema.methods['updateLastActivity'] = async function (
+  this: SessionDocument
+): Promise<void> {
   this.lastActivity = new Date();
   await this.save();
 };
 
 // Method to add security event
-SessionSchema.methods.addSecurityEvent = async function (
+SessionSchema.methods['addSecurityEvent'] = async function (
+  this: SessionDocument,
   event: string,
-  details: any = {}
+  details: Record<string, unknown> = {}
 ): Promise<void> {
-  this.securityEvents.push({
-    type: event,
-    description: `Security event: ${event}`,
-    ipAddress: this.ipAddress,
-    userAgent: this.userAgent,
-    details,
-    timestamp: new Date(),
-  });
+  (this as unknown as { securityEvents: Array<Record<string, unknown>> })
+    .securityEvents.push({
+      type: event,
+      description: `Security event: ${event}`,
+      ipAddress: this.ipAddress,
+      userAgent: this.userAgent,
+      details,
+      timestamp: new Date(),
+    });
   await this.save();
 };
 
 // Static method to find active sessions for user
-SessionSchema.statics.findActiveByUser = function (userId: string) {
+SessionSchema.statics['findActiveByUser'] = function (userId: string) {
   return this.find({
     userId,
     isActive: true,
@@ -196,7 +229,7 @@ SessionSchema.statics.findActiveByUser = function (userId: string) {
 };
 
 // Static method to find sessions by device fingerprint
-SessionSchema.statics.findByDeviceFingerprint = function (
+SessionSchema.statics['findByDeviceFingerprint'] = function (
   deviceFingerprint: string
 ) {
   return this.find({
@@ -207,7 +240,7 @@ SessionSchema.statics.findByDeviceFingerprint = function (
 };
 
 // Static method to find sessions by IP address
-SessionSchema.statics.findByIpAddress = function (ipAddress: string) {
+SessionSchema.statics['findByIpAddress'] = function (ipAddress: string) {
   return this.find({
     ipAddress,
     isActive: true,
@@ -216,14 +249,14 @@ SessionSchema.statics.findByIpAddress = function (ipAddress: string) {
 };
 
 // Static method to revoke all sessions for user
-SessionSchema.statics.revokeAllByUser = async function (
+SessionSchema.statics['revokeAllByUser'] = async function (
   userId: string
 ): Promise<void> {
   await this.updateMany({ userId, isActive: true }, { isActive: false });
 };
 
 // Static method to revoke all sessions except current
-SessionSchema.statics.revokeAllExcept = async function (
+SessionSchema.statics['revokeAllExcept'] = async function (
   userId: string,
   currentSessionId: string
 ): Promise<void> {
@@ -234,7 +267,7 @@ SessionSchema.statics.revokeAllExcept = async function (
 };
 
 // Static method to cleanup expired sessions
-SessionSchema.statics.cleanupExpired = async function (): Promise<number> {
+SessionSchema.statics['cleanupExpired'] = async function (): Promise<number> {
   const result = await this.deleteMany({
     $or: [
       { expiresAt: { $lt: new Date() } },
@@ -248,7 +281,7 @@ SessionSchema.statics.cleanupExpired = async function (): Promise<number> {
 };
 
 // Static method to get session statistics
-SessionSchema.statics.getStatistics = async function () {
+SessionSchema.statics['getStatistics'] = async function () {
   const now = new Date();
   const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -274,15 +307,16 @@ SessionSchema.statics.getStatistics = async function () {
 
 // Pre-save middleware to validate session data
 SessionSchema.pre('save', function (next) {
+  const doc = this as unknown as SessionDocument;
   // Ensure expiration time is in the future
-  if (this.expiresAt <= new Date()) {
+  if (doc.expiresAt <= new Date()) {
     const error = new Error('Session expiration time must be in the future');
     return next(error);
   }
 
   // Deactivate expired sessions
-  if (this.isExpired()) {
-    this.isActive = false;
+  if (doc.isExpired()) {
+    doc.isActive = false;
   }
 
   next();
@@ -292,16 +326,20 @@ SessionSchema.pre('save', function (next) {
 SessionSchema.post(['find', 'findOne'], function (docs) {
   if (Array.isArray(docs)) {
     docs.forEach(doc => {
-      if (doc.isExpired()) {
-        doc.isActive = false;
+      const sessionDoc = doc as unknown as SessionDocument;
+      if (sessionDoc.isExpired()) {
+        sessionDoc.isActive = false;
       }
     });
-  } else if (docs && docs.isExpired()) {
-    docs.isActive = false;
+  } else if (docs) {
+    const sessionDoc = docs as unknown as SessionDocument;
+    if (sessionDoc.isExpired()) {
+      sessionDoc.isActive = false;
+    }
   }
 });
 
-export const SessionModel = mongoose.model<SessionDocument>(
+export const SessionModel = mongoose.model<SessionDocument, SessionModelType>(
   'Session',
-  SessionSchema
+  SessionSchema as unknown as Schema<SessionDocument>
 );

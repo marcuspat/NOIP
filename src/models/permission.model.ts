@@ -1,8 +1,47 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Model } from 'mongoose';
 import { Permission } from '../types/auth.types';
 
-export interface PermissionDocument extends Permission, Document {
-  checkCondition(context: any): boolean;
+// Drop `_id` from the plain-data interface: Mongoose's `Document` provides
+// its own typing for it. Keeping both was the source of TS2320 ("Named
+// property '_id' of types 'Permission' and 'Document' are not identical").
+type PermissionBase = Omit<Permission, '_id'>;
+
+interface PermissionMethods {
+  checkCondition(context: Record<string, unknown>): boolean;
+  evaluateCondition(
+    key: string,
+    condition: unknown,
+    context: Record<string, unknown>
+  ): boolean;
+  getContextValue(keyPath: string, context: Record<string, unknown>): unknown;
+  evaluateOperator(
+    operator: string,
+    contextValue: unknown,
+    conditionValue: unknown
+  ): boolean;
+}
+
+export interface PermissionDocument
+  extends PermissionBase,
+    Document,
+    PermissionMethods {}
+
+export interface PermissionModelType extends Model<PermissionDocument> {
+  findByResource(resource: string): Promise<PermissionDocument[]>;
+  findByAction(action: string): Promise<PermissionDocument[]>;
+  findByResourceAndAction(
+    resource: string,
+    action: string
+  ): Promise<PermissionDocument | null>;
+  createSystemPermission(
+    name: string,
+    resource: string,
+    action: string,
+    description: string,
+    conditions?: Record<string, unknown>
+  ): Promise<PermissionDocument>;
+  findSystemPermissions(): Promise<PermissionDocument[]>;
+  findCustomPermissions(): Promise<PermissionDocument[]>;
 }
 
 const PermissionSchema = new Schema(
@@ -48,8 +87,8 @@ const PermissionSchema = new Schema(
   {
     timestamps: true,
     toJSON: {
-      transform: function (doc, ret) {
-        delete ret.__v;
+      transform: function (_doc, ret: Record<string, unknown>) {
+        delete ret['__v'];
         return ret;
       },
     },
@@ -67,7 +106,10 @@ PermissionSchema.index({ resource: 1, action: 1 });
 PermissionSchema.index({ resource: 1, action: 1 }, { unique: true });
 
 // Method to check if permission conditions are met
-PermissionSchema.methods.checkCondition = function (context: any): boolean {
+PermissionSchema.methods['checkCondition'] = function (
+  this: PermissionDocument,
+  context: Record<string, unknown>
+): boolean {
   if (!this.conditions || Object.keys(this.conditions).length === 0) {
     return true; // No conditions means permission is granted
   }
@@ -80,28 +122,26 @@ PermissionSchema.methods.checkCondition = function (context: any): boolean {
       }
     }
     return true;
-  } catch (error) {
+  } catch {
     // If condition evaluation fails, deny permission for security
     return false;
   }
 };
 
 // Helper method to evaluate individual conditions
-PermissionSchema.methods.evaluateCondition = function (
+PermissionSchema.methods['evaluateCondition'] = function (
+  this: PermissionDocument,
   key: string,
-  condition: any,
-  context: any
+  condition: unknown,
+  context: Record<string, unknown>
 ): boolean {
   const contextValue = this.getContextValue(key, context);
 
   if (typeof condition === 'object' && condition !== null) {
+    const c = condition as { operator?: string; value?: unknown };
     // Handle complex conditions
-    if (condition.operator && condition.value) {
-      return this.evaluateOperator(
-        condition.operator,
-        contextValue,
-        condition.value
-      );
+    if (c.operator && c.value !== undefined) {
+      return this.evaluateOperator(c.operator, contextValue, c.value);
     }
   }
 
@@ -110,16 +150,16 @@ PermissionSchema.methods.evaluateCondition = function (
 };
 
 // Helper method to get context value by key path
-PermissionSchema.methods.getContextValue = function (
-  keyPath: string,
-  context: any
-): any {
-  const keys = keyPath.split('.');
-  let value = context;
+PermissionSchema.methods['getContextValue'] = function (
+  _keyPath: string,
+  context: Record<string, unknown>
+): unknown {
+  const keys = _keyPath.split('.');
+  let value: unknown = context;
 
   for (const key of keys) {
-    if (value && typeof value === 'object' && key in value) {
-      value = value[key];
+    if (value && typeof value === 'object' && key in (value as object)) {
+      value = (value as Record<string, unknown>)[key];
     } else {
       return undefined;
     }
@@ -129,10 +169,10 @@ PermissionSchema.methods.getContextValue = function (
 };
 
 // Helper method to evaluate operators
-PermissionSchema.methods.evaluateOperator = function (
+PermissionSchema.methods['evaluateOperator'] = function (
   operator: string,
-  contextValue: any,
-  conditionValue: any
+  contextValue: unknown,
+  conditionValue: unknown
 ): boolean {
   switch (operator) {
     case 'equals':
@@ -150,16 +190,19 @@ PermissionSchema.methods.evaluateOperator = function (
     case 'contains':
       return (
         typeof contextValue === 'string' &&
+        typeof conditionValue === 'string' &&
         contextValue.includes(conditionValue)
       );
     case 'starts_with':
       return (
         typeof contextValue === 'string' &&
+        typeof conditionValue === 'string' &&
         contextValue.startsWith(conditionValue)
       );
     case 'ends_with':
       return (
         typeof contextValue === 'string' &&
+        typeof conditionValue === 'string' &&
         contextValue.endsWith(conditionValue)
       );
     case 'greater_than':
@@ -170,26 +213,27 @@ PermissionSchema.methods.evaluateOperator = function (
       return Number(contextValue) >= Number(conditionValue);
     case 'less_than_or_equal':
       return Number(contextValue) <= Number(conditionValue);
-    case 'regex':
-      const regex = new RegExp(conditionValue);
+    case 'regex': {
+      const regex = new RegExp(String(conditionValue));
       return regex.test(String(contextValue));
+    }
     default:
       return false;
   }
 };
 
 // Static method to find permissions by resource
-PermissionSchema.statics.findByResource = function (resource: string) {
+PermissionSchema.statics['findByResource'] = function (resource: string) {
   return this.find({ resource });
 };
 
 // Static method to find permissions by action
-PermissionSchema.statics.findByAction = function (action: string) {
+PermissionSchema.statics['findByAction'] = function (action: string) {
   return this.find({ action });
 };
 
 // Static method to find permissions by resource and action
-PermissionSchema.statics.findByResourceAndAction = function (
+PermissionSchema.statics['findByResourceAndAction'] = function (
   resource: string,
   action: string
 ) {
@@ -197,12 +241,12 @@ PermissionSchema.statics.findByResourceAndAction = function (
 };
 
 // Static method to create system permission
-PermissionSchema.statics.createSystemPermission = function (
+PermissionSchema.statics['createSystemPermission'] = function (
   name: string,
   resource: string,
   action: string,
   description: string,
-  conditions?: any
+  conditions?: Record<string, unknown>
 ) {
   return this.create({
     name,
@@ -215,12 +259,12 @@ PermissionSchema.statics.createSystemPermission = function (
 };
 
 // Static method to find all system permissions
-PermissionSchema.statics.findSystemPermissions = function () {
+PermissionSchema.statics['findSystemPermissions'] = function () {
   return this.find({ isSystem: true });
 };
 
 // Static method to find all custom permissions
-PermissionSchema.statics.findCustomPermissions = function () {
+PermissionSchema.statics['findCustomPermissions'] = function () {
   return this.find({ isSystem: false });
 };
 
@@ -229,7 +273,7 @@ PermissionSchema.pre('save', function (next) {
   if (this.isModified('name')) {
     // Permission name should follow pattern: resource:action:description
     const namePattern = /^[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]+$/;
-    if (!namePattern.test(this.name)) {
+    if (!namePattern.test((this as unknown as { name: string }).name)) {
       const error = new Error(
         'Permission name must follow pattern: resource:action:description'
       );
@@ -239,7 +283,7 @@ PermissionSchema.pre('save', function (next) {
   next();
 });
 
-export const PermissionModel = mongoose.model<PermissionDocument>(
-  'Permission',
-  PermissionSchema
-);
+export const PermissionModel = mongoose.model<
+  PermissionDocument,
+  PermissionModelType
+>('Permission', PermissionSchema as unknown as Schema<PermissionDocument>);

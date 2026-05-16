@@ -22,6 +22,7 @@ export interface User {
   passwordResetExpires?: Date;
   createdAt: Date;
   updatedAt: Date;
+  sessions?: UserSession[];
   metadata?: Record<string, any>;
 }
 
@@ -265,7 +266,12 @@ export interface SecurityEvent {
   userAgent: string;
   details?: Record<string, any>;
   resolved: boolean;
+  resolvedAt?: Date;
+  resolvedBy?: string;
+  resolutionNotes?: string;
+  metadata?: Record<string, any>;
   createdAt: Date;
+  updatedAt?: Date;
 }
 
 export enum SecurityEventType {
