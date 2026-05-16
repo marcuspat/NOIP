@@ -34,6 +34,10 @@ import type {
   TokenUsage,
 } from '../../domain/value-objects';
 import { Redactor } from '../../domain/redactor';
+import {
+  aiRequestTokensTotal,
+  aiRequestsTotal,
+} from '../../../../observability/metrics';
 import { CircuitBreaker } from './circuit-breaker';
 import { withRetry } from './retry';
 import { DEFAULT_COST_TABLE, type ModelCost } from './cost-table';
@@ -42,12 +46,19 @@ export interface AnthropicAdapterLogger {
   info(msg: string, meta?: Record<string, unknown>): void;
   warn(msg: string, meta?: Record<string, unknown>): void;
   error(msg: string, meta?: Record<string, unknown>): void;
+  /**
+   * Optional. ADR-0023 moved per-request token tallies onto a real
+   * Prometheus counter; the structured log line now lands on `debug`.
+   * Older injected loggers without a `debug` method continue to work.
+   */
+  debug?(msg: string, meta?: Record<string, unknown>): void;
 }
 
 const NOOP_LOGGER: AnthropicAdapterLogger = {
   info: () => undefined,
   warn: () => undefined,
   error: () => undefined,
+  debug: () => undefined,
 };
 
 export interface AnthropicAdapterOptions {
@@ -160,10 +171,18 @@ export class AnthropicAdapter implements LLMClient {
       });
     };
 
-    const message = await this.breaker.execute(respond);
-    const out = this.translateResponse(message, req, model);
-    this.recordTokenMetrics(out);
-    return out;
+    try {
+      const message = await this.breaker.execute(respond);
+      const out = this.translateResponse(message, req, model);
+      this.recordTokenMetrics(out);
+      return out;
+    } catch (err) {
+      // Record the failure on the request counter; the breaker / retry
+      // already logged details. Re-throw so the caller still sees the
+      // typed domain error.
+      aiRequestsTotal.labels({ type: 'analyze', result: 'error' }).inc();
+      throw err;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -301,35 +320,34 @@ export class AnthropicAdapter implements LLMClient {
   }
 
   private recordTokenMetrics(result: LLMAnalysisResult): void {
-    // Phase-5 Prometheus arrives later; for now, structured log lines.
-    this.logger.info('noip_ai_request_tokens_total', {
-      type: 'input',
-      direction: 'request',
-      tokens: result.tokens.input,
-      model: result.modelId,
-    });
-    this.logger.info('noip_ai_request_tokens_total', {
-      type: 'output',
-      direction: 'response',
-      tokens: result.tokens.output,
-      model: result.modelId,
-    });
+    // ADR-0023: real Prometheus counters. Each call is O(1) — the
+    // structured log line below stays as a debug fallback so local
+    // dev still has a grep-able paper trail.
+    aiRequestsTotal.labels({ type: 'analyze', result: 'success' }).inc();
+
+    aiRequestTokensTotal
+      .labels({ type: 'input', direction: 'request' })
+      .inc(result.tokens.input);
+    aiRequestTokensTotal
+      .labels({ type: 'output', direction: 'response' })
+      .inc(result.tokens.output);
     if (result.tokens.cacheRead > 0) {
-      this.logger.info('noip_ai_request_tokens_total', {
-        type: 'cache_read',
-        direction: 'request',
-        tokens: result.tokens.cacheRead,
-        model: result.modelId,
-      });
+      aiRequestTokensTotal
+        .labels({ type: 'cache_read', direction: 'request' })
+        .inc(result.tokens.cacheRead);
     }
     if (result.tokens.cacheWrite > 0) {
-      this.logger.info('noip_ai_request_tokens_total', {
-        type: 'cache_write',
-        direction: 'request',
-        tokens: result.tokens.cacheWrite,
-        model: result.modelId,
-      });
+      aiRequestTokensTotal
+        .labels({ type: 'cache_write', direction: 'request' })
+        .inc(result.tokens.cacheWrite);
     }
+    this.logger.debug?.('noip_ai_request_tokens_total', {
+      model: result.modelId,
+      input: result.tokens.input,
+      output: result.tokens.output,
+      cacheRead: result.tokens.cacheRead,
+      cacheWrite: result.tokens.cacheWrite,
+    });
   }
 }
 

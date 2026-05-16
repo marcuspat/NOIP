@@ -4,6 +4,9 @@
 - **Date:** 2026-05-09
 - **Deciders:** SRE, Platform engineering
 - **Tags:** observability, ops
+- **Implementation:** Complete (2026-05-16) — prom-client registry
+  exposed at /metrics; typed counters/histograms in
+  `src/observability/metrics.ts`.
 
 ## Context and Problem Statement
 

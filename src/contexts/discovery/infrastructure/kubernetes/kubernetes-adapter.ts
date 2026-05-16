@@ -32,6 +32,7 @@ import type {
   Scope,
 } from '../../domain/value-objects';
 import type { Clock } from '../../../../shared/kernel';
+import { kubernetesRequestsTotal } from '../../../../observability/metrics';
 import { withRetry, translateError } from './retries';
 
 /** Logger surface — subset of winston. */
@@ -39,12 +40,21 @@ export interface AdapterLogger {
   info: (msg: string, meta?: Record<string, unknown>) => void;
   warn: (msg: string, meta?: Record<string, unknown>) => void;
   error: (msg: string, meta?: Record<string, unknown>) => void;
+  /**
+   * Optional. Phase 5 (ADR-0023) replaces noisy metric-style `info`
+   * logs with real Prometheus counters; the corresponding human-grep
+   * paper trail now lands on `debug`. Tests that hand in older
+   * loggers without a `debug` method continue to work — call sites
+   * fall back to `info` when `debug` is missing.
+   */
+  debug?: (msg: string, meta?: Record<string, unknown>) => void;
 }
 
 const NOOP_LOGGER: AdapterLogger = {
   info: () => undefined,
   warn: () => undefined,
   error: () => undefined,
+  debug: () => undefined,
 };
 
 /**
@@ -261,7 +271,10 @@ export class KubernetesAdapter implements KubernetesClient {
           // in withRetry). Surface it as a partial-coverage warning;
           // upstream code (DiscoveryService) catches and decides
           // whether the scan is fully failed or partial.
-          this.logger.warn('noip_kubernetes_request_partial_failure', {
+          kubernetesRequestsTotal
+            .labels({ verb: 'list', status: 'error' })
+            .inc();
+          this.debugLog('noip_kubernetes_request_partial_failure', {
             kind: kind.kind,
             error: err instanceof Error ? err.message : String(err),
           });
@@ -275,7 +288,10 @@ export class KubernetesAdapter implements KubernetesClient {
     for (let i = 0; i < limit; i++) workers.push(worker());
     await Promise.all(workers);
 
-    this.logger.info('noip_kubernetes_request_total', {
+    kubernetesRequestsTotal
+      .labels({ verb: 'list', status: 'success' })
+      .inc();
+    this.debugLog('noip_kubernetes_request_total', {
       kinds: kinds.length,
       records: out.length,
       durationMs: Date.now() - start,
@@ -298,7 +314,10 @@ export class KubernetesAdapter implements KubernetesClient {
             namespaced: true,
           }),
         ]);
-        this.logger.info('noip_kubernetes_request_duration_ms', {
+        kubernetesRequestsTotal
+          .labels({ verb: 'getCluster', status: 'success' })
+          .inc();
+        this.debugLog('noip_kubernetes_request_duration_ms', {
           op: 'getCluster',
           durationMs: Date.now() - start,
         });
@@ -337,6 +356,15 @@ export class KubernetesAdapter implements KubernetesClient {
   // ---------------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------------
+  /**
+   * Forward to `logger.debug` if available, otherwise silently drop.
+   * Older injected loggers may pre-date the optional `debug` channel —
+   * a metric paper trail is best-effort, not load-bearing.
+   */
+  private debugLog(msg: string, meta?: Record<string, unknown>): void {
+    this.logger.debug?.(msg, meta);
+  }
+
   private async resolveKinds(scope: Scope): Promise<KindRef[]> {
     if (this.discoverKinds) {
       const all = await withRetry(

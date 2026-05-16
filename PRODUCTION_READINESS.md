@@ -157,7 +157,7 @@ archive, transparency-log submit, IAM permission resolver.
 - [ ] **IAM extraction** — move `src/services/auth.service.ts`, `src/utils/auth/*`, `src/services/iam/*`, `src/middleware/{auth,require-permission,require-mfa-verified}.middleware.ts` into `src/contexts/iam/`; create the `iam.api` barrel
 
 ### 6.3 ADR-specific implementation gaps
-- [ ] **ADR-0023 Prometheus** — `prom-client` registry + `/metrics` endpoint; replace log-line metric emissions with real counters/histograms across all contexts
+- [x] **ADR-0023 Prometheus** — `prom-client` registry + `/metrics` endpoint; typed counters/histograms in `src/observability/metrics.ts` consume by kubernetes-adapter, anthropic-adapter, rate-limit middleware, security service, require-permission middleware, auth service, and MFA service (composition root snippet in commit message)
 - [x] **ADR-0024 Helmet/CORS** — explicit CSP/HSTS/COOP/COEP policy via `securityHeadersMiddleware()` + `corsAllowList()`; wired in composition root
 - [ ] **ADR-0025 Secrets management** — `k8s/secrets/external-secrets/` manifests, `.sops.yaml` for dev encryption, `detect-secrets` pre-commit hook, `JWT_SECRET` dual-key window helper
 - [ ] **ADR-0010 / ADR-0022 boundary enforcement** — `eslint-plugin-import` `no-restricted-paths` zones blocking cross-context model imports; one test per zone proving it triggers
@@ -170,7 +170,7 @@ archive, transparency-log submit, IAM permission resolver.
 - [x] `npm run build` exits 0
 
 ### 6.5 Observability gaps
-- [ ] Metrics: `noip_http_requests_total`, `noip_http_request_duration_seconds`, `noip_auth_*`, `noip_ai_*`, `noip_security_findings_total`
+- [x] Metrics: `noip_http_requests_total`, `noip_http_request_duration_seconds`, `noip_auth_*`, `noip_ai_*`, `noip_security_findings_total`, `noip_kubernetes_requests_total`, `noip_rate_limit_blocks_total`, `noip_mfa_verification_attempts_total`, `noip_authz_checks_total`, `noip_audit_persist_failed_total` — all defined in `src/observability/metrics.ts` and exported via `/metrics`
 - [ ] Structured JSON logs with mandatory fields (`requestId`, `userId?`, `event`)
 - [ ] OpenTelemetry SDK + OTLP exporter (`http`, `mongoose`, `redis` instrumentations)
 - [ ] Alertmanager rules in `k8s/monitoring/`

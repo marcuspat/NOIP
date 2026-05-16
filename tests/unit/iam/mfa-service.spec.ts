@@ -12,6 +12,7 @@ import {
   MFAEventBus,
 } from '../../../src/utils/auth/mfa.service';
 import { RateLimitError } from '../../../src/shared/errors';
+import { mfaVerificationAttemptsTotal } from '../../../src/observability/metrics';
 
 class MemoryRedis implements MFARedisClient {
   store = new Map<string, { value: string; expiresAt?: number }>();
@@ -267,7 +268,49 @@ describe('MFAService — TOTP', () => {
     });
     expect(events).toHaveLength(0);
   });
+
+  it('fires noip_mfa_verification_attempts_total{result} on every verify() (ADR-0023)', async () => {
+    const { service } = makeService();
+    const enrolment = await service.generateTOTPEnrolment('u-metric', 'u');
+    const successBefore = readMfaCounter('success');
+    const failureBefore = readMfaCounter('failure');
+
+    const code = speakeasy.totp({
+      secret: enrolment.secret.secret,
+      encoding: 'base32',
+    });
+    await service.verify({
+      userId: 'u-metric',
+      request: { code, method: 'totp' },
+      secret: enrolment.secret.secret,
+      emitEvent: false,
+    });
+    await service.verify({
+      userId: 'u-metric',
+      request: { code: '000000', method: 'totp' },
+      secret: enrolment.secret.secret,
+      emitEvent: false,
+    });
+
+    expect(readMfaCounter('success') - successBefore).toBe(1);
+    expect(readMfaCounter('failure') - failureBefore).toBe(1);
+  });
 });
+
+function readMfaCounter(result: string): number {
+  const hashMap = (
+    mfaVerificationAttemptsTotal as unknown as {
+      hashMap: Record<
+        string,
+        { labels: Record<string, string>; value: number }
+      >;
+    }
+  ).hashMap;
+  for (const entry of Object.values(hashMap)) {
+    if (entry.labels['result'] === result) return entry.value;
+  }
+  return 0;
+}
 
 describe('MFAService — challenges (Redis round-trip)', () => {
   it('stores SMS challenge under noip:mfa:<userId>:sms with TTL', async () => {

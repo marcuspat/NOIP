@@ -50,6 +50,7 @@ import type { SecurityScanRepository } from '../infrastructure/persistence/secur
 import type { FindingRepository } from '../infrastructure/persistence/finding.repository';
 import type { SecurityPolicyRepository } from '../infrastructure/persistence/security-policy.repository';
 import type { RawFinding, ScannerClient } from '../domain/ports/scanner-client';
+import { securityFindingsTotal } from '../../../observability/metrics';
 import {
   BUILTIN_POLICIES,
   builtinPolicyId,
@@ -239,6 +240,9 @@ export class SecurityService {
     const seenFingerprints = new Set<string>();
 
     const toSave: Finding[] = [];
+    // Tracks Findings that were just opened (vs touched / auto-resolved)
+    // so the ADR-0023 severity counter only counts net-new issues.
+    const newOpens: Finding[] = [];
 
     for (const rf of filtered) {
       const fp = fingerprintFor(rf.policyId, rf.resource);
@@ -271,6 +275,7 @@ export class SecurityService {
           this.clock
         );
         toSave.push(finding);
+        newOpens.push(finding);
         opened++;
       }
       // Counts are by severity for the scan summary.
@@ -308,6 +313,27 @@ export class SecurityService {
     await this.findings.saveMany(toSave);
     for (const f of toSave) {
       this.bus.publishMany(f.drainEvents());
+    }
+
+    // ADR-0023: count newly opened findings per severity once they
+    // hit the store. `newOpens` was populated above (one entry per
+    // RawFinding that triggered `Finding.open`).
+    if (newOpens.length > 0) {
+      const bySeverity: Record<Severity, number> = {
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+      };
+      for (const f of newOpens) {
+        bySeverity[f.severity] += 1;
+      }
+      for (const severity of Object.keys(bySeverity) as Severity[]) {
+        const count = bySeverity[severity];
+        if (count > 0) {
+          securityFindingsTotal.labels({ severity }).inc(count);
+        }
+      }
     }
 
     // Compute the score for the scan summary.

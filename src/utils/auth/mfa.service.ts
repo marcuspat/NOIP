@@ -28,6 +28,7 @@ const QRCode = require('qrcode') as {
   toDataURL(text: string): Promise<string>;
 };
 import { RateLimitError, ValidationError } from '../../shared/errors';
+import { mfaVerificationAttemptsTotal } from '../../observability/metrics';
 import {
   MFAMethod,
   MFASetupResponse,
@@ -561,6 +562,14 @@ export class MFAService {
     } else {
       outcome = { ok: false, reason: 'unsupported-method' };
     }
+
+    // ADR-0023: record the verification outcome regardless of whether
+    // the caller asked us to publish the event (AuthService suppresses
+    // the publish when it emits its own event). Metric must always
+    // mirror reality.
+    mfaVerificationAttemptsTotal
+      .labels({ result: outcome.ok ? 'success' : 'failure' })
+      .inc();
 
     if (emit) {
       await this.emit(

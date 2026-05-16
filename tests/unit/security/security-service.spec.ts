@@ -24,6 +24,7 @@ import type {
   ScannerClient,
 } from '../../../src/contexts/security/domain/ports/scanner-client';
 import { ValidationError } from '../../../src/shared/errors';
+import { securityFindingsTotal } from '../../../src/observability/metrics';
 
 interface Harness {
   service: SecurityService;
@@ -233,4 +234,30 @@ describe('SecurityService score & policies', () => {
     // 10 builtin policies
     expect(all).toHaveLength(10);
   });
+
+  it('fires noip_security_findings_total{severity} when a scan opens new findings (ADR-0023)', async () => {
+    const clock = new FixedClock(new Date('2026-05-10T00:00:00.000Z'));
+    const h = makeHarness(new BuiltinPolicyScanner(clock));
+    const beforeCritical = readSeverityCounter('critical');
+    const result = await h.service.runScan({ clusterId: h.cluster });
+    const afterCritical = readSeverityCounter('critical');
+    // The builtin scanner flags the privileged Pod as critical.
+    expect(result.findingsOpened).toBeGreaterThan(0);
+    expect(afterCritical).toBeGreaterThan(beforeCritical);
+  });
 });
+
+function readSeverityCounter(severity: string): number {
+  const hashMap = (
+    securityFindingsTotal as unknown as {
+      hashMap: Record<
+        string,
+        { labels: Record<string, string>; value: number }
+      >;
+    }
+  ).hashMap;
+  for (const entry of Object.values(hashMap)) {
+    if (entry.labels['severity'] === severity) return entry.value;
+  }
+  return 0;
+}
