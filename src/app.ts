@@ -19,7 +19,7 @@ import discoveryRoutes from './contexts/discovery/http/routes';
 import { InMemoryRawKubernetesClient } from './contexts/discovery/infrastructure/kubernetes/in-memory-raw-client';
 import { composeSecurity } from './contexts/security/api';
 import { composeAI } from './contexts/ai/api';
-import { DashboardService } from './services/dashboard.service';
+import { composeDashboard } from './contexts/dashboard/api';
 import { composePerformance } from './contexts/performance/api';
 import {
   InMemoryEventBus,
@@ -367,8 +367,6 @@ const aiService = composedAI.service;
 const aiSubscriptions = composedAI.subscriptions;
 
 // Initialize services
-const dashboardService = new DashboardService();
-
 // Performance context (DDD-09): composePerformance wires the
 // SLOComputer, probe runner, load-test engines, Prometheus client,
 // and Mongoose repositories behind a single composePerformance() call.
@@ -378,6 +376,44 @@ const composedPerformance = composePerformance({
   logger: auditLogger,
 });
 const performanceService = composedPerformance.service;
+
+// Dashboard context (DDD-10): composeDashboard wires widget data
+// resolvers against the sibling contexts' public APIs via narrow
+// Supplier adapters so widgets stay read-only views. The adapters
+// are intentionally tiny — they project the richer publicApi shapes
+// onto the small projection the resolver expects.
+const composedDashboard = composeDashboard({
+  bus: eventBus,
+  clock: eventClock,
+  logger: auditLogger,
+  suppliers: {
+    discovery: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      getLatestSnapshot: composedDiscovery.publicApi
+        .getLatestSnapshot as any,
+    },
+    security: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      getScore: composedSecurity.publicApi.getScore as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      listFindings: composedSecurity.publicApi.listFindings as any,
+    },
+    compliance: {
+      listFrameworks: () =>
+        composedSecurity.compliancePublicApi.listFrameworks(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      generateComplianceReport: composedSecurity.compliancePublicApi
+        .generateComplianceReport as any,
+    },
+    ai: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      getLatestInsights: composedAI.publicApi.getLatestInsights as any,
+    },
+    // performance supplier shape lands when DDD-09 -> DDD-10 bridge ships
+  },
+});
+// Dashboard publicApi is consumed via composedDashboard.routers below.
+void composedDashboard.service;
 
 // Middleware
 // ADR-0024: explicit Helmet policy + CORS allow-list. nonceMiddleware
@@ -421,14 +457,12 @@ app.use(
         discoveryHealth,
         securityHealth,
         aiHealth,
-        dashboardHealth,
         performanceHealth,
         complianceHealth,
       ] = await Promise.all([
         discoveryService.healthCheck(),
         securityService.healthCheck(),
         aiService.healthCheck(),
-        dashboardService.healthCheck(),
         performanceService.healthCheck(),
         complianceService.healthCheck(),
       ]);
@@ -443,7 +477,7 @@ app.use(
           discovery: discoveryHealth,
           security: securityHealth,
           ai: aiHealth,
-          dashboard: dashboardHealth,
+          // dashboard: read-only over sibling contexts; no health probe
           performance: performanceHealth,
           compliance: complianceHealth,
         },
@@ -505,7 +539,8 @@ app.use(auditMiddleware({ bus: eventBus, clock: eventClock }));
 app.use('/api/discovery', discoveryRoutes(discoveryService));
 app.use('/api/security', composedSecurity.routers.security);
 app.use('/api/ai', composedAI.router);
-app.use('/api/dashboard', createDashboardRoutes(dashboardService));
+app.use('/api/dashboard', composedDashboard.routers.dashboard);
+app.use('/api/reports', composedDashboard.routers.report);
 app.use('/api/performance', composedPerformance.router);
 app.use('/api/compliance', composedSecurity.routers.compliance);
 app.use(
@@ -552,67 +587,9 @@ app.use('/{*splat}', (req, res) => {
 // `src/contexts/security/http/` and are produced by `composeSecurity`.
 // createAIRoutes was removed in Phase 4 — the AI router lives at
 // `src/contexts/ai/http/routes.ts` and is produced by `composeAI`.
-
-function createDashboardRoutes(service: DashboardService): express.Router {
-  const router = express.Router();
-
-  router.get('/', async (_req, res) => {
-    try {
-      const dashboards = await service.getAllDashboards();
-      res.json({ success: true, data: dashboards });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  router.get('/:id', async (req, res) => {
-    try {
-      const dashboard = await service.getDashboard(req.params.id);
-      if (!dashboard) {
-        res.status(404).json({
-          success: false,
-          error: 'Dashboard not found',
-        });
-        return;
-      }
-      res.json({ success: true, data: dashboard });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  router.post('/', async (req, res) => {
-    try {
-      const dashboard = await service.createDashboard(req.body);
-      res.status(201).json({ success: true, data: dashboard });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  router.get('/widget/:id/data', async (req, res) => {
-    try {
-      const data = await service.getWidgetData(req.params.id);
-      res.json({ success: true, data });
-    } catch (error) {
-      res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  });
-
-  return router;
-}
+// createDashboardRoutes was removed in Phase 5 — the Dashboard +
+// Report routers live at `src/contexts/dashboard/http/` and are
+// produced by `composeDashboard`.
 
 // Initialize services
 async function initializeServices() {
@@ -635,8 +612,8 @@ async function initializeServices() {
     await Promise.all([
       discoveryService.initialize(),
       securityService.initialize(),
-      dashboardService.initialize(),
-      // Performance context (DDD-09) is self-bootstrapping via composePerformance().
+      // Dashboard context (DDD-10) and Performance context (DDD-09) are
+      // self-bootstrapping via their compose*() factories.
       complianceService.initialize(),
     ]);
 
