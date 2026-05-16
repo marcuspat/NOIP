@@ -1,11 +1,14 @@
 import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
 import mongoose from 'mongoose';
 import { config } from './config';
 import logger from './utils/logger';
+import {
+  nonceMiddleware,
+  securityHeadersMiddleware,
+} from './middleware/security-headers.middleware';
+import { corsAllowList } from './middleware/cors.middleware';
 import {
   composeDiscovery,
   KubernetesAdapter,
@@ -369,8 +372,12 @@ const dashboardService = new DashboardService();
 const performanceService = new PerformanceService();
 
 // Middleware
-app.use(helmet());
-app.use(cors());
+// ADR-0024: explicit Helmet policy + CORS allow-list. nonceMiddleware
+// must run before securityHeadersMiddleware so the CSP script-src
+// callback can read res.locals.cspNonce.
+app.use(nonceMiddleware());
+app.use(securityHeadersMiddleware());
+app.use(corsAllowList(config.security.cors.origins));
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
