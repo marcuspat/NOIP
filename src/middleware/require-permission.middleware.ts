@@ -18,6 +18,7 @@
 import type { Request, RequestHandler } from 'express';
 
 import { ForbiddenError, UnauthorizedError } from '../shared/errors';
+import { authzChecksTotal } from '../observability/metrics';
 import type {
   PermissionResolver,
   EffectivePermissionSet,
@@ -28,6 +29,7 @@ import type { ConditionContext } from '../services/iam/condition-evaluator';
 export interface RequirePermissionLogger {
   info(message: string, meta?: Record<string, unknown>): void;
   warn(message: string, meta?: Record<string, unknown>): void;
+  debug?(message: string, meta?: Record<string, unknown>): void;
 }
 
 export interface RequirePermissionOptions {
@@ -128,10 +130,15 @@ export function requirePermission(
       // 5. Decide.
       const decision = resolver.check(set, resource, action, ctx);
 
-      // 6. Counter — wired through `logger.info` for now per the ADR-0008
-      //    plan. Phase 5 swaps in a real Prometheus counter.
+      // 6. ADR-0023: real Prometheus counter for every authz decision.
+      //    The structured log line is preserved at debug level so local
+      //    dev still has a per-decision paper trail.
+      authzChecksTotal
+        .labels({ decision: decision.kind, resource, action })
+        .inc();
       if (logger) {
-        logger.info('noip.authz.checks.total', {
+        const debug = logger.debug?.bind(logger) ?? logger.info.bind(logger);
+        debug('noip.authz.checks.total', {
           decision: decision.kind,
           resource,
           action,

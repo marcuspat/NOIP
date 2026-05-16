@@ -24,9 +24,12 @@ import rateLimit, {
   type IncrementResponse,
 } from 'express-rate-limit';
 import {
+  createBucketLimiter,
   wrapWithFailureMode,
   type RateLimitBucket,
 } from '../../../src/middleware/rate-limit-redis';
+import { rateLimitBlocksTotal } from '../../../src/observability/metrics';
+import type { SharedRedisClient } from '../../../src/database/shared-redis';
 
 interface CapturedLog {
   level: 'info' | 'warn' | 'error';
@@ -268,3 +271,74 @@ describe('Redis-backed rate limiter — failure modes (ADR-0016)', () => {
     ).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// ADR-0023: Prometheus counter on 429
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a SharedRedisClient stub that satisfies just the subset of the
+ * surface `rate-limit-redis` needs: the `.call(...)` proxy. The store
+ * sends `EVAL` / `EXPIRE` etc. — we count attempts in-process and reply
+ * with the same `[total, ttl]` shape ioredis would.
+ */
+function fakeSharedRedisClient(hits: { value: number }): SharedRedisClient {
+  const call = async (...args: string[]): Promise<unknown> => {
+    if (args[0] === 'EVALSHA' || args[0] === 'EVAL') {
+      hits.value += 1;
+      return [hits.value, 60];
+    }
+    if (args[0] === 'SCRIPT') return 'ok';
+    if (args[0] === 'DEL') return 1;
+    return 0;
+  };
+  return { call } as unknown as SharedRedisClient;
+}
+
+describe('Redis-backed rate limiter — ADR-0023 Prometheus counter', () => {
+  it('increments noip_rate_limit_blocks_total{bucket} on each 429', async () => {
+    const hits = { value: 0 };
+    const before = readBlocksCounter('general');
+
+    const limiter = createBucketLimiter(
+      {
+        bucket: 'general',
+        windowMs: 60_000,
+        max: 1,
+        keyGenerator: () => 'metric-test-ip',
+      },
+      { redis: fakeSharedRedisClient(hits) }
+    );
+
+    const app = express();
+    app.use('/probe', limiter, (_req, res) => {
+      res.status(200).json({ ok: true });
+    });
+
+    const r1 = await request(app).get('/probe');
+    const r2 = await request(app).get('/probe');
+    const r3 = await request(app).get('/probe');
+
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(429);
+    expect(r3.status).toBe(429);
+
+    const after = readBlocksCounter('general');
+    expect(after - before).toBe(2);
+  });
+});
+
+function readBlocksCounter(bucket: string): number {
+  const hashMap = (
+    rateLimitBlocksTotal as unknown as {
+      hashMap: Record<
+        string,
+        { labels: Record<string, string>; value: number }
+      >;
+    }
+  ).hashMap;
+  for (const entry of Object.values(hashMap)) {
+    if (entry.labels['bucket'] === bucket) return entry.value;
+  }
+  return 0;
+}

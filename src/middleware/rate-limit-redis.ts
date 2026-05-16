@@ -25,6 +25,7 @@ import type { RequestHandler, Request, Response, NextFunction } from 'express';
 import rateLimit, { type Options, type Store } from 'express-rate-limit';
 import RedisStore, { type SendCommandFn } from 'rate-limit-redis';
 import type { SharedRedisClient } from '../database/shared-redis';
+import { rateLimitBlocksTotal } from '../observability/metrics';
 import logger from '../utils/logger';
 
 /** ADR-0016 bucket taxonomy. Drives the failure-mode decision. */
@@ -102,6 +103,20 @@ export function createBucketLimiter(
   const { bucket, windowMs, max } = opts;
   const log = deps.log ?? logger;
 
+  // ADR-0023: increment the Prometheus counter on every 429 emission.
+  // express-rate-limit invokes `handler` once the bucket is exhausted;
+  // we record the metric then dispatch the standard 429 body so the
+  // visible behaviour is unchanged.
+  const rateLimitedHandler: Options['handler'] = (
+    _req: Request,
+    res: Response,
+    _next: NextFunction,
+    optionsUsed: Options
+  ): void => {
+    rateLimitBlocksTotal.labels({ bucket }).inc();
+    res.status(optionsUsed.statusCode).send(optionsUsed.message);
+  };
+
   // express-rate-limit v8 changed several option names. Use the
   // documented current shape and let TS validate via the imported
   // `Options` type.
@@ -116,6 +131,7 @@ export function createBucketLimiter(
       bucket: `bucket.${bucket}`,
       message: opts.message ?? 'Too many requests',
     },
+    handler: rateLimitedHandler,
     ...(opts.keyGenerator ? { keyGenerator: opts.keyGenerator } : {}),
     ...(opts.skip ? { skip: opts.skip } : {}),
   };
@@ -183,7 +199,11 @@ function onStoreError(
 ): void {
   const errorMessage = err instanceof Error ? err.message : String(err);
 
-  // Always emit the metric counter ADR-0016 references.
+  // ADR-0016 wants a counter for this; ADR-0023 will move it to a real
+  // Prometheus metric once we add a `noip_rate_limit_redis_unavailable_total`
+  // entry. Keep the error log so operators still see the outage in
+  // realtime — Redis being down is exactly the time you don't want
+  // silence.
   log.error('noip_rate_limit_redis_unavailable_total', {
     bucket,
     failClosed,

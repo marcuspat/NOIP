@@ -10,6 +10,7 @@ import {
 } from '../../../src/contexts/discovery/infrastructure/kubernetes/kubernetes-adapter';
 import { FixedClock, type ClusterId } from '../../../src/shared/kernel';
 import { BackpressureError, ProviderError } from '../../../src/shared/errors';
+import { kubernetesRequestsTotal } from '../../../src/observability/metrics';
 
 const clusterId = '00000000-0000-7000-8000-000000000123' as ClusterId;
 
@@ -207,4 +208,50 @@ describe('KubernetesAdapter', () => {
     expect(podCalls).toBe(1);
     expect(svcCalls).toBe(0);
   });
+
+  it('fires noip_kubernetes_requests_total{verb=list,status=success} on a successful list', async () => {
+    const before = readCounterValue(kubernetesRequestsTotal, {
+      verb: 'list',
+      status: 'success',
+    });
+    const adapter = new KubernetesAdapter({
+      raw: makeFake({ byKind: {} }),
+      clock,
+      defaultKinds: [{ apiVersion: 'v1', kind: 'Pod', namespaced: true }],
+      retryDeps: { sleep: async () => undefined },
+    });
+    for await (const _r of adapter.listResources({ clusterId })) {
+      // empty
+    }
+    const after = readCounterValue(kubernetesRequestsTotal, {
+      verb: 'list',
+      status: 'success',
+    });
+    expect(after - before).toBe(1);
+  });
 });
+
+function readCounterValue(
+  metric: unknown,
+  labels: Record<string, string>
+): number {
+  const hashMap = (
+    metric as {
+      hashMap: Record<
+        string,
+        { labels: Record<string, string>; value: number }
+      >;
+    }
+  ).hashMap;
+  for (const entry of Object.values(hashMap)) {
+    let match = true;
+    for (const [k, v] of Object.entries(labels)) {
+      if (entry.labels[k] !== v) {
+        match = false;
+        break;
+      }
+    }
+    if (match) return entry.value;
+  }
+  return 0;
+}

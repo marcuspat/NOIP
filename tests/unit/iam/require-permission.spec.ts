@@ -16,6 +16,7 @@ import {
   setDefaultPermissionResolver,
   setDefaultRequirePermissionLogger,
 } from '../../../src/middleware/require-permission.middleware';
+import { authzChecksTotal } from '../../../src/observability/metrics';
 import {
   PermissionResolver,
   type AuthorizationDecision,
@@ -326,4 +327,48 @@ describe('requirePermission', () => {
     expect(contextFnCalled).toBe(1);
     expect(result.err).toBeUndefined();
   });
+
+  it('fires noip_authz_checks_total{decision,resource,action} on each decision (ADR-0023)', async () => {
+    const { resolver, permissions } = buildResolver();
+    permissions.add(PERM_USER_READ);
+    const before = readAuthzCounter('allow', 'user', 'read');
+
+    const handler = requirePermission('user', 'read', { resolver });
+    const { next } = makeNext();
+    const req = fakeReq();
+    (req as unknown as { user: unknown }).user = {
+      _id: 'u-metric',
+      roles: [],
+      permissions: ['p-user-read'],
+    };
+    await handler(req, noopRes, next);
+
+    const after = readAuthzCounter('allow', 'user', 'read');
+    expect(after - before).toBe(1);
+  });
 });
+
+function readAuthzCounter(
+  decision: string,
+  resource: string,
+  action: string
+): number {
+  const hashMap = (
+    authzChecksTotal as unknown as {
+      hashMap: Record<
+        string,
+        { labels: Record<string, string>; value: number }
+      >;
+    }
+  ).hashMap;
+  for (const entry of Object.values(hashMap)) {
+    if (
+      entry.labels['decision'] === decision &&
+      entry.labels['resource'] === resource &&
+      entry.labels['action'] === action
+    ) {
+      return entry.value;
+    }
+  }
+  return 0;
+}

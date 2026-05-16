@@ -41,6 +41,10 @@ import {
 } from '../shared/kernel';
 import { config } from '../config';
 import logger from '../utils/logger';
+import {
+  auditPersistFailedTotal,
+  auditPublishFailedTotal,
+} from '../observability/metrics';
 
 /**
  * Request paths that should never reach the audit pipeline.
@@ -190,9 +194,8 @@ export function auditMiddleware(
           );
           opts.bus.publish(event);
         } catch (err: unknown) {
+          auditPublishFailedTotal.inc();
           logger.error('noip_audit_publish_failed_total', {
-            metric: 'noip_audit_publish_failed_total',
-            increment: 1,
             action: entry.action,
             error: err instanceof Error ? err.message : String(err),
           });
@@ -203,9 +206,8 @@ export function auditMiddleware(
       // Legacy direct-append fallback (tests, pre-bus boot order).
       const appender = opts.appender ?? getAppender();
       void appender.append(entry).catch((err: unknown) => {
+        auditPersistFailedTotal.inc();
         logger.error('noip_audit_persist_failed_total', {
-          metric: 'noip_audit_persist_failed_total',
-          increment: 1,
           action: entry.action,
           error: err instanceof Error ? err.message : String(err),
         });

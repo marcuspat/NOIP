@@ -13,6 +13,10 @@ import {
 } from '../../../src/shared/errors';
 import { FixedClock } from '../../../src/shared/kernel';
 import type { LLMMessage } from '../../../src/contexts/ai/domain/ports/llm-client';
+import {
+  aiRequestTokensTotal,
+  aiRequestsTotal,
+} from '../../../src/observability/metrics';
 
 const SAMPLE_MESSAGES: LLMMessage[] = [
   { role: 'system', content: 'You are NOIP.', cacheable: true },
@@ -160,7 +164,76 @@ describe('AnthropicAdapter (live mode with mock client)', () => {
       })
     ).rejects.toThrow(RateLimitError);
   });
+
+  it('fires the ADR-0023 token + request counters on a successful call', async () => {
+    const beforeReq = labelValue(aiRequestsTotal, {
+      type: 'analyze',
+      result: 'success',
+    });
+    const beforeInput = labelValue(aiRequestTokensTotal, {
+      type: 'input',
+      direction: 'request',
+    });
+
+    const adapter = new AnthropicAdapter({
+      apiKey: 'sk-test',
+      clock,
+      stubMode: false,
+      client: mockClient(async () => ({
+        model: 'claude-3-5-haiku-20241022',
+        content: [
+          {
+            type: 'text',
+            text: '{"insights":[],"recommendations":[],"predictions":[],"confidence":0.5}',
+          },
+        ],
+        usage: { input_tokens: 12, output_tokens: 9 },
+      })),
+      retry: { attempts: 1, baseMs: 1, capMs: 1 },
+    });
+    await adapter.analyze({
+      analysisType: 'comprehensive',
+      templateName: 'comprehensive',
+      messages: SAMPLE_MESSAGES,
+    });
+
+    expect(
+      labelValue(aiRequestsTotal, { type: 'analyze', result: 'success' }) -
+        beforeReq
+    ).toBe(1);
+    expect(
+      labelValue(aiRequestTokensTotal, {
+        type: 'input',
+        direction: 'request',
+      }) - beforeInput
+    ).toBe(12);
+  });
 });
+
+function labelValue(
+  metric: unknown,
+  labels: Record<string, string>
+): number {
+  const hashMap = (
+    metric as {
+      hashMap: Record<
+        string,
+        { labels: Record<string, string>; value: number }
+      >;
+    }
+  ).hashMap;
+  for (const entry of Object.values(hashMap)) {
+    let match = true;
+    for (const [k, v] of Object.entries(labels)) {
+      if (entry.labels[k] !== v) {
+        match = false;
+        break;
+      }
+    }
+    if (match) return entry.value;
+  }
+  return 0;
+}
 
 describe('CircuitBreaker', () => {
   it('opens after 5 failures within 30s and rejects with BackpressureError', async () => {

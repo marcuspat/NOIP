@@ -25,6 +25,7 @@ import {
   SecurityEventModel,
 } from '../models';
 import logger from '../utils/logger';
+import { authLoginAttemptsTotal } from '../observability/metrics';
 import {
   JWTManager,
   MFAService,
@@ -452,6 +453,9 @@ export class AuthService extends BaseService {
 
       // ADR-0018: explicit login-succeeded event in addition to the
       // session-opened event the JWT manager fires.
+      // ADR-0023: bump the success counter at the same point so the
+      // login-attempt metric never drifts from the event log.
+      authLoginAttemptsTotal.labels({ result: 'success' }).inc();
       const userIdString = String(user._id);
       this.publishIam<{ userId: string; sessionId: string }>(
         'iam.login.succeeded',
@@ -1339,6 +1343,12 @@ export class AuthService extends BaseService {
     reason: string,
     ipAddress = 'unknown'
   ): void {
+    // ADR-0023: a failed login crossing the lockout threshold lands on
+    // the `locked` bucket so dashboards can distinguish a brute-force
+    // burst from steady-state typos. All other failures roll up under
+    // `failure`.
+    const result = reason === 'account_locked' ? 'locked' : 'failure';
+    authLoginAttemptsTotal.labels({ result }).inc();
     this.publishIam<{
       usernameOrEmail: string;
       ipAddress: string;
