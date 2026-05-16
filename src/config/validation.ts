@@ -1,4 +1,5 @@
 import type { config as Config } from './index';
+import { parseJwtPriorKids } from '../utils/auth/jwt-key-rotation';
 
 /**
  * Result of validating the runtime configuration.
@@ -6,6 +7,10 @@ import type { config as Config } from './index';
  * See ADR-0019 (`docs/architecture/adr/0019-feature-flag-config-strategy.md`)
  * for the policy. Validation is intentionally synchronous and pure so that it
  * can be invoked at startup, in tests, or from a CLI without side effects.
+ *
+ * ADR-0025 strengthens the production-only rules: placeholder JWT secrets,
+ * localhost MongoDB URIs, and malformed `JWT_PRIOR_KIDS` env values all
+ * fail boot in production instead of being silently accepted.
  */
 export interface ValidationReport {
   ok: boolean;
@@ -23,6 +28,14 @@ const MIN_JWT_SECRET_LENGTH = 32;
 const TIME_STRING = /^\d+(?:\s*(?:ms|s|m|h|d|w|y))?$/i;
 
 /**
+ * Hosts that indicate a developer-only MongoDB target. Any of these
+ * appearing in `MONGODB_URI` while `NODE_ENV=production` is treated as
+ * a misconfiguration — the most common operator mistake is forgetting
+ * to swap the connection string when promoting a config.
+ */
+const LOCAL_MONGO_HOSTS = ['localhost', '127.0.0.1', '::1'] as const;
+
+/**
  * Validate a fully built {@link Config} object against the runtime environment.
  *
  * Pure: does not mutate the inputs and does not throw. Callers decide how to
@@ -37,8 +50,14 @@ export function validateConfig(
   const isProd = (env['NODE_ENV'] || cfg.app.environment) === 'production';
 
   // --- JWT secret -----------------------------------------------------------
+  // ADR-0025: production refuses placeholder + sub-32-char secrets. The
+  // placeholder check also runs against case-insensitive equality so that
+  // a stray uppercase tweak by an operator doesn't sneak past.
   const jwtSecret = cfg.security.jwt.secret ?? '';
-  if (isProd && jwtSecret === PLACEHOLDER_JWT_SECRET) {
+  if (
+    isProd &&
+    jwtSecret.toLowerCase() === PLACEHOLDER_JWT_SECRET.toLowerCase()
+  ) {
     errors.push(
       'JWT_SECRET must not be the default placeholder value in production'
     );
@@ -52,10 +71,33 @@ export function validateConfig(
     }
   }
 
+  // --- JWT prior-kid window (ADR-0025) -------------------------------------
+  // `JWT_PRIOR_KIDS` lets a rotated-out secret continue to verify until
+  // tokens age out (15m access / 7d refresh by default). Malformed input
+  // would silently shrink the verification key set and trigger a
+  // signing-window outage, so reject malformed values *loudly* at boot.
+  const priorKidsRaw = env['JWT_PRIOR_KIDS'];
+  if (typeof priorKidsRaw === 'string' && priorKidsRaw.trim().length > 0) {
+    try {
+      parseJwtPriorKids(priorKidsRaw);
+    } catch (err) {
+      const msg = `JWT_PRIOR_KIDS is malformed: ${err instanceof Error ? err.message : String(err)}`;
+      if (isProd) {
+        errors.push(msg);
+      } else {
+        warnings.push(msg);
+      }
+    }
+  }
+
   // --- MongoDB --------------------------------------------------------------
   const mongoUri = cfg.database.mongodb.uri ?? '';
   if (mongoUri.trim().length === 0) {
     errors.push('MONGODB_URI must be a non-empty connection string');
+  } else if (isProd && containsLocalHost(mongoUri)) {
+    errors.push(
+      'MONGODB_URI must not point at localhost / loopback addresses in production'
+    );
   }
 
   // --- Redis ----------------------------------------------------------------
@@ -131,6 +173,33 @@ export function validateConfig(
     errors,
     warnings,
   };
+}
+
+/**
+ * Return `true` when the supplied MongoDB connection string targets a
+ * loopback address. We parse only enough of the URI to find the
+ * host portion — full `mongodb://` URI parsing is overkill and brittle
+ * (the format permits replica-set tuples, query strings, encoded
+ * credentials with `@`, etc.) so we use a lowercase substring match
+ * against the known dev-host list.
+ *
+ * Exported only via `validateConfig` — kept module-private so callers
+ * don't grow a parallel "is this a dev URI?" heuristic.
+ */
+function containsLocalHost(uri: string): boolean {
+  const lowered = uri.toLowerCase();
+  for (const host of LOCAL_MONGO_HOSTS) {
+    // Boundary heuristic: a localhost match must be preceded by `@`,
+    // `/`, `(`, or appear right after the scheme separator, and must
+    // be followed by `:`, `/`, `,`, `)`, `?`, or end-of-string. This
+    // prevents spurious matches against e.g. `mongodb://prod-localhost`.
+    const pattern = new RegExp(
+      `(?:^|[@/(,])${host.replace(/[.[\]]/g, '\\$&')}(?=$|[:/,)?])`,
+      'i'
+    );
+    if (pattern.test(lowered)) return true;
+  }
+  return false;
 }
 
 export default validateConfig;
