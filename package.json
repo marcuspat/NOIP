@@ -22,7 +22,20 @@
     "dev": "ts-node src/app.ts",
     "start": "node dist/app.js",
     "prebuild": "npm run lint:check && npm run typecheck",
-    "pretest": "npm run lint:check"
+    "pretest": "npm run lint:check",
+    "prepare": "husky && node ./scripts/install-git-hooks.cjs",
+    "secrets:scan": "npx --yes detect-secrets-hook --baseline .secrets.baseline $(git ls-files | grep -Ev '(^package-lock\\.json$|^node_modules/|^coverage/|^dist/|\\.enc\\.(yaml|yml|json|env)$|\\.snap$)')",
+    "secrets:baseline": "bash ./scripts/detect-secrets-update-baseline.sh"
+  },
+  "husky": {
+    "hooks": {
+      "pre-commit": "npx --yes detect-secrets-hook --baseline .secrets.baseline $(git diff --cached --name-only --diff-filter=ACM)"
+    }
+  },
+  "lint-staged": {
+    "*.{ts,js,json,yaml,yml,env,md}": [
+      "npx --yes detect-secrets-hook --baseline .secrets.baseline"
+    ]
   },
   "keywords": [
     "infrastructure-intelligence",

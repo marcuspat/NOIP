@@ -1,0 +1,54 @@
+# pre-commit-tool config (ADR-0025).
+#
+# Two scanners run on every commit and again in CI:
+#
+#   1. detect-secrets — high-entropy + known-pattern scan against staged
+#      diffs. Findings are diffed against `.secrets.baseline`; only new
+#      hits fail the commit. Refresh the baseline via
+#      `scripts/detect-secrets-update-baseline.sh` after auditing the
+#      new entries (and never wholesale-accepting unknown findings).
+#
+#   2. gitleaks — second scanner using a different rule set, catches
+#      patterns detect-secrets misses (especially provider-specific
+#      formats like Slack tokens, GitHub PATs, etc.).
+#
+# These hooks are tracked by the `pre-commit` (Python) framework, not
+# by npm. Install once per workstation:
+#
+#   pip install --user pre-commit detect-secrets
+#   pre-commit install
+#
+# CI runs `pre-commit run --all-files` as a gate, which protects against
+# anyone bypassing the local hook with `--no-verify`.
+repos:
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: detect-secrets (staged-only)
+        args:
+          - "--baseline"
+          - ".secrets.baseline"
+        # Exclude generated / vendored paths that would otherwise flood
+        # the scanner with false positives.
+        exclude: |
+          (?x)^(
+              package-lock\.json|
+              node_modules/.*|
+              coverage/.*|
+              dist/.*|
+              .*\.enc\.(yaml|yml|json|env)|
+              .*\.snap
+          )$
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+        name: gitleaks (staged-only)
+        # `--staged` keeps the scan scoped to the diff being committed,
+        # mirroring detect-secrets behaviour, so CI sees the same set.
+        args:
+          - "protect"
+          - "--staged"
+          - "--redact"

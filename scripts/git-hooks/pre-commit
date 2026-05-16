@@ -1,0 +1,39 @@
+#!/usr/bin/env sh
+# Husky pre-commit hook (ADR-0025).
+#
+# Installed into `.husky/pre-commit` by the `prepare` npm script, which
+# runs `husky install` and then `cp scripts/git-hooks/pre-commit .husky/`
+# (see package.json). Source of truth lives here so the hook is tracked
+# in git and shows up in code review.
+#
+# Delegates secret-scanning to the `pre-commit` Python framework
+# configured in `.pre-commit-config.yaml` (detect-secrets + gitleaks).
+# When the operator has not installed `pre-commit` yet, the hook falls
+# back to a one-shot `detect-secrets-hook` run via `npx` so a fresh
+# checkout still gets some coverage instead of silently letting a
+# secret through.
+#
+# Wider engineering workstation setup remains:
+#   pip install --user pre-commit detect-secrets
+#   pre-commit install
+
+if command -v pre-commit >/dev/null 2>&1; then
+  pre-commit run --hook-stage pre-commit
+else
+  echo ""
+  echo "[husky] pre-commit (Python) is not installed."
+  echo "[husky] Install with:  pip install --user pre-commit detect-secrets"
+  echo "[husky] then run:      pre-commit install"
+  echo "[husky] Falling back to a one-shot detect-secrets scan via npx..."
+  echo ""
+  STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+  if [ -z "$STAGED" ]; then
+    exit 0
+  fi
+  # shellcheck disable=SC2086
+  npx --yes detect-secrets-hook --baseline .secrets.baseline $STAGED \
+    || {
+      echo "[husky] detect-secrets reported a finding. Refusing commit." >&2
+      exit 1
+    }
+fi

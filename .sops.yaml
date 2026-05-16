@@ -1,0 +1,48 @@
+# SOPS configuration (ADR-0025).
+#
+# SOPS encrypts low-risk, low-rotation values for *dev* and *staging*
+# environments so they can live in git without exposing plaintext.
+# Production secrets MUST go through the External Secrets Operator
+# (see k8s/secrets/external-secrets/) — SOPS is not a substitute.
+#
+# Only files matching the patterns below are encrypted. Convention:
+# any file named `*.enc.json`, `*.enc.yaml`, or `*.enc.env` is treated
+# as ciphertext at rest. The plaintext sibling (`config.dev.json`)
+# never gets committed — it is gitignored — and developers run
+# `sops -d` to materialise it locally.
+#
+# Encryption uses two redundant key sources:
+#
+#   1. `age` — keys distributed to engineers via 1Password. The
+#      placeholder fingerprint below is illustrative; the real value is
+#      a public recipient key produced by `age-keygen` and stored in
+#      the team password manager. Rotate by regenerating the key with
+#      `age-keygen -o ~/.config/sops/age/keys.txt` and updating the
+#      `age:` field below in a follow-up PR.
+#
+#   2. `kms` — AWS KMS Customer Managed Key, ARN below. Provides a
+#      break-glass decrypt path that does not require an engineer's
+#      personal age key (used by CI). Rotate by creating a new CMK and
+#      replacing the ARN; SOPS will re-encrypt on the next `sops -e`.
+#
+# To re-key an existing file after rotating either source:
+#   sops updatekeys path/to/file.enc.yaml
+#
+# Pattern-match order matters — first matching rule wins, so the more
+# specific `.enc.env` rule appears before the catch-all `.enc.{json,yaml}`.
+creation_rules:
+  # Per-environment .enc.env files (loaded by `dotenv` after decrypt).
+  - path_regex: \.enc\.env$
+    age: >-
+      age1placeholder0000000000000000000000000000000000000000000000000000
+    kms: "arn:aws:kms:us-east-1:000000000000:key/00000000-0000-0000-0000-000000000000"
+    encrypted_regex: "^.*$"
+
+  # Structured config snippets — JSON & YAML.
+  - path_regex: \.enc\.(json|yaml|yml)$
+    age: >-
+      age1placeholder0000000000000000000000000000000000000000000000000000
+    kms: "arn:aws:kms:us-east-1:000000000000:key/00000000-0000-0000-0000-000000000000"
+    # For YAML/JSON SOPS encrypts values only; keys remain readable so
+    # `git diff` shows which fields changed.
+    encrypted_regex: "^(password|secret|token|key|api[_-]?key|client[_-]?secret|connection[_-]?string)$"

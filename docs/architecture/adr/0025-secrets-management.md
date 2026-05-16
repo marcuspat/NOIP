@@ -4,6 +4,7 @@
 - **Date:** 2026-05-09
 - **Deciders:** Security, SRE
 - **Tags:** security, ops
+- **Implementation:** Complete (2026-05-16) — ExternalSecret manifests + SOPS config + detect-secrets pre-commit + JWT dual-key rotation helper.
 
 ## Context and Problem Statement
 
