@@ -10,6 +10,11 @@ import {
 } from './middleware/security-headers.middleware';
 import { corsAllowList } from './middleware/cors.middleware';
 import {
+  collectNodeDefaultMetrics,
+  httpMetricsMiddleware,
+  metricsEndpoint,
+} from './observability';
+import {
   composeDiscovery,
   KubernetesAdapter,
   KubernetesClientFactory,
@@ -425,6 +430,14 @@ app.use(corsAllowList(config.security.cors.origins));
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ADR-0023: HTTP request/latency metrics. Mount early so we see every
+// request that makes it past the transport-layer filters, including
+// rate-limited and unauthenticated requests. The /metrics endpoint is
+// GET-only and unauthenticated; cluster NetworkPolicy is the gate.
+app.use(httpMetricsMiddleware());
+collectNodeDefaultMetrics();
+app.get('/metrics', metricsEndpoint());
 
 // ---------------------------------------------------------------------------
 // Operational lifecycle state (ADR-0020)
