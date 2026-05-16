@@ -36,7 +36,8 @@
     "dist",
     "coverage",
     "**/*.test.ts",
-    "**/*.spec.ts"
+    "**/*.spec.ts",
+    "tests/unit/architecture/fixtures/**"
   ],
   "ts-node": {
     "esm": true

@@ -57,6 +57,13 @@ Beyond style, we enforce architectural boundaries (ADR-0010 / ADR-0011) via
 Each context's `api/` barrel is the only public surface for cross-context
 imports.
 
+- **Implementation:** Complete (2026-05-16) — boundary zones enforced in
+  `eslint.config.mjs` (ADR-0010 layer zones, ADR-0011 cross-context
+  Public-API zones, domain-purity `no-restricted-imports` for
+  `express`/`mongoose`/`ioredis`/`@kubernetes/client-node`/`@anthropic-ai/sdk`/`@aws-sdk/**`,
+  application-layer `no-restricted-imports` for `express`); per-zone
+  regression tests in `tests/unit/architecture/`.
+
 ### Positive Consequences
 
 - Style is automatic; reviews stay focused on substance.
