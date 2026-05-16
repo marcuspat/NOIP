@@ -21,7 +21,7 @@ export class EmailService {
         : process.env['EMAIL_FROM'] || 'noreply@noip.local';
     this.fromName = 'NOIP Platform';
 
-    this.transporter = nodemailer.createTransporter({
+    this.transporter = nodemailer.createTransport({
       host: process.env['SMTP_HOST'] || 'localhost',
       port: parseInt(process.env['SMTP_PORT'] || '587'),
       secure: process.env['SMTP_SECURE'] === 'true',

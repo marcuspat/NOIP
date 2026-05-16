@@ -101,7 +101,7 @@ export class DeviceFingerprintService {
   async trackDeviceActivity(
     userId: string,
     fingerprint: string,
-    deviceInfo: DeviceInfo,
+    _deviceInfo: DeviceInfo,
     ipAddress: string,
     userAgent: string
   ): Promise<{
@@ -160,7 +160,7 @@ export class DeviceFingerprintService {
     }
   }
 
-  isDeviceTrusted(fingerprint: string, userId: string): boolean {
+  isDeviceTrusted(_fingerprint: string, _userId: string): boolean {
     // In a real implementation, this would check against trusted devices in the database
     return false; // Mock implementation
   }
@@ -197,7 +197,7 @@ export class DeviceFingerprintService {
     }
   }
 
-  getDeviceFingerprintHistory(userId: string): Promise<
+  getDeviceFingerprintHistory(_userId: string): Promise<
     Array<{
       fingerprint: string;
       deviceInfo: DeviceInfo;
@@ -265,7 +265,7 @@ export class DeviceFingerprintService {
       if (ua.includes(browser)) {
         name = browser.charAt(0).toUpperCase() + browser.slice(1);
         const match = ua.match(new RegExp(browser + '[/ ]([\\d.]+)'));
-        if (match) {
+        if (match && match[1] !== undefined) {
           version = match[1];
         }
         break;
