@@ -6,6 +6,13 @@
 # ============================================
 # Node.js dependencies
 node_modules/
+
+# Husky v9 generates `.husky/_/` on install (`npm run prepare`),
+# and the prepare script copies scripts/git-hooks/pre-commit into
+# .husky/pre-commit. The source-of-truth hook lives in
+# scripts/git-hooks/ and is the code-reviewed artifact;
+# .husky/ is the install target and should not be tracked.
+.husky/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
