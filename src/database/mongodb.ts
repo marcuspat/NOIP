@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { logger } from '../utils/logger';
+import logger from '../utils/logger';
 
 export interface MongoConfig {
   uri: string;
@@ -14,9 +14,27 @@ export interface MongoConfig {
   heartbeatFrequencyMS?: number;
   retryWrites?: boolean;
   retryReads?: boolean;
-  bufferMaxEntries?: number;
   bufferCommands?: boolean;
 }
+
+/**
+ * `serverStatus()` / `stats()` come back as plain index-signature shapes
+ * from the driver. We only care about a handful of keys, so we type the
+ * narrow subset we read instead of casting to `any`.
+ */
+type ServerStatus = Record<string, unknown> & {
+  version?: string;
+  uptime?: number;
+  connections?: {
+    current?: number;
+    available?: number;
+    totalCreated?: number;
+  };
+  mem?: { resident?: number; virtual?: number; mapped?: number };
+  network?: { bytesIn?: number; bytesOut?: number; numRequests?: number };
+  opcounters?: Record<string, number | undefined>;
+  metrics?: Record<string, unknown>;
+};
 
 export class MongoDBConnection {
   private static instance: MongoDBConnection;
@@ -40,7 +58,6 @@ export class MongoDBConnection {
         heartbeatFrequencyMS: config.heartbeatFrequencyMS || 10000,
         retryWrites: config.retryWrites !== false,
         retryReads: config.retryReads !== false,
-        bufferMaxEntries: config.bufferMaxEntries || 0,
         bufferCommands: config.bufferCommands !== false,
         ...config.options,
       },
@@ -113,12 +130,24 @@ export class MongoDBConnection {
     return this.isConnected && this.connection?.readyState === 1;
   }
 
+  /**
+   * Returns the underlying driver `Db` handle, or throws when the
+   * connection isn't ready. Centralised so callers don't repeat the
+   * `noUncheckedIndexedAccess` guards.
+   */
+  private requireDb(): mongoose.mongo.Db {
+    if (!this.isHealthy() || !this.connection?.db) {
+      throw new Error('MongoDB not connected');
+    }
+    return this.connection.db;
+  }
+
   public async healthCheck(): Promise<{
     status: 'healthy' | 'unhealthy';
-    details: any;
+    details: Record<string, unknown>;
   }> {
     try {
-      if (!this.isHealthy()) {
+      if (!this.isHealthy() || !this.connection?.db) {
         return {
           status: 'unhealthy',
           details: {
@@ -129,19 +158,19 @@ export class MongoDBConnection {
       }
 
       // Execute a simple command to test connectivity
-      const adminDb = this.connection!.db.admin();
-      const serverStatus = await adminDb.serverStatus();
+      const adminDb = this.connection.db.admin();
+      const serverStatus = (await adminDb.serverStatus()) as ServerStatus;
 
       return {
         status: 'healthy',
         details: {
-          host: this.connection!.host,
-          port: this.connection!.port,
-          version: serverStatus.version,
-          uptime: serverStatus.uptime,
-          connections: serverStatus.connections,
-          memory: serverStatus.mem,
-          network: serverStatus.network,
+          host: this.connection.host,
+          port: this.connection.port,
+          version: serverStatus['version'],
+          uptime: serverStatus['uptime'],
+          connections: serverStatus['connections'],
+          memory: serverStatus['mem'],
+          network: serverStatus['network'],
         },
       };
     } catch (error) {
@@ -155,43 +184,46 @@ export class MongoDBConnection {
     }
   }
 
-  public async getConnectionStats(): Promise<any> {
+  public async getConnectionStats(): Promise<Record<string, unknown>> {
     try {
-      if (!this.isHealthy()) {
-        throw new Error('MongoDB not connected');
-      }
+      const db = this.requireDb();
+      const adminDb = db.admin();
+      const serverStatus = (await adminDb.serverStatus()) as ServerStatus;
 
-      const adminDb = this.connection!.db.admin();
-      const serverStatus = await adminDb.serverStatus();
+      const connections = serverStatus['connections'] ?? {};
+      const opcounters = serverStatus['opcounters'] ?? {};
+      const network = serverStatus['network'] ?? {};
+      const mem = serverStatus['mem'] ?? {};
+      const metrics = serverStatus['metrics'] ?? {};
 
       return {
         connections: {
-          current: serverStatus.connections.current,
-          available: serverStatus.connections.available,
-          totalCreated: serverStatus.connections.totalCreated,
+          current: connections.current,
+          available: connections.available,
+          totalCreated: connections.totalCreated,
         },
         operations: {
-          insert: serverStatus.opcounters.insert,
-          query: serverStatus.opcounters.query,
-          update: serverStatus.opcounters.update,
-          delete: serverStatus.opcounters.delete,
-          getmore: serverStatus.opcounters.getmore,
-          command: serverStatus.opcounters.command,
+          insert: opcounters['insert'],
+          query: opcounters['query'],
+          update: opcounters['update'],
+          delete: opcounters['delete'],
+          getmore: opcounters['getmore'],
+          command: opcounters['command'],
         },
         network: {
-          bytesIn: serverStatus.network.bytesIn,
-          bytesOut: serverStatus.network.bytesOut,
-          numRequests: serverStatus.network.numRequests,
+          bytesIn: network.bytesIn,
+          bytesOut: network.bytesOut,
+          numRequests: network.numRequests,
         },
         memory: {
-          resident: serverStatus.mem.resident,
-          virtual: serverStatus.mem.virtual,
-          mapped: serverStatus.mem.mapped,
+          resident: mem.resident,
+          virtual: mem.virtual,
+          mapped: mem.mapped,
         },
         metrics: {
-          document: serverStatus.metrics.document,
-          cursor: serverStatus.metrics.cursor,
-          getLastError: serverStatus.metrics.getLastError,
+          document: metrics['document'],
+          cursor: metrics['cursor'],
+          getLastError: metrics['getLastError'],
         },
       };
     } catch (error) {
@@ -284,14 +316,10 @@ export class MongoDBConnection {
   // Database operations helper methods
   public async createIndexes(
     collection: string,
-    indexes: any[]
+    indexes: mongoose.mongo.IndexDescription[]
   ): Promise<void> {
     try {
-      if (!this.isHealthy()) {
-        throw new Error('MongoDB not connected');
-      }
-
-      const db = this.connection!.db(this.config.dbName);
+      const db = this.requireDb();
       await db.collection(collection).createIndexes(indexes);
       logger.info(`Indexes created for collection: ${collection}`);
     } catch (error) {
@@ -305,11 +333,7 @@ export class MongoDBConnection {
 
   public async dropCollection(collection: string): Promise<void> {
     try {
-      if (!this.isHealthy()) {
-        throw new Error('MongoDB not connected');
-      }
-
-      const db = this.connection!.db(this.config.dbName);
+      const db = this.requireDb();
       await db.collection(collection).drop();
       logger.info(`Collection dropped: ${collection}`);
     } catch (error) {
@@ -318,14 +342,16 @@ export class MongoDBConnection {
     }
   }
 
-  public async getCollectionStats(collection: string): Promise<any> {
+  public async getCollectionStats(
+    collection: string
+  ): Promise<Record<string, unknown>> {
     try {
-      if (!this.isHealthy()) {
-        throw new Error('MongoDB not connected');
-      }
-
-      const db = this.connection!.db(this.config.dbName);
-      const stats = await db.collection(collection).stats();
+      const db = this.requireDb();
+      // `stats()` is a runCommand under the hood; type as Record<string, unknown>
+      const stats = (await db.command({ collStats: collection })) as Record<
+        string,
+        unknown
+      >;
       return stats;
     } catch (error) {
       logger.error(`Failed to get stats for collection: ${collection}`, error);
@@ -333,14 +359,12 @@ export class MongoDBConnection {
     }
   }
 
-  public async runCommand(command: any): Promise<any> {
+  public async runCommand(
+    command: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
     try {
-      if (!this.isHealthy()) {
-        throw new Error('MongoDB not connected');
-      }
-
-      const db = this.connection!.db(this.config.dbName);
-      return await db.command(command);
+      const db = this.requireDb();
+      return (await db.command(command)) as Record<string, unknown>;
     } catch (error) {
       logger.error('Failed to run MongoDB command', { command, error });
       throw error;
