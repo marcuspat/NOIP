@@ -122,6 +122,16 @@ We offer rewards for valid security reports through our HackerOne program:
 - **Security Advisories**: Detailed technical information about vulnerabilities
 - **Security Bulletins**: Monthly summaries of security updates and recommendations
 
+### Dependency CVE Audit Trail
+
+The operator-facing record of which third-party CVEs have been patched
+(via direct-dep upgrades or `package.json` `overrides`), and which are
+intentionally deferred, lives in
+[`docs/SECURITY_ADVISORIES.md`](docs/SECURITY_ADVISORIES.md). It is
+refreshed on every dependency-tree change and gated in CI by
+`scripts/ci-deps-deterministic.sh`, which fails the build on any
+unpatched high or critical CVE in a runtime dep.
+
 ### Communication Channels
 
 - **Security Mailing List**: `security-announce@noip-platform.com` (critical notifications only)
