@@ -32,14 +32,13 @@ import {
   type EventBus,
   type Unsubscribe,
 } from './shared/kernel';
-import { AuditLogModel, SecurityEventModel } from './models';
+import { SecurityEventModel } from './models';
 import {
   HashChainAppender,
-  type AuditCollection,
   type AuditLogger,
 } from './services/audit/hash-chain-appender.service';
 import { SecurityEventService } from './services/audit/security-event.service';
-import { installAuditSubscribers } from './services/audit/event-subscribers';
+import { composeAudit } from './contexts/audit/api';
 import { auditMiddleware } from './middleware/audit.middleware';
 import { PermissionResolver } from './services/iam/permission-resolver.service';
 import {
@@ -95,50 +94,21 @@ const auditLogger: AuditLogger = {
   error: (m, meta) => logger.error(m, meta),
 };
 
-const auditCollection: AuditCollection = {
-  async findOne(filter, options) {
-    const q = AuditLogModel.findOne(filter);
-    if (options?.sort) q.sort(options.sort);
-    return (await q.lean<unknown>().exec()) as Awaited<
-      ReturnType<AuditCollection['findOne']>
-    >;
-  },
-  async insertOne(entry) {
-    const created = await AuditLogModel.create(entry);
-    return { insertedId: created._id };
-  },
-  async findRange(shard, fromSeq, toSeq) {
-    const docs = await AuditLogModel.find({
-      'chain.shard': shard,
-      'chain.sequence': { $gte: fromSeq, $lte: toSeq },
-    })
-      .sort({ 'chain.sequence': 1 })
-      .lean<unknown[]>()
-      .exec();
-    return docs as Awaited<ReturnType<AuditCollection['findRange']>>;
-  },
-};
-
-const hashChainAppender = new HashChainAppender({
-  collection: auditCollection,
+// Audit context (DDD-11): composeAudit constructs the hash-chain
+// appender, security-event service, archive + transparency services,
+// installs subscribers against the EventBus, and returns the privileged
+// /api/audit router. Replaces the legacy inline block that lived here.
+const composedAudit = composeAudit({
+  bus: eventBus,
   clock: eventClock,
   logger: auditLogger,
-  eventBus,
+  securityEventStore: SecurityEventModel as unknown as Parameters<
+    typeof composeAudit
+  >[0]['securityEventStore'],
 });
-
-const securityEventService = new SecurityEventService({
-  store: SecurityEventModel as unknown as ConstructorParameters<
-    typeof SecurityEventService
-  >[0]['store'],
-  logger: auditLogger,
-});
-
-const auditSubscriberHandles: Unsubscribe[] = installAuditSubscribers({
-  bus: eventBus,
-  securityEvents: securityEventService,
-  appender: hashChainAppender,
-  logger: auditLogger,
-});
+const hashChainAppender = composedAudit.appender;
+const securityEventService = composedAudit.securityEvents;
+const auditSubscriberHandles: Unsubscribe[] = composedAudit.subscriberHandles;
 
 // ---------------------------------------------------------------------------
 // Shared Redis client (ADR-0005 Phase 1 wave 3)
@@ -556,6 +526,7 @@ app.use('/api/dashboard', composedDashboard.routers.dashboard);
 app.use('/api/reports', composedDashboard.routers.report);
 app.use('/api/performance', composedPerformance.router);
 app.use('/api/compliance', composedSecurity.routers.compliance);
+app.use('/api/audit', composedAudit.router);
 app.use(
   '/api/auth',
   createAuthRouter({
