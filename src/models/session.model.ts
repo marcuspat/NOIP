@@ -168,9 +168,7 @@ SessionSchema.index({ ipAddress: 1 });
 SessionSchema.index({ createdAt: -1 });
 
 // Method to check if session is expired
-SessionSchema.methods['isExpired'] = function (
-  this: SessionDocument
-): boolean {
+SessionSchema.methods['isExpired'] = function (this: SessionDocument): boolean {
   return this.expiresAt < new Date();
 };
 
@@ -207,15 +205,16 @@ SessionSchema.methods['addSecurityEvent'] = async function (
   event: string,
   details: Record<string, unknown> = {}
 ): Promise<void> {
-  (this as unknown as { securityEvents: Array<Record<string, unknown>> })
-    .securityEvents.push({
-      type: event,
-      description: `Security event: ${event}`,
-      ipAddress: this.ipAddress,
-      userAgent: this.userAgent,
-      details,
-      timestamp: new Date(),
-    });
+  (
+    this as unknown as { securityEvents: Array<Record<string, unknown>> }
+  ).securityEvents.push({
+    type: event,
+    description: `Security event: ${event}`,
+    ipAddress: this.ipAddress,
+    userAgent: this.userAgent,
+    details,
+    timestamp: new Date(),
+  });
   await this.save();
 };
 

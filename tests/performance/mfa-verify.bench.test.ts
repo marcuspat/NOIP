@@ -66,7 +66,6 @@ function summarise(kind: string, samples: number[]): BenchSummary {
 }
 
 function printSummary(s: BenchSummary): void {
-  // eslint-disable-next-line no-console
   console.log(
     `[bench] ${s.kind}: count=${s.count} mean=${s.mean.toFixed(3)}ms p50=${s.p50.toFixed(3)}ms p95=${s.p95.toFixed(3)}ms total=${s.total.toFixed(1)}ms`
   );

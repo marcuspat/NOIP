@@ -1,4 +1,5 @@
 import argon2 from 'argon2';
+import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import logger from '../logger';
 
@@ -90,7 +91,7 @@ export class PasswordService {
     // Special characters check
     if (
       activePolicy.requireSpecialChars &&
-      !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)
+      !/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)
     ) {
       errors.push('Password must contain at least one special character');
     }
@@ -265,7 +266,7 @@ export class PasswordService {
     if (/[a-z]/.test(password)) score += 5;
     if (/[A-Z]/.test(password)) score += 5;
     if (/\d/.test(password)) score += 5;
-    if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) score += 10;
+    if (/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password)) score += 10;
 
     // Deduct points for common patterns
     if (this.isCommonPassword(password)) score -= 20;
@@ -330,7 +331,6 @@ export class PasswordService {
     try {
       // For bcrypt hashes (starting with $2)
       if (hash.startsWith('$2')) {
-        const bcrypt = require('bcryptjs');
         return bcrypt.compare(password, hash);
       }
       return false;

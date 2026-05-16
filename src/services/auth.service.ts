@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { BaseService } from './base.service';
 import {
   LoginRequest,
@@ -849,7 +850,7 @@ export class AuthService extends BaseService {
       this.logOperation('Confirming password reset');
 
       // Hash the provided token to compare with stored hash
-      const crypto = require('crypto');
+
       const hashedToken = crypto
         .createHash('sha256')
         .update(confirmRequest.token)
@@ -914,7 +915,7 @@ export class AuthService extends BaseService {
       this.logOperation('Verifying email');
 
       // Hash the provided token to compare with stored hash
-      const crypto = require('crypto');
+
       const hashedToken = crypto
         .createHash('sha256')
         .update(token)
@@ -1128,7 +1129,9 @@ export class AuthService extends BaseService {
     } else {
       // 4-arg form: (type, desc, request, details)
       details = (userAgentOrDetails as Record<string, unknown>) ?? {};
-      const req = requestOrIp as { ipAddress?: string; userAgent?: string } | undefined;
+      const req = requestOrIp as
+        | { ipAddress?: string; userAgent?: string }
+        | undefined;
       if (req?.ipAddress !== undefined) ipAddress = req.ipAddress;
       if (req?.userAgent !== undefined) userAgent = req.userAgent;
     }

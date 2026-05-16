@@ -22,10 +22,7 @@ export interface SecurityEventDocument
 
 export interface SecurityEventModelType extends Model<SecurityEventDocument> {
   findCriticalEvents(): Promise<SecurityEventDocument[]>;
-  findByUser(
-    userId: string,
-    limit?: number
-  ): Promise<SecurityEventDocument[]>;
+  findByUser(userId: string, limit?: number): Promise<SecurityEventDocument[]>;
   findByType(
     type: SecurityEventType,
     limit?: number

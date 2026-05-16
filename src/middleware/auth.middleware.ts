@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import {
   JWTManager,
@@ -420,7 +421,7 @@ export class AuthMiddleware {
     const acceptLanguage = req.headers['accept-language'] || 'unknown';
     const acceptEncoding = req.headers['accept-encoding'] || 'unknown';
 
-    return require('crypto')
+    return crypto
       .createHash('sha256')
       .update(`${userAgent}|${acceptLanguage}|${acceptEncoding}`)
       .digest('hex');

@@ -61,10 +61,7 @@ class MemoryRedis implements MFARedisClient {
     const entry = this.store.get(key);
     if (entry === undefined) return -2;
     if (entry.expiresAt === undefined) return -1;
-    return Math.max(
-      Math.ceil((entry.expiresAt - Date.now()) / 1000),
-      0
-    );
+    return Math.max(Math.ceil((entry.expiresAt - Date.now()) / 1000), 0);
   }
 }
 
@@ -103,12 +100,11 @@ function makeService(
 } {
   const redis = overrides.redis ?? new MemoryRedis();
   const events: Array<{ type: string; payload: Record<string, unknown> }> = [];
-  const bus: MFAEventBus =
-    overrides.eventBus ?? {
-      publish: (type, payload) => {
-        events.push({ type, payload });
-      },
-    };
+  const bus: MFAEventBus = overrides.eventBus ?? {
+    publish: (type, payload) => {
+      events.push({ type, payload });
+    },
+  };
   const service = new MFAService({
     redis,
     clock: { now: () => new Date() },
@@ -204,9 +200,7 @@ describe('MFAService — backup codes', () => {
     const { service } = makeService();
     const first = await service.regenerateBackupCodes('u1');
     const second = await service.regenerateBackupCodes('u1');
-    const overlap = first.plaintext.filter((c) =>
-      second.plaintext.includes(c)
-    );
+    const overlap = first.plaintext.filter(c => second.plaintext.includes(c));
     expect(overlap).toHaveLength(0);
   });
 });
@@ -242,7 +236,9 @@ describe('MFAService — TOTP', () => {
       sessionId: 's1',
     });
     expect(ok.ok).toBe(true);
-    expect(events.find((e) => e.type === 'iam.mfa.verification_success')).toBeDefined();
+    expect(
+      events.find(e => e.type === 'iam.mfa.verification_success')
+    ).toBeDefined();
 
     const bad = await service.verify({
       userId: 'u1',
@@ -251,7 +247,9 @@ describe('MFAService — TOTP', () => {
       ipAddress: '10.0.0.1',
     });
     expect(bad.ok).toBe(false);
-    expect(events.find((e) => e.type === 'iam.mfa.verification_failed')).toBeDefined();
+    expect(
+      events.find(e => e.type === 'iam.mfa.verification_failed')
+    ).toBeDefined();
   });
 
   it('verify() suppresses event emission when emitEvent=false', async () => {

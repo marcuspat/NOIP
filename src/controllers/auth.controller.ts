@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Request, Response } from 'express';
 import { AuthService } from '../services/auth.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
@@ -559,7 +560,7 @@ export class AuthController {
     const acceptLanguage = req.headers['accept-language'] || 'unknown';
     const acceptEncoding = req.headers['accept-encoding'] || 'unknown';
 
-    return require('crypto')
+    return crypto
       .createHash('sha256')
       .update(`${userAgent}|${acceptLanguage}|${acceptEncoding}`)
       .digest('hex');

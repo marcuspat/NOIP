@@ -23,7 +23,9 @@ function makeRes(): MockResponse {
 
 describe('requireMFAVerified', () => {
   it('passes through when MFA is not enabled and user is within grace', () => {
-    const middleware = requireMFAVerified({ now: () => new Date('2026-01-02T00:00:00Z') });
+    const middleware = requireMFAVerified({
+      now: () => new Date('2026-01-02T00:00:00Z'),
+    });
     const req: MFAVerifiedRequest = {
       user: {
         mfaEnabled: false,
