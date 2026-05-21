@@ -7,6 +7,7 @@ export { DiscoveryService } from './services/discovery.service';
 export { SecurityService } from './services/security.service';
 export { AIService } from './services/ai.service';
 export { DashboardService } from './services/dashboard.service';
+export { FindingService } from './services/finding.service';
 
 // Export types
 export * from './types';

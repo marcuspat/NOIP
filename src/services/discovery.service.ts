@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { BaseService } from './base.service';
 import { ClusterInfo, KubernetesResource } from '../types';
 import { config } from '../config';
@@ -6,7 +7,9 @@ import {
   fingerprintResource,
   computeDrift,
 } from './discovery/fingerprint';
-import { ResourceRecord } from '../models/snapshot.model';
+import { ClusterModel } from '../models/cluster.model';
+import { SnapshotModel, ResourceRecord } from '../models/snapshot.model';
+import { DriftReportModel } from '../models/drift-report.model';
 
 export class DiscoveryService extends BaseService {
   private scanInterval: NodeJS.Timeout | null = null;
@@ -50,11 +53,87 @@ export class DiscoveryService extends BaseService {
         triggeredBy: 'scheduled',
       });
 
+      // Persist the snapshot and any drift when a database is available.
+      await this.persistScan(mockClusterInfo, records, 'scheduled');
+
       this.logOperation('Cluster scan completed', mockClusterInfo);
       return mockClusterInfo;
     } catch (error) {
       this.logOperation('Cluster scan failed', error);
       throw error;
+    }
+  }
+
+  /**
+   * Persist the scan as an immutable Snapshot, upsert the Cluster, and — when
+   * a prior snapshot exists — compute and persist a DriftReport. No-ops when
+   * Mongo is not connected so the pure scan path remains usable offline.
+   */
+  private async persistScan(
+    clusterInfo: ClusterInfo,
+    records: ResourceRecord[],
+    triggeredBy: 'scheduled' | 'manual' | 'drift-alert'
+  ): Promise<void> {
+    if (mongoose.connection.readyState !== 1) {
+      return;
+    }
+
+    try {
+      const cluster = await ClusterModel.findOneAndUpdate(
+        { name: clusterInfo.name },
+        {
+          $set: {
+            endpoint: clusterInfo.endpoint,
+            lastScanAt: clusterInfo.lastScan,
+            status: 'active',
+          },
+          $setOnInsert: { credentialRef: 'default', addedAt: new Date() },
+        },
+        { upsert: true, new: true }
+      );
+      const clusterId = String(cluster._id);
+
+      const previous = await SnapshotModel.findOne({ clusterId }).sort({
+        takenAt: -1,
+      });
+
+      const snapshot = await SnapshotModel.create({
+        clusterId,
+        takenAt: clusterInfo.lastScan,
+        resourceCount: records.length,
+        resources: records,
+        triggeredBy,
+      });
+
+      if (previous) {
+        const driftItems = computeDrift(previous.resources, records);
+        if (driftItems.length > 0) {
+          await DriftReportModel.create({
+            clusterId,
+            baselineSnapshotId: String(previous._id),
+            currentSnapshotId: String(snapshot._id),
+            detectedAt: new Date(),
+            driftCount: driftItems.length,
+            items: driftItems,
+          });
+          this.eventBus.publish<DriftDetectedPayload>(
+            'discovery.DriftDetected',
+            {
+              clusterName: clusterInfo.name,
+              detectedAt: new Date(),
+              driftCount: driftItems.length,
+              items: driftItems,
+            }
+          );
+          this.logOperation('Drift detected and persisted', {
+            clusterName: clusterInfo.name,
+            driftCount: driftItems.length,
+          });
+        }
+      }
+    } catch (error) {
+      // Persistence is best-effort; a storage failure must not abort a scan.
+      this.logOperation('Failed to persist scan', error);
     }
   }
 
