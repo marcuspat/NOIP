@@ -34,12 +34,21 @@ export class JWTManager {
           : this.refreshTokenSecret;
       const expiresIn = tokenType === 'access' ? '15m' : '7d';
 
+      // jsonwebtoken rejects signing when the payload already carries any
+      // registered claim that is also supplied via options (exp/expiresIn,
+      // aud/audience, iss/issuer). Callers may pre-populate these, so strip
+      // them from the payload and let the sign options be the source of truth.
+      const {
+        exp: _exp,
+        iat: _iat,
+        nbf: _nbf,
+        aud: _aud,
+        iss: _iss,
+        ...rest
+      } = payload;
       const tokenPayload = {
-        ...payload,
+        ...rest,
         type: tokenType,
-        iat: Math.floor(Date.now() / 1000),
-        iss: this.issuer,
-        aud: this.audience,
       };
 
       return jwt.sign(tokenPayload, secret, {

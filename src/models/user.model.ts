@@ -36,7 +36,10 @@ const GeoLocationSchema = new Schema(
 
 const SessionSchema = new Schema(
   {
-    sessionId: { type: String, required: true, unique: true },
+    // Not `unique` here: as an embedded subdocument this would create a
+    // collection-level unique index that collides on null for users with no
+    // sessions. Uniqueness is enforced by the standalone SessionModel.
+    sessionId: { type: String, required: true },
     deviceFingerprint: { type: String, required: true },
     deviceInfo: { type: DeviceInfoSchema, required: true },
     ipAddress: { type: String, required: true },

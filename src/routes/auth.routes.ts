@@ -4,7 +4,7 @@ import { AuthMiddleware } from '../middleware/auth.middleware';
 import { RateLimitMiddleware } from '../middleware/rate-limit.middleware';
 import { AuditMiddleware } from '../middleware/audit.middleware';
 import { body, query } from 'express-validator';
-import Redis from 'ioredis';
+import { createLazyRedis } from '../utils/redis-client';
 import { config } from '../config';
 
 const router = Router();
@@ -12,11 +12,8 @@ const authController = new AuthController();
 const authMiddleware = new AuthMiddleware();
 const auditMiddleware = new AuditMiddleware();
 const rateLimitMiddleware = new RateLimitMiddleware(
-  new Redis(config.database.redis)
+  createLazyRedis(config.database.redis)
 );
-
-// Initialize auth service
-authController.initialize();
 
 // Public routes (no authentication required)
 

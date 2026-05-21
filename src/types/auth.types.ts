@@ -75,6 +75,7 @@ export interface DeviceInfo {
   mobile: boolean;
   trusted: boolean;
   lastSeen: Date;
+  fingerprint: string;
 }
 
 export interface GeoLocation {

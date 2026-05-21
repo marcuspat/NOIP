@@ -100,20 +100,21 @@ export class PasswordService {
       );
     }
 
-    // Sequential characters check
+    // Sequential / repeated characters are soft signals: they lower the
+    // strength score and surface as advisory warnings but do not invalidate
+    // an otherwise policy-compliant password.
+    const warnings: string[] = [];
     if (this.hasSequentialChars(password)) {
-      errors.push('Password should not contain sequential characters');
+      warnings.push('Password should not contain sequential characters');
     }
-
-    // Repeated characters check
     if (this.hasRepeatedChars(password)) {
-      errors.push('Password should not contain too many repeated characters');
+      warnings.push('Password should not contain too many repeated characters');
     }
 
     const score = this.calculatePasswordScore(password);
     const isValid = errors.length === 0;
 
-    return { isValid, errors, score };
+    return { isValid, errors: [...errors, ...warnings], score };
   }
 
   generateSecurePassword(length: number = 16): string {

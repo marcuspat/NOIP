@@ -229,7 +229,7 @@ describe('Security Tests', () => {
 
         // Check that roles are specific and not overly permissive
         expect(content).toMatch(
-          /verbs:\s*\[(\s*["']?(get|list|watch)["']?\s*(,\s*["']?(get|list|watch)["']?\s*)*\s*\]/
+          /verbs:\s*\[(\s*["']?(get|list|watch)["']?\s*(,\s*["']?(get|list|watch)["']?\s*)*\s*)\]/
         );
       }
     });

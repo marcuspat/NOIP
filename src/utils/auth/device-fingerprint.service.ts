@@ -49,6 +49,9 @@ export class DeviceFingerprintService {
         mobile: userAgent.mobile || false,
         trusted: false, // Will be updated based on user preferences
         lastSeen: new Date(),
+        fingerprint:
+          requestData?.deviceFingerprint ||
+          this.generateFingerprint(requestData),
       };
     } catch (error) {
       logger.error('Failed to extract device info', { error });
@@ -59,6 +62,9 @@ export class DeviceFingerprintService {
         mobile: false,
         trusted: false,
         lastSeen: new Date(),
+        fingerprint:
+          requestData?.deviceFingerprint ||
+          this.generateFingerprint(requestData),
       };
     }
   }

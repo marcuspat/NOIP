@@ -19,6 +19,7 @@ import { ComplianceService } from './services/compliance.service';
 // Import route handlers
 import performanceRoutes from './routes/performance.routes';
 import complianceRoutes from './routes/compliance.routes';
+import authRoutes from './routes/auth.routes';
 
 const app = express();
 
@@ -138,7 +139,12 @@ v1.use('/ai', createAIRoutes(aiService));
 v1.use('/dashboard', createDashboardRoutes(dashboardService));
 v1.use('/performance', performanceRoutes);
 v1.use('/compliance', complianceRoutes);
+v1.use('/auth', authRoutes);
 app.use('/api/v1', v1);
+
+// Auth is also exposed at the unprefixed /auth path used by clients and the
+// integration test harness.
+app.use('/auth', authRoutes);
 
 // Legacy unprefixed paths kept alive for one major-version cycle. Every
 // response carries Deprecation + Sunset headers per RFC 8594 / RFC 9745.
@@ -155,18 +161,46 @@ legacy.use('/ai', createAIRoutes(aiService));
 legacy.use('/dashboard', createDashboardRoutes(dashboardService));
 legacy.use('/performance', performanceRoutes);
 legacy.use('/compliance', complianceRoutes);
+legacy.use('/auth', authRoutes);
 app.use('/api', legacy);
 
-// Error handling middleware
+// 404 handler — Express 5 / path-to-regexp v8 rejects the bare '*' path,
+// so we match all unhandled requests with a pathless middleware. Registered
+// before the error handler so unmatched routes get a clean 404.
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Endpoint not found',
+    path: req.originalUrl,
+    timestamp: new Date(),
+  });
+});
+
+// Error handling middleware (must be last). Distinguishes client-side body
+// parse failures (malformed JSON / oversized payloads) from server faults.
 app.use(
   (
-    err: Error,
+    err: Error & { type?: string; status?: number },
     req: express.Request,
     res: express.Response,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     next: express.NextFunction
   ) => {
-    logger.error('Unhandled error', err);
+    if (err.type === 'entity.parse.failed') {
+      res.status(400).json({
+        error: 'Invalid JSON in request body',
+        timestamp: new Date(),
+      });
+      return;
+    }
+    if (err.type === 'entity.too.large') {
+      res.status(413).json({
+        error: 'Request body too large',
+        timestamp: new Date(),
+      });
+      return;
+    }
 
+    logger.error('Unhandled error', err);
     res.status(500).json({
       error: 'Internal server error',
       timestamp: new Date(),
@@ -174,15 +208,6 @@ app.use(
     });
   }
 );
-
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    error: 'Endpoint not found',
-    path: req.originalUrl,
-    timestamp: new Date(),
-  });
-});
 
 // Route creators
 function createDiscoveryRoutes(service: DiscoveryService): express.Router {
@@ -243,9 +268,11 @@ function createDiscoveryRoutes(service: DiscoveryService): express.Router {
 function createSecurityRoutes(service: SecurityService): express.Router {
   const router = express.Router();
 
-  router.get('/scan', async (req, res) => {
+  // Scanning accepts a resource list in the body, so it is a POST. A GET
+  // alias is kept for backward compatibility with existing clients.
+  const scanHandler = async (req: express.Request, res: express.Response) => {
     try {
-      const { resources } = req.body;
+      const { resources } = req.body ?? {};
       const results = await service.scanResources(resources || []);
       res.json({ success: true, data: results });
     } catch (error) {
@@ -254,7 +281,9 @@ function createSecurityRoutes(service: SecurityService): express.Router {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
-  });
+  };
+  router.post('/scan', scanHandler);
+  router.get('/scan', scanHandler);
 
   router.get('/scan/pods', async (req, res) => {
     try {
@@ -438,6 +467,15 @@ async function initializeServices() {
 // Start server
 async function startServer() {
   try {
+    // Connect MongoDB first — the durable store every service depends on.
+    const mongoose = (await import('mongoose')).default;
+    await mongoose.connect(config.database.mongodb.uri);
+    logger.info('MongoDB connected', { uri: config.database.mongodb.uri });
+
+    // Seed default roles and permissions (idempotent) so registration works.
+    const { AuthService } = await import('./services/auth.service');
+    await new AuthService().initialize();
+
     // Bootstrap Redis — optional; if unavailable we run without caching.
     let redisClient: Redis | null = null;
     try {
@@ -500,6 +538,15 @@ process.on('SIGINT', async () => {
 // Start server if this file is run directly
 if (require.main === module) {
   startServer();
+}
+
+/**
+ * Returns the configured Express application. The app is a process singleton
+ * (routes/middleware are wired once at module load), so this hands back that
+ * instance — convenient for test harnesses that call `createApp().listen(0)`.
+ */
+export function createApp(): express.Application {
+  return app;
 }
 
 export default app;

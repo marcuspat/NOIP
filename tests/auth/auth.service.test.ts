@@ -34,6 +34,8 @@ describe('AuthService', () => {
     await PermissionModel.deleteMany({});
     await SessionModel.deleteMany({});
     await SecurityEventModel.deleteMany({});
+    // Re-seed default roles/permissions wiped above so registration works.
+    await authService.initialize();
   });
 
   describe('User Registration', () => {
@@ -365,8 +367,10 @@ describe('AuthService', () => {
 
       await authService.register(userData);
 
-      // Get verification token
-      const user = await UserModel.findOne({ username: 'testuser' });
+      // emailVerificationToken is select:false, so request it explicitly.
+      const user = await UserModel.findOne({ username: 'testuser' }).select(
+        '+emailVerificationToken'
+      );
       if (user && user.emailVerificationToken) {
         verificationToken = user.emailVerificationToken;
       }

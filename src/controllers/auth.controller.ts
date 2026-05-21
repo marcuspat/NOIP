@@ -16,7 +16,7 @@ import {
 } from '../types/auth.types';
 import logger from '../utils/logger';
 import { validationResult } from 'express-validator';
-import { Redis } from 'ioredis';
+import { createLazyRedis } from '../utils/redis-client';
 
 export class AuthController {
   private authService: AuthService;
@@ -27,7 +27,7 @@ export class AuthController {
     this.authService = new AuthService();
     this.authMiddleware = new AuthMiddleware();
     this.rateLimitMiddleware = new RateLimitMiddleware(
-      new Redis(process.env.REDIS_URL || 'redis://localhost:6379')
+      createLazyRedis(process.env.REDIS_URL || 'redis://localhost:6379')
     );
   }
 

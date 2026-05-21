@@ -5,6 +5,7 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import { createApp } from '../../src/app';
 import { UserModel, RoleModel, PermissionModel } from '../../src/models';
 import { UserStatus } from '../../src/types/auth.types';
+import { AuthService } from '../../src/services/auth.service';
 
 describe('Authentication Integration Tests', () => {
   let app: Express;
@@ -30,6 +31,8 @@ describe('Authentication Integration Tests', () => {
     await UserModel.deleteMany({});
     await RoleModel.deleteMany({});
     await PermissionModel.deleteMany({});
+    // Seed default roles/permissions so registration/login work.
+    await new AuthService().initialize();
   });
 
   describe('POST /auth/register', () => {

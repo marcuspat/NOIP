@@ -100,7 +100,10 @@ export class AuthService extends BaseService {
       }
 
       // Validate password strength
-      if (!this.passwordService.validatePasswordStrength(userData.password)) {
+      if (
+        !this.passwordService.validatePasswordStrength(userData.password)
+          .isValid
+      ) {
         throw new Error('Password does not meet security requirements');
       }
 
@@ -143,11 +146,15 @@ export class AuthService extends BaseService {
       await SecurityEventModel.createEvent(
         SecurityEventType.PASSWORD_CHANGE,
         'User account created',
-        'registration',
+        '0.0.0.0',
         'auth-service',
         {
           userId: String(user._id),
-          details: { username: user.username, email: user.email },
+          details: {
+            source: 'registration',
+            username: user.username,
+            email: user.email,
+          },
         }
       );
 
@@ -340,9 +347,9 @@ export class AuthService extends BaseService {
       await SecurityEventModel.createEvent(
         SecurityEventType.LOGOUT,
         'User logged out',
-        'logout',
+        '0.0.0.0',
         'auth-service',
-        { userId, sessionId }
+        { userId, sessionId, details: { source: 'logout' } }
       );
 
       this.logOperation('User logged out successfully', { userId, sessionId });
@@ -551,7 +558,7 @@ export class AuthService extends BaseService {
       if (
         !this.passwordService.validatePasswordStrength(
           passwordRequest.newPassword
-        )
+        ).isValid
       ) {
         throw new Error('New password does not meet security requirements');
       }
@@ -651,7 +658,7 @@ export class AuthService extends BaseService {
       if (
         !this.passwordService.validatePasswordStrength(
           confirmRequest.newPassword
-        )
+        ).isValid
       ) {
         throw new Error('New password does not meet security requirements');
       }
@@ -684,15 +691,10 @@ export class AuthService extends BaseService {
     return this.unwrapWithErrorHandling(async () => {
       this.logOperation('Verifying email');
 
-      // Hash the provided token to compare with stored hash
-      const crypto = require('crypto');
-      const hashedToken = crypto
-        .createHash('sha256')
-        .update(token)
-        .digest('hex');
-
+      // The email-verification token is stored as issued (it is single-use
+      // and short-lived), so it is matched directly rather than re-hashed.
       const user = await UserModel.findOne({
-        emailVerificationToken: hashedToken,
+        emailVerificationToken: token,
       }).select('+emailVerificationToken');
 
       if (!user) {
@@ -804,7 +806,12 @@ export class AuthService extends BaseService {
       type: 'access',
     };
 
-    const accessToken = await this.jwtManager.signToken(payload, 'access');
+    // A per-issuance jti keeps every access token unique even when two are
+    // minted in the same second (e.g. login then immediate refresh).
+    const accessToken = await this.jwtManager.signToken(
+      { ...payload, jti: uuidv4() },
+      'access'
+    );
     const refreshToken = await this.jwtManager.signToken(
       {
         ...payload,
@@ -880,21 +887,49 @@ export class AuthService extends BaseService {
     detailsOrUserAgent: Record<string, any> | string,
     extraDetails?: Record<string, any>
   ): Promise<void> {
-    // Support both 4-arg and 5-arg invocations:
+    // Support several invocation shapes seen across the service:
     //   (type, description, request, details)
     //   (type, description, ipAddress, userAgent, details)
-    const ipAddress =
-      typeof requestOrIp === 'string' ? requestOrIp : '127.0.0.1';
+    //   (type, description, sourceLabel, userAgent, details)
+    // A non-IP string in the 3rd slot is a source label, not an address;
+    // the SecurityEvent model requires a valid IP, so fall back to 0.0.0.0
+    // and preserve the label under details.source.
+    const isValidIp = (v: string): boolean => {
+      const ipv4 =
+        /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+      const ipv6 = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
+      return ipv4.test(v) || ipv6.test(v);
+    };
+
+    let ipAddress = '0.0.0.0';
+    let sourceLabel: string | undefined;
+    if (typeof requestOrIp === 'string') {
+      if (isValidIp(requestOrIp)) {
+        ipAddress = requestOrIp;
+      } else {
+        sourceLabel = requestOrIp;
+      }
+    } else if (requestOrIp && typeof requestOrIp === 'object') {
+      ipAddress =
+        typeof requestOrIp.ipAddress === 'string' &&
+        isValidIp(requestOrIp.ipAddress)
+          ? requestOrIp.ipAddress
+          : '127.0.0.1';
+    }
+
     const userAgent =
       typeof detailsOrUserAgent === 'string'
         ? detailsOrUserAgent
         : 'auth-service';
-    const details =
+    const baseDetails =
       extraDetails !== undefined
         ? extraDetails
         : typeof detailsOrUserAgent === 'object'
           ? (detailsOrUserAgent as Record<string, any>)
           : {};
+    const details = sourceLabel
+      ? { source: sourceLabel, ...baseDetails }
+      : baseDetails;
     await SecurityEventModel.createEvent(
       type,
       description,
