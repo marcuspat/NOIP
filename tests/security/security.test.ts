@@ -42,7 +42,7 @@ describe('Security Tests', () => {
         expect(userOutput).not.toBe('root');
         expect(userOutput).not.toBe('0');
       } catch (error) {
-        fail('Container could not be started or user check failed');
+        throw new Error('Container could not be started or user check failed');
       }
     });
 
@@ -184,7 +184,7 @@ describe('Security Tests', () => {
 
         // If vulnerabilities were found, this test should fail
         if (error.status && error.status !== 0) {
-          fail('Container security vulnerabilities detected');
+          throw new Error('Container security vulnerabilities detected');
         }
       }
     });
