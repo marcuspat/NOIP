@@ -8,7 +8,19 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
-describe('Docker Container Tests', () => {
+// These tests require a running Docker daemon. When none is available
+// (e.g. CI without docker-in-docker) the whole suite is skipped rather than
+// failing every case at image-build time.
+const dockerAvailable = (() => {
+  try {
+    execSync('docker info', { stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+(dockerAvailable ? describe : describe.skip)('Docker Container Tests', () => {
   const imageName = 'noip/platform:test';
   const testContainerName = 'noip-test-container';
 

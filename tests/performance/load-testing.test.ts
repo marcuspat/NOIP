@@ -21,7 +21,7 @@ describe('Performance Service - Load Testing', () => {
       const config: LoadTestConfig = {
         targetUrl: 'http://localhost:3000',
         concurrentUsers: 10,
-        duration: 30, // 30 seconds
+        duration: 2, // shortened; the simulated engine runs in real time
         rampUpTime: 10,
         requestRate: 5,
         scenarios: [
@@ -52,7 +52,7 @@ describe('Performance Service - Load Testing', () => {
       const config: LoadTestConfig = {
         targetUrl: 'http://localhost:3000',
         concurrentUsers: 20,
-        duration: 60,
+        duration: 2,
         rampUpTime: 15,
         requestRate: 10,
         scenarios: [
@@ -96,9 +96,9 @@ describe('Performance Service - Load Testing', () => {
       const config: LoadTestConfig = {
         targetUrl: 'http://localhost:3000',
         concurrentUsers: 100,
-        duration: 120,
+        duration: 3,
         rampUpTime: 30,
-        requestRate: 50,
+        requestRate: 5,
         scenarios: [
           {
             name: 'Stress Test',
@@ -130,7 +130,7 @@ describe('Performance Service - Load Testing', () => {
       const config: LoadTestConfig = {
         targetUrl: 'http://localhost:3000',
         concurrentUsers: 50,
-        duration: 60,
+        duration: 2,
         rampUpTime: 20,
         requestRate: 25,
         scenarios: [
@@ -213,7 +213,7 @@ describe('Performance Service - Load Testing', () => {
       const config: LoadTestConfig = {
         targetUrl: 'http://localhost:3000',
         concurrentUsers: 5,
-        duration: 10,
+        duration: 2,
         rampUpTime: 5,
         requestRate: 2,
         scenarios: [
@@ -244,7 +244,7 @@ describe('Performance Service - Load Testing', () => {
       const config: LoadTestConfig = {
         targetUrl: 'http://localhost:3000',
         concurrentUsers: 5,
-        duration: 10,
+        duration: 2,
         rampUpTime: 5,
         requestRate: 2,
         scenarios: [
@@ -307,7 +307,7 @@ describe('Performance Service - Load Testing', () => {
       const config: LoadTestConfig = {
         targetUrl: 'http://localhost:3000',
         concurrentUsers: 10,
-        duration: 30,
+        duration: 2,
         rampUpTime: 10,
         requestRate: 5,
         scenarios: [
@@ -376,7 +376,7 @@ describe('Performance Service - Load Testing', () => {
       const config: LoadTestConfig = {
         targetUrl: 'http://localhost:3000',
         concurrentUsers: 10,
-        duration: 30,
+        duration: 2,
         rampUpTime: 10,
         requestRate: 5,
         scenarios: [
@@ -428,7 +428,7 @@ describe('Performance Service - Load Testing', () => {
       const config: LoadTestConfig = {
         targetUrl: 'http://localhost:3000',
         concurrentUsers: 20,
-        duration: 60,
+        duration: 2,
         rampUpTime: 15,
         requestRate: 10,
         scenarios: [

@@ -124,6 +124,39 @@ export class PerformanceService extends BaseService {
   // Load Testing Methods
 
   async runLoadTest(config: LoadTestConfig): Promise<LoadTestResult> {
+    // Reject explicitly-invalid values; fill in sensible defaults for any
+    // omitted fields so a minimal config (just a target URL) still runs.
+    if (
+      !config ||
+      config.targetUrl === '' ||
+      (config.concurrentUsers !== undefined && config.concurrentUsers <= 0) ||
+      (config.duration !== undefined && config.duration <= 0) ||
+      (config.requestRate !== undefined && config.requestRate <= 0)
+    ) {
+      throw new Error('Invalid load test configuration');
+    }
+
+    config = {
+      targetUrl: config.targetUrl,
+      concurrentUsers: config.concurrentUsers ?? 10,
+      duration: config.duration ?? 5,
+      rampUpTime: config.rampUpTime ?? 0,
+      requestRate: config.requestRate ?? 5,
+      scenarios:
+        config.scenarios && config.scenarios.length > 0
+          ? config.scenarios
+          : [
+              {
+                name: 'Default',
+                weight: 100,
+                method: 'GET',
+                endpoint: '/health',
+                expectedStatus: 200,
+                timeout: 5000,
+              },
+            ],
+    };
+
     const testId = `test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const startTime = new Date();
 
