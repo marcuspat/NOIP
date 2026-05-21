@@ -204,10 +204,11 @@ export class ComplianceService extends BaseService {
   async initialize(): Promise<void> {
     this.logOperation('Initializing Compliance service');
 
-    if ((config.services as any).compliance?.enabled) {
-      await this.loadComplianceFrameworks();
-      this.logOperation('Compliance frameworks loaded');
-    }
+    // Frameworks are static, in-memory definitions, so they always load —
+    // the service is non-functional without them. The config flag only
+    // governs optional background assessment scheduling.
+    await this.loadComplianceFrameworks();
+    this.logOperation('Compliance frameworks loaded');
   }
 
   private async loadComplianceFrameworks(): Promise<void> {
@@ -633,6 +634,17 @@ export class ComplianceService extends BaseService {
     const frameworkData = this.frameworks.get(framework);
     if (!frameworkData) {
       throw new Error(`Framework ${framework} not found`);
+    }
+
+    if (period) {
+      const startInvalid = Number.isNaN(period.start?.getTime?.());
+      const endInvalid = Number.isNaN(period.end?.getTime?.());
+      if (startInvalid || endInvalid) {
+        throw new Error('Invalid reporting period: start and end must be valid dates');
+      }
+      if (period.start > period.end) {
+        throw new Error('Invalid reporting period: start must be before end');
+      }
     }
 
     const reportPeriod = period || {

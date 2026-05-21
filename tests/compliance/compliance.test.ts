@@ -79,6 +79,7 @@ describe('Compliance Service', () => {
 
           // Validate test frequency values
           expect([
+            'continuous',
             'daily',
             'weekly',
             'monthly',
