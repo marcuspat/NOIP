@@ -8,6 +8,7 @@ import { config } from './config';
 import logger from './utils/logger';
 import { correlationMiddleware } from './middleware/correlation.middleware';
 import { buildGlobalLimiter, buildAuthLimiter } from './utils/rate-limiter';
+import { SessionCache, bindDefaultSessionCache } from './services/session-cache.service';
 import { DiscoveryService } from './services/discovery.service';
 import { SecurityService } from './services/security.service';
 import { AIService } from './services/ai.service';
@@ -437,6 +438,35 @@ async function initializeServices() {
 // Start server
 async function startServer() {
   try {
+    // Bootstrap Redis — optional; if unavailable we run without caching.
+    let redisClient: Redis | null = null;
+    try {
+      const { Redis: IORedis } = await import('ioredis');
+      const redisCfg = config.database.redis;
+      const rc = new IORedis({
+        host: redisCfg.host,
+        port: redisCfg.port,
+        password: redisCfg.password || undefined,
+        db: redisCfg.db,
+        keyPrefix: redisCfg.keyPrefix,
+        maxRetriesPerRequest: redisCfg.maxRetriesPerRequest,
+        lazyConnect: true,
+      });
+      await rc.connect();
+      redisClient = rc;
+      logger.info('Redis connected');
+    } catch (err) {
+      logger.warn('Redis unavailable — running without cache/rate-limit store', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // Bind the process-wide session cache before services start.
+    bindDefaultSessionCache(new SessionCache({ redis: redisClient }));
+
+    // Attach Redis-backed rate limiters (falls back to in-memory if null).
+    attachRateLimiters(redisClient);
+
     await initializeServices();
 
     app.listen(config.app.port, () => {

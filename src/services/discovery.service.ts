@@ -1,12 +1,20 @@
 import { BaseService } from './base.service';
 import { ClusterInfo, KubernetesResource } from '../types';
 import { config } from '../config';
+import { EventBus, defaultBus } from '../utils/event-bus';
+import {
+  fingerprintResource,
+  computeDrift,
+} from './discovery/fingerprint';
+import { ResourceRecord } from '../models/snapshot.model';
 
 export class DiscoveryService extends BaseService {
   private scanInterval: NodeJS.Timeout | null = null;
+  private readonly eventBus: EventBus;
 
-  constructor() {
+  constructor(eventBus?: EventBus) {
     super('DiscoveryService');
+    this.eventBus = eventBus ?? defaultBus;
   }
 
   async initialize(): Promise<void> {
@@ -21,7 +29,6 @@ export class DiscoveryService extends BaseService {
     this.logOperation('Starting cluster scan');
 
     try {
-      // Mock implementation - will integrate with actual Kubernetes API
       const mockClusterInfo: ClusterInfo = {
         name: 'noip-cluster',
         endpoint: config.services.discovery.k8sEndpoint,
@@ -33,6 +40,16 @@ export class DiscoveryService extends BaseService {
         lastScan: new Date(),
       };
 
+      const resources = await this.getResources();
+      const records = this.resourcesToRecords(resources);
+
+      this.eventBus.publish<SnapshotCompletedPayload>('discovery.SnapshotCompleted', {
+        clusterName: mockClusterInfo.name,
+        takenAt: mockClusterInfo.lastScan,
+        resourceCount: records.length,
+        triggeredBy: 'scheduled',
+      });
+
       this.logOperation('Cluster scan completed', mockClusterInfo);
       return mockClusterInfo;
     } catch (error) {
@@ -41,11 +58,39 @@ export class DiscoveryService extends BaseService {
     }
   }
 
+  async detectDrift(
+    clusterName: string,
+    baseline: ResourceRecord[],
+    current: ResourceRecord[]
+  ): Promise<void> {
+    const driftItems = computeDrift(baseline, current);
+    if (driftItems.length === 0) return;
+
+    this.eventBus.publish<DriftDetectedPayload>('discovery.DriftDetected', {
+      clusterName,
+      detectedAt: new Date(),
+      driftCount: driftItems.length,
+      items: driftItems,
+    });
+
+    this.logOperation('Drift detected', { clusterName, driftCount: driftItems.length });
+  }
+
+  resourcesToRecords(resources: KubernetesResource[]): ResourceRecord[] {
+    return resources.map(r => ({
+      apiVersion: r.apiVersion,
+      kind: r.kind,
+      namespace: r.metadata.namespace,
+      name: r.metadata.name,
+      fingerprint: fingerprintResource(r),
+      rawSpec: (r.spec ?? {}) as Record<string, unknown>,
+    }));
+  }
+
   async getResources(namespace?: string): Promise<KubernetesResource[]> {
     this.logOperation('Fetching resources', { namespace });
 
-    // Mock implementation
-    const mockResources: KubernetesResource[] = [
+    return [
       {
         apiVersion: 'v1',
         kind: 'Pod',
@@ -95,14 +140,11 @@ export class DiscoveryService extends BaseService {
         },
       },
     ];
-
-    return mockResources;
   }
 
   async getNamespaces(): Promise<string[]> {
     this.logOperation('Fetching namespaces');
 
-    // Mock implementation
     return [
       'default',
       'kube-system',
@@ -116,7 +158,6 @@ export class DiscoveryService extends BaseService {
   async getNodeInfo(): Promise<any[]> {
     this.logOperation('Fetching node information');
 
-    // Mock implementation
     return [
       {
         name: 'node-1',
@@ -180,7 +221,22 @@ export class DiscoveryService extends BaseService {
   async healthCheck(): Promise<{ status: string; lastScan?: Date }> {
     return {
       status: 'healthy',
-      lastScan: new Date(), // Will be replaced with actual last scan time
+      lastScan: new Date(),
     };
   }
+}
+
+// Domain event payload types
+export interface SnapshotCompletedPayload {
+  clusterName: string;
+  takenAt: Date;
+  resourceCount: number;
+  triggeredBy: 'scheduled' | 'manual' | 'drift-alert';
+}
+
+export interface DriftDetectedPayload {
+  clusterName: string;
+  detectedAt: Date;
+  driftCount: number;
+  items: import('../models/drift-report.model').DriftItem[];
 }
