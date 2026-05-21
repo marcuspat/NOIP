@@ -47,6 +47,7 @@ describe('AuthMiddleware', () => {
         mobile: false,
         trusted: false,
         lastSeen: new Date(),
+        fingerprint: 'test-fingerprint',
       },
       ipAddress: '127.0.0.1',
       userAgent: 'test-agent',
@@ -163,12 +164,19 @@ describe('AuthMiddleware', () => {
           mobile: false,
           trusted: false,
           lastSeen: new Date(),
+          fingerprint: 'test-fingerprint',
         },
         ipAddress: '127.0.0.1',
         userAgent: 'test-agent',
-        expiresAt: new Date(Date.now() - 1000), // Expired
+        expiresAt: new Date(Date.now() + 60 * 1000), // valid at creation
         isActive: true,
       });
+      // A pre-save hook forbids past expiry, so back-date via updateOne
+      // (which bypasses document save validation) to simulate expiry.
+      await SessionModel.updateOne(
+        { _id: expiredSession._id },
+        { $set: { expiresAt: new Date(Date.now() - 1000) } }
+      );
 
       const payload = {
         sub: testUser._id.toString(),
@@ -219,13 +227,34 @@ describe('AuthMiddleware', () => {
         status: UserStatus.INACTIVE,
       });
 
+      // The inactive user needs its own active session so the session check
+      // passes and the middleware reaches the user-status gate.
+      const inactiveSession = await SessionModel.create({
+        userId: inactiveUser._id,
+        sessionId: 'inactive-session-id',
+        deviceFingerprint: 'test-fingerprint',
+        deviceInfo: {
+          platform: 'test',
+          browser: 'test',
+          version: '1.0',
+          mobile: false,
+          trusted: false,
+          lastSeen: new Date(),
+          fingerprint: 'test-fingerprint',
+        },
+        ipAddress: '127.0.0.1',
+        userAgent: 'test-agent',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        isActive: true,
+      });
+
       const payload = {
         sub: inactiveUser._id.toString(),
         username: inactiveUser.username,
         email: inactiveUser.email,
         roles: ['user'],
         permissions: ['user:read:own'],
-        sessionId: testSession.sessionId,
+        sessionId: inactiveSession.sessionId,
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + 15 * 60,
         iss: 'NOIP Platform',

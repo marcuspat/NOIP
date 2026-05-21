@@ -43,6 +43,7 @@ export class AuthController {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         res.status(400).json({
+          success: false,
           error: 'Validation failed',
           details: errors.array(),
         });
@@ -80,6 +81,7 @@ export class AuthController {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         res.status(400).json({
+          success: false,
           error: 'Validation failed',
           details: errors.array(),
         });
@@ -162,7 +164,10 @@ export class AuthController {
         message: 'Logout successful',
       });
     } catch (error) {
-      logger.error('Logout failed', { error });
+      logger.error('Logout failed', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
 
       res.status(500).json({
         success: false,
@@ -266,6 +271,7 @@ export class AuthController {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         res.status(400).json({
+          success: false,
           error: 'Validation failed',
           details: errors.array(),
         });
@@ -307,6 +313,7 @@ export class AuthController {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         res.status(400).json({
+          success: false,
           error: 'Validation failed',
           details: errors.array(),
         });
@@ -363,6 +370,7 @@ export class AuthController {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         res.status(400).json({
+          success: false,
           error: 'Validation failed',
           details: errors.array(),
         });
@@ -392,6 +400,7 @@ export class AuthController {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         res.status(400).json({
+          success: false,
           error: 'Validation failed',
           details: errors.array(),
         });
@@ -425,6 +434,7 @@ export class AuthController {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         res.status(400).json({
+          success: false,
           error: 'Validation failed',
           details: errors.array(),
         });

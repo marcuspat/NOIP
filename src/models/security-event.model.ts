@@ -19,8 +19,8 @@ const SecurityEventSchema = new Schema(
       index: true,
     },
     sessionId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Session',
+      // Session identifiers are UUID strings (Session.sessionId), not ObjectIds.
+      type: String,
       index: true,
     },
     type: {

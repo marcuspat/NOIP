@@ -136,8 +136,11 @@ export class AuthMiddleware {
         return;
       }
 
-      // Update session activity
-      await session.updateLastActivity();
+      // Update session activity. On a Redis cache hit `session` is null
+      // (no Mongo doc was loaded), so guard the call.
+      if (session) {
+        await session.updateLastActivity();
+      }
 
       // Attach user and session to request
       req.user = user;

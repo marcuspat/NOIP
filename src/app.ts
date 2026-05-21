@@ -8,6 +8,7 @@ import { config } from './config';
 import logger from './utils/logger';
 import { correlationMiddleware } from './middleware/correlation.middleware';
 import { buildGlobalLimiter, buildAuthLimiter } from './utils/rate-limiter';
+import type { RateLimitRequestHandler } from 'express-rate-limit';
 import { SessionCache, bindDefaultSessionCache } from './services/session-cache.service';
 import { DiscoveryService } from './services/discovery.service';
 import { SecurityService } from './services/security.service';
@@ -43,29 +44,25 @@ app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Rate limiting — Redis-backed per ADR-0014. The Redis handle is plumbed
-// in by the bootstrap (src/index.ts) via `attachRateLimiters(app, redis)`;
-// during tests `redis` is null and limiters fall back to in-memory with a
-// loud warning.
-let activeRedisClient: Redis | null = null;
+// Rate limiting — Redis-backed per ADR-0014. express-rate-limit forbids
+// constructing a limiter inside a request handler, so the limiter instances
+// are built once here (in-memory by default) and mounted via delegating
+// wrappers. The bootstrap (startServer) calls `attachRateLimiters(redis)`
+// before listening to swap in Redis-backed instances for cross-replica
+// limits; tests never call it and keep the in-memory limiters.
+let globalLimiter: RateLimitRequestHandler = buildGlobalLimiter(null);
+let authLimiter: RateLimitRequestHandler = buildAuthLimiter(null);
+
 export function attachRateLimiters(redis: Redis | null): void {
-  activeRedisClient = redis;
-  app.use(buildGlobalLimiter(redis));
-  // The stricter /auth budget is mounted directly against /api/v1/auth so
-  // it sees auth-only traffic (login, refresh, MFA challenge).
-  app.use('/api/v1/auth', buildAuthLimiter(redis));
-  app.use('/api/auth', buildAuthLimiter(redis));
+  globalLimiter = buildGlobalLimiter(redis);
+  authLimiter = buildAuthLimiter(redis);
 }
 
-// If the host hasn't called attachRateLimiters() by the time the first
-// request lands (e.g. in unit tests), apply the in-memory fallback now.
-app.use((req, res, next) => {
-  if (activeRedisClient === null && !(app as unknown as { _limitersAttached?: boolean })._limitersAttached) {
-    (app as unknown as { _limitersAttached?: boolean })._limitersAttached = true;
-    attachRateLimiters(null);
-  }
-  next();
-});
+app.use((req, res, next) => globalLimiter(req, res, next));
+// The stricter auth budget guards the versioned auth API (login, refresh,
+// MFA). The bare /auth mount is left under the global budget only.
+const authPaths = ['/api/v1/auth', '/api/auth'];
+app.use(authPaths, (req, res, next) => authLimiter(req, res, next));
 
 // Logging
 if (config.app.environment !== 'test') {
