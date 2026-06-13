@@ -35,6 +35,7 @@ import { PasswordService } from '../utils/auth/password.service';
 import { DeviceFingerprintService } from '../utils/auth/device-fingerprint.service';
 import { EmailService } from '../utils/auth/email.service';
 import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'crypto';
 
 export class AuthService extends BaseService {
   private jwtManager: JWTManager;
@@ -52,9 +53,6 @@ export class AuthService extends BaseService {
     this.emailService = new EmailService();
   }
 
-  // Helper: run an operation with error handling and return the unwrapped value
-  // (throws on failure). Lets methods declare their natural return type while
-  // still leveraging BaseService.withErrorHandling for logging/wrapping.
   private async unwrapWithErrorHandling<T>(
     operation: () => Promise<T>,
     errorMessage: string
@@ -68,11 +66,8 @@ export class AuthService extends BaseService {
 
   async initialize(): Promise<void> {
     this.logOperation('Initializing authentication service');
-
     try {
-      // Create default roles and permissions if they don't exist
       await this.createDefaultRolesAndPermissions();
-
       this.logOperation('Authentication service initialized successfully');
     } catch (error) {
       this.logOperation('Failed to initialize authentication service', error);
@@ -88,95 +83,59 @@ export class AuthService extends BaseService {
         username: userData.username,
         email: userData.email,
       });
-
-      // Check if user already exists
       const existingUser = await UserModel.findOne({
         $or: [{ username: userData.username }, { email: userData.email }],
       });
-
       if (existingUser) {
         throw new Error('User with this username or email already exists');
       }
-
-      // Validate password strength
       if (!this.passwordService.validatePasswordStrength(userData.password)) {
         throw new Error('Password does not meet security requirements');
       }
-
-      // Get default user role
       const userRole = await RoleModel.findOne({ name: 'user' });
       if (!userRole) {
         throw new Error('Default user role not found');
       }
-
-      // Create verification token
       const verificationToken = uuidv4();
-
-      // Create new user
       const user = new UserModel({
         username: userData.username,
         email: userData.email,
-        passwordHash: userData.password, // Will be hashed by pre-save middleware
+        passwordHash: userData.password,
         firstName: userData.firstName,
         lastName: userData.lastName,
         roles: [userRole._id],
         emailVerificationToken: verificationToken,
       });
-
       await user.save();
-
-      // Send verification email
       try {
-        await this.emailService.sendVerificationEmail(
-          user.email,
-          verificationToken
-        );
+        await this.emailService.sendVerificationEmail(user.email, verificationToken);
       } catch (emailError) {
-        logger.error('Failed to send verification email', {
-          emailError,
-          userId: user._id,
-        });
+        logger.error('Failed to send verification email', { emailError, userId: user._id });
       }
-
-      // Create security event
       await SecurityEventModel.createEvent(
         SecurityEventType.PASSWORD_CHANGE,
         'User account created',
         'registration',
         'auth-service',
-        {
-          userId: String(user._id),
-          details: { username: user.username, email: user.email },
-        }
+        { userId: String(user._id), details: { username: user.username, email: user.email } }
       );
-
       const userProfile = this.getUserProfile(user);
-
       this.logOperation('User registered successfully', { userId: user._id });
-
-      return {
-        user: userProfile,
-        requiresVerification: !user.emailVerified,
-      };
+      return { user: userProfile, requiresVerification: !user.emailVerified };
     }, 'User registration failed');
   }
 
-  async login(loginRequest: LoginRequest): Promise<LoginResponse> {
+  async login(
+    loginRequest: LoginRequest,
+    requestContext?: { ipAddress?: string; userAgent?: string }
+  ): Promise<LoginResponse> {
     return this.unwrapWithErrorHandling(async () => {
-      this.logOperation('Starting user login', {
-        username: loginRequest.username,
-      });
-
-      // Find user with password
+      this.logOperation('Starting user login', { username: loginRequest.username });
       const user = await UserModel.findOne({
-        $or: [
-          { username: loginRequest.username },
-          { email: loginRequest.username },
-        ],
+        $or: [{ username: loginRequest.username }, { email: loginRequest.username }],
       })
         .select('+passwordHash +loginAttempts +lockedUntil')
         .populate('roles permissions');
-
       if (!user) {
         await this.createSecurityEvent(
           SecurityEventType.LOGIN_FAILURE,
@@ -186,8 +145,6 @@ export class AuthService extends BaseService {
         );
         throw new Error('Invalid credentials');
       }
-
-      // Check if user is locked
       if (user.isLocked()) {
         await this.createSecurityEvent(
           SecurityEventType.LOGIN_FAILURE,
@@ -197,8 +154,6 @@ export class AuthService extends BaseService {
         );
         throw new Error('Account is temporarily locked');
       }
-
-      // Check account status
       if (user.status !== UserStatus.ACTIVE) {
         await this.createSecurityEvent(
           SecurityEventType.LOGIN_FAILURE,
@@ -208,26 +163,18 @@ export class AuthService extends BaseService {
         );
         throw new Error(`Account is ${user.status}`);
       }
-
-      // Verify password
       const isPasswordValid = await user.comparePassword(loginRequest.password);
       if (!isPasswordValid) {
         await user.incrementLoginAttempts();
-
         await this.createSecurityEvent(
           SecurityEventType.LOGIN_FAILURE,
           'Login attempt with invalid password',
           loginRequest,
           { userId: user._id, loginAttempts: user.loginAttempts + 1 }
         );
-
         throw new Error('Invalid credentials');
       }
-
-      // Reset login attempts on successful login
       await user.resetLoginAttempts();
-
-      // Check if MFA is required
       if (user.mfaEnabled && !loginRequest.mfaCode) {
         return {
           user: this.getUserProfile(user),
@@ -236,13 +183,8 @@ export class AuthService extends BaseService {
           mfaMethods: await this.getMFAMethods(String(user._id)),
         };
       }
-
-      // Verify MFA if provided
       if (user.mfaEnabled && loginRequest.mfaCode) {
-        const mfaValid = await this.mfaService.verifyCode(
-          String(user._id),
-          loginRequest.mfaCode
-        );
+        const mfaValid = await this.mfaService.verifyCode(String(user._id), loginRequest.mfaCode);
         if (!mfaValid) {
           await this.createSecurityEvent(
             SecurityEventType.MFA_VERIFICATION_FAILURE,
@@ -253,84 +195,40 @@ export class AuthService extends BaseService {
           throw new Error('Invalid MFA code');
         }
       }
-
-      // Create session
       const sessionId = uuidv4();
-      const deviceFingerprint =
-        loginRequest.deviceFingerprint ||
-        this.deviceFingerprintService.generateFingerprint();
-
+      const deviceFingerprint = loginRequest.deviceFingerprint || this.deviceFingerprintService.generateFingerprint();
       const session = new SessionModel({
         userId: user._id,
         sessionId,
         deviceFingerprint,
-        deviceInfo:
-          this.deviceFingerprintService.extractDeviceInfo(loginRequest),
-        ipAddress: '127.0.0.1', // Should be extracted from request
-        userAgent: 'auth-service', // Should be extracted from request
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+        deviceInfo: this.deviceFingerprintService.extractDeviceInfo(loginRequest),
+        ipAddress: requestContext?.ipAddress ?? '127.0.0.1',
+        userAgent: requestContext?.userAgent ?? 'unknown',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         mfaVerified: user.mfaEnabled,
       });
-
       await session.save();
-
-      // Generate JWT tokens
       const tokens = await this.generateTokens(user, sessionId);
-
-      // Update user last login
       user.lastLogin = new Date();
       await user.save();
-
-      // Create security event
       await this.createSecurityEvent(
         SecurityEventType.LOGIN_SUCCESS,
         'User logged in successfully',
         loginRequest,
-        {
-          userId: user._id,
-          sessionId,
-          mfaVerified: user.mfaEnabled,
-        }
+        { userId: user._id, sessionId, mfaVerified: user.mfaEnabled }
       );
-
       const userProfile = this.getUserProfile(user);
-
-      this.logOperation('User logged in successfully', {
-        userId: user._id,
-        sessionId,
-      });
-
-      return {
-        user: userProfile,
-        tokens,
-        requiresMFA: false,
-      };
+      this.logOperation('User logged in successfully', { userId: user._id, sessionId });
+      return { user: userProfile, tokens, requiresMFA: false };
     }, 'Login failed');
   }
 
   async logout(userId: string, sessionId: string): Promise<void> {
     return this.unwrapWithErrorHandling(async () => {
       this.logOperation('Starting user logout', { userId, sessionId });
-
-      // Revoke session
-      const session = await SessionModel.findOne({
-        userId,
-        sessionId,
-        isActive: true,
-      });
-      if (session) {
-        await session.revoke();
-      }
-
-      // Create security event
-      await SecurityEventModel.createEvent(
-        SecurityEventType.LOGOUT,
-        'User logged out',
-        'logout',
-        'auth-service',
-        { userId, sessionId }
-      );
-
+      const session = await SessionModel.findOne({ userId, sessionId, isActive: true });
+      if (session) { await session.revoke(); }
+      await SecurityEventModel.createEvent(SecurityEventType.LOGOUT, 'User logged out', 'logout', 'auth-service', { userId, sessionId });
       this.logOperation('User logged out successfully', { userId, sessionId });
     }, 'Logout failed');
   }
@@ -338,333 +236,131 @@ export class AuthService extends BaseService {
   async refreshToken(refreshToken: string): Promise<AuthTokens> {
     return this.unwrapWithErrorHandling(async () => {
       this.logOperation('Refreshing token');
-
-      // Verify refresh token
-      const payload = await this.jwtManager.verifyToken(
-        refreshToken,
-        'refresh'
-      );
-      if (!payload) {
-        throw new Error('Invalid refresh token');
-      }
-
-      // Check if session exists and is active
+      const payload = await this.jwtManager.verifyToken(refreshToken, 'refresh');
+      if (!payload) { throw new Error('Invalid refresh token'); }
       const session = await SessionModel.findOne({
-        userId: payload.sub,
-        sessionId: payload.sessionId,
-        isActive: true,
-        expiresAt: { $gt: new Date() },
+        userId: payload.sub, sessionId: payload.sessionId, isActive: true, expiresAt: { $gt: new Date() },
       });
-
-      if (!session) {
-        throw new Error('Session not found or expired');
-      }
-
-      // Get user
-      const user = await UserModel.findById(payload.sub).populate(
-        'roles permissions'
-      );
-      if (!user || user.status !== UserStatus.ACTIVE) {
-        throw new Error('User not found or inactive');
-      }
-
-      // Generate new tokens
+      if (!session) { throw new Error('Session not found or expired'); }
+      const user = await UserModel.findById(payload.sub).populate('roles permissions');
+      if (!user || user.status !== UserStatus.ACTIVE) { throw new Error('User not found or inactive'); }
       const tokens = await this.generateTokens(user, payload.sessionId);
-
-      // Update session activity
       await session.updateLastActivity();
-
       this.logOperation('Token refreshed successfully', { userId: user._id });
-
       return tokens;
     }, 'Token refresh failed');
   }
 
-  async setupMFA(
-    userId: string,
-    setupRequest: MFASetupRequest
-  ): Promise<MFASetupResponse> {
+  async setupMFA(userId: string, setupRequest: MFASetupRequest): Promise<MFASetupResponse> {
     return this.unwrapWithErrorHandling(async () => {
-      this.logOperation('Setting up MFA', {
-        userId,
-        method: setupRequest.method,
-      });
-
+      this.logOperation('Setting up MFA', { userId, method: setupRequest.method });
       const user = await UserModel.findById(userId);
-      if (!user) {
-        throw new Error('User not found');
-      }
-
+      if (!user) { throw new Error('User not found'); }
       let response: MFASetupResponse;
-
       switch (setupRequest.method) {
-        case 'totp':
-          response = await this.mfaService.setupTOTP(userId);
-          break;
+        case 'totp': response = await this.mfaService.setupTOTP(userId); break;
         case 'sms':
-          if (!setupRequest.phoneNumber) {
-            throw new Error('Phone number required for SMS MFA');
-          }
-          response = await this.mfaService.setupSMS(
-            userId,
-            setupRequest.phoneNumber
-          );
-          break;
+          if (!setupRequest.phoneNumber) { throw new Error('Phone number required for SMS MFA'); }
+          response = await this.mfaService.setupSMS(userId, setupRequest.phoneNumber); break;
         case 'email':
-          if (!setupRequest.emailAddress) {
-            throw new Error('Email address required for email MFA');
-          }
-          response = await this.mfaService.setupEmail(
-            userId,
-            setupRequest.emailAddress
-          );
-          break;
-        default:
-          throw new Error('Unsupported MFA method');
+          if (!setupRequest.emailAddress) { throw new Error('Email address required for email MFA'); }
+          response = await this.mfaService.setupEmail(userId, setupRequest.emailAddress); break;
+        default: throw new Error('Unsupported MFA method');
       }
-
-      this.logOperation('MFA setup completed', {
-        userId,
-        method: setupRequest.method,
-      });
-
+      this.logOperation('MFA setup completed', { userId, method: setupRequest.method });
       return response;
     }, 'MFA setup failed');
   }
 
-  async verifyMFA(
-    userId: string,
-    verificationRequest: MFAVerificationRequest
-  ): Promise<boolean> {
+  async verifyMFA(userId: string, verificationRequest: MFAVerificationRequest): Promise<boolean> {
     return this.unwrapWithErrorHandling(async () => {
-      this.logOperation('Verifying MFA', {
-        userId,
-        method: verificationRequest.method,
-      });
-
-      const isValid = await this.mfaService.verifyCode(
-        userId,
-        verificationRequest.code,
-        verificationRequest.backupCode
-      );
-
+      this.logOperation('Verifying MFA', { userId, method: verificationRequest.method });
+      const isValid = await this.mfaService.verifyCode(userId, verificationRequest.code, verificationRequest.backupCode);
       if (isValid) {
-        await this.createSecurityEvent(
-          SecurityEventType.MFA_VERIFICATION_SUCCESS,
-          'MFA verification successful',
-          'mfa-verification',
-          'auth-service',
-          { userId, method: verificationRequest.method }
-        );
+        await this.createSecurityEvent(SecurityEventType.MFA_VERIFICATION_SUCCESS, 'MFA verification successful', 'mfa-verification', 'auth-service', { userId, method: verificationRequest.method });
       } else {
-        await this.createSecurityEvent(
-          SecurityEventType.MFA_VERIFICATION_FAILURE,
-          'MFA verification failed',
-          'mfa-verification',
-          'auth-service',
-          { userId, method: verificationRequest.method }
-        );
+        await this.createSecurityEvent(SecurityEventType.MFA_VERIFICATION_FAILURE, 'MFA verification failed', 'mfa-verification', 'auth-service', { userId, method: verificationRequest.method });
       }
-
       return isValid;
     }, 'MFA verification failed');
   }
 
-  async changePassword(
-    userId: string,
-    passwordRequest: PasswordChangeRequest
-  ): Promise<void> {
+  async changePassword(userId: string, passwordRequest: PasswordChangeRequest): Promise<void> {
     return this.unwrapWithErrorHandling(async () => {
       this.logOperation('Changing password', { userId });
-
       const user = await UserModel.findById(userId).select('+passwordHash');
-      if (!user) {
-        throw new Error('User not found');
-      }
-
-      // Verify current password
-      const isCurrentPasswordValid = await user.comparePassword(
-        passwordRequest.currentPassword
-      );
-      if (!isCurrentPasswordValid) {
-        throw new Error('Current password is incorrect');
-      }
-
-      // Validate new password strength
-      if (
-        !this.passwordService.validatePasswordStrength(
-          passwordRequest.newPassword
-        )
-      ) {
+      if (!user) { throw new Error('User not found'); }
+      const isCurrentPasswordValid = await user.comparePassword(passwordRequest.currentPassword);
+      if (!isCurrentPasswordValid) { throw new Error('Current password is incorrect'); }
+      if (!this.passwordService.validatePasswordStrength(passwordRequest.newPassword)) {
         throw new Error('New password does not meet security requirements');
       }
-
-      // Check if new password is different from current
-      const isSamePassword = await user.comparePassword(
-        passwordRequest.newPassword
-      );
-      if (isSamePassword) {
-        throw new Error('New password must be different from current password');
-      }
-
-      // Update password
+      const isSamePassword = await user.comparePassword(passwordRequest.newPassword);
+      if (isSamePassword) { throw new Error('New password must be different from current password'); }
       user.passwordHash = passwordRequest.newPassword;
       await user.save();
-
-      // Revoke all existing sessions except current
-      // Implementation depends on session tracking
-
-      // Create security event
-      await this.createSecurityEvent(
-        SecurityEventType.PASSWORD_CHANGE,
-        'User password changed',
-        'password-change',
-        'auth-service',
-        { userId }
-      );
-
+      await this.createSecurityEvent(SecurityEventType.PASSWORD_CHANGE, 'User password changed', 'password-change', 'auth-service', { userId });
       this.logOperation('Password changed successfully', { userId });
     }, 'Password change failed');
   }
 
-  async requestPasswordReset(
-    resetRequest: PasswordResetRequest
-  ): Promise<void> {
+  async requestPasswordReset(resetRequest: PasswordResetRequest): Promise<void> {
     return this.unwrapWithErrorHandling(async () => {
-      this.logOperation('Requesting password reset', {
-        email: resetRequest.email,
-      });
-
+      this.logOperation('Requesting password reset', { email: resetRequest.email });
       const user = await UserModel.findOne({ email: resetRequest.email });
-      if (!user) {
-        // Don't reveal that user doesn't exist
-        return;
-      }
-
-      // Generate reset token
+      if (!user) { return; }
       const resetToken = user.generatePasswordResetToken();
       await user.save();
-
-      // Send reset email
       try {
         await this.emailService.sendPasswordResetEmail(user.email, resetToken);
       } catch (emailError) {
-        logger.error('Failed to send password reset email', {
-          emailError,
-          userId: user._id,
-        });
+        logger.error('Failed to send password reset email', { emailError, userId: user._id });
       }
-
-      // Create security event
-      await this.createSecurityEvent(
-        SecurityEventType.PASSWORD_RESET,
-        'Password reset requested',
-        'password-reset',
-        'auth-service',
-        { userId: user._id }
-      );
-
+      await this.createSecurityEvent(SecurityEventType.PASSWORD_RESET, 'Password reset requested', 'password-reset', 'auth-service', { userId: user._id });
       this.logOperation('Password reset email sent', { userId: user._id });
     }, 'Password reset request failed');
   }
 
-  async confirmPasswordReset(
-    confirmRequest: PasswordResetConfirmRequest
-  ): Promise<void> {
+  async confirmPasswordReset(confirmRequest: PasswordResetConfirmRequest): Promise<void> {
     return this.unwrapWithErrorHandling(async () => {
       this.logOperation('Confirming password reset');
-
-      // Hash the provided token to compare with stored hash
-      const crypto = require('crypto');
-      const hashedToken = crypto
-        .createHash('sha256')
-        .update(confirmRequest.token)
-        .digest('hex');
-
+      const hashedToken = createHash('sha256').update(confirmRequest.token).digest('hex');
       const user = await UserModel.findOne({
         passwordResetToken: hashedToken,
         passwordResetExpires: { $gt: new Date() },
       }).select('+passwordResetToken +passwordResetExpires');
-
-      if (!user) {
-        throw new Error('Invalid or expired reset token');
-      }
-
-      // Validate new password strength
-      if (
-        !this.passwordService.validatePasswordStrength(
-          confirmRequest.newPassword
-        )
-      ) {
+      if (!user) { throw new Error('Invalid or expired reset token'); }
+      if (!this.passwordService.validatePasswordStrength(confirmRequest.newPassword)) {
         throw new Error('New password does not meet security requirements');
       }
-
-      // Update password
       user.passwordHash = confirmRequest.newPassword;
       user.passwordResetToken = undefined;
       user.passwordResetExpires = undefined;
       await user.save();
-
-      // Revoke all sessions
       await (SessionModel as any).revokeAllByUser(user._id);
-
-      // Create security event
-      await this.createSecurityEvent(
-        SecurityEventType.PASSWORD_RESET,
-        'Password reset completed',
-        'password-reset',
-        'auth-service',
-        { userId: user._id }
-      );
-
-      this.logOperation('Password reset completed successfully', {
-        userId: user._id,
-      });
+      await this.createSecurityEvent(SecurityEventType.PASSWORD_RESET, 'Password reset completed', 'password-reset', 'auth-service', { userId: user._id });
+      this.logOperation('Password reset completed successfully', { userId: user._id });
     }, 'Password reset confirmation failed');
   }
 
   async verifyEmail(token: string): Promise<void> {
     return this.unwrapWithErrorHandling(async () => {
       this.logOperation('Verifying email');
-
-      // Hash the provided token to compare with stored hash
-      const crypto = require('crypto');
-      const hashedToken = crypto
-        .createHash('sha256')
-        .update(token)
-        .digest('hex');
-
-      const user = await UserModel.findOne({
-        emailVerificationToken: hashedToken,
-      }).select('+emailVerificationToken');
-
-      if (!user) {
-        throw new Error('Invalid verification token');
-      }
-
-      // Verify email
+      const hashedToken = createHash('sha256').update(token).digest('hex');
+      const user = await UserModel.findOne({ emailVerificationToken: hashedToken }).select('+emailVerificationToken');
+      if (!user) { throw new Error('Invalid verification token'); }
       user.emailVerified = true;
       user.emailVerificationToken = undefined;
-
-      // Activate account if pending verification
-      if (user.status === UserStatus.PENDING_VERIFICATION) {
-        user.status = UserStatus.ACTIVE;
-      }
-
+      if (user.status === UserStatus.PENDING_VERIFICATION) { user.status = UserStatus.ACTIVE; }
       await user.save();
-
       this.logOperation('Email verified successfully', { userId: user._id });
     }, 'Email verification failed');
   }
 
   async getProfile(userId: string): Promise<UserProfile> {
     return this.unwrapWithErrorHandling(async () => {
-      const user =
-        await UserModel.findById(userId).populate('roles permissions');
-      if (!user) {
-        throw new Error('User not found');
-      }
-
+      const user = await UserModel.findById(userId).populate('roles permissions');
+      if (!user) { throw new Error('User not found'); }
       return this.getUserProfile(user);
     }, 'Failed to get user profile');
   }
@@ -673,50 +369,19 @@ export class AuthService extends BaseService {
     return this.unwrapWithErrorHandling(async () => {
       const now = new Date();
       const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-      const [
-        totalUsers,
-        activeUsers,
-        activeSessions,
-        loginStats,
-        mfaStats,
-        securityStats,
-        lockedAccounts,
-        passwordResets,
-      ] = await Promise.all([
+      const [totalUsers, activeUsers, activeSessions, loginStats, mfaStats, securityStats, lockedAccounts, passwordResets] = await Promise.all([
         UserModel.countDocuments(),
         UserModel.countDocuments({ status: UserStatus.ACTIVE }),
-        SessionModel.countDocuments({
-          isActive: true,
-          expiresAt: { $gt: now },
-        }),
-        SecurityEventModel.countDocuments({
-          type: {
-            $in: [
-              SecurityEventType.LOGIN_SUCCESS,
-              SecurityEventType.LOGIN_FAILURE,
-            ],
-          },
-          createdAt: { $gte: dayAgo },
-        }),
+        SessionModel.countDocuments({ isActive: true, expiresAt: { $gt: now } }),
+        SecurityEventModel.countDocuments({ type: { $in: [SecurityEventType.LOGIN_SUCCESS, SecurityEventType.LOGIN_FAILURE] }, createdAt: { $gte: dayAgo } }),
         UserModel.countDocuments({ mfaEnabled: true }),
         SecurityEventModel.countDocuments({ createdAt: { $gte: dayAgo } }),
         UserModel.countDocuments({ lockedUntil: { $gt: now } }),
-        SecurityEventModel.countDocuments({
-          type: SecurityEventType.PASSWORD_RESET,
-          createdAt: { $gte: dayAgo },
-        }),
+        SecurityEventModel.countDocuments({ type: SecurityEventType.PASSWORD_RESET, createdAt: { $gte: dayAgo } }),
       ]);
-
-      const successfulLogins = await SecurityEventModel.countDocuments({
-        type: SecurityEventType.LOGIN_SUCCESS,
-        createdAt: { $gte: dayAgo },
-      });
-
+      const successfulLogins = await SecurityEventModel.countDocuments({ type: SecurityEventType.LOGIN_SUCCESS, createdAt: { $gte: dayAgo } });
       return {
-        totalUsers,
-        activeUsers,
-        activeSessions,
+        totalUsers, activeUsers, activeSessions,
         loginAttempts24h: loginStats,
         successfulLogins24h: successfulLogins,
         failedLogins24h: loginStats - successfulLogins,
@@ -728,10 +393,7 @@ export class AuthService extends BaseService {
     }, 'Failed to get authentication metrics');
   }
 
-  private async generateTokens(
-    user: any,
-    sessionId: string
-  ): Promise<AuthTokens> {
+  private async generateTokens(user: any, sessionId: string): Promise<AuthTokens> {
     const payload: JWTPayload = {
       sub: user._id.toString(),
       username: user.username,
@@ -740,74 +402,37 @@ export class AuthService extends BaseService {
       permissions: this.extractPermissions(user),
       sessionId,
       iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 15 * 60, // 15 minutes
+      exp: Math.floor(Date.now() / 1000) + 15 * 60,
       iss: config.app.name,
       aud: 'noip-client',
       type: 'access',
     };
-
     const accessToken = await this.jwtManager.signToken(payload, 'access');
-    const refreshToken = await this.jwtManager.signToken(
-      {
-        ...payload,
-        type: 'refresh',
-        exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
-      },
-      'refresh'
-    ); // 7 days
-
-    return {
-      accessToken,
-      refreshToken,
-      expiresIn: 15 * 60, // 15 minutes
-      tokenType: 'Bearer',
-    };
+    const refreshToken = await this.jwtManager.signToken({ ...payload, type: 'refresh', exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60 }, 'refresh');
+    return { accessToken, refreshToken, expiresIn: 15 * 60, tokenType: 'Bearer' };
   }
 
   private getUserProfile(user: any): UserProfile {
     return {
-      id: user._id,
-      username: user.username,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      roles: user.roles,
-      permissions: user.permissions,
-      status: user.status,
-      mfaEnabled: user.mfaEnabled,
-      lastLogin: user.lastLogin,
-      emailVerified: user.emailVerified,
+      id: user._id, username: user.username, email: user.email,
+      firstName: user.firstName, lastName: user.lastName,
+      roles: user.roles, permissions: user.permissions,
+      status: user.status, mfaEnabled: user.mfaEnabled,
+      lastLogin: user.lastLogin, emailVerified: user.emailVerified,
       createdAt: user.createdAt,
     };
   }
 
   private extractPermissions(user: any): string[] {
     const permissions = new Set<string>();
-
-    // Add direct permissions
-    user.permissions?.forEach((permission: any) => {
-      permissions.add(permission.name);
-    });
-
-    // Add permissions from roles
-    user.roles?.forEach((role: any) => {
-      role.permissions?.forEach((permission: any) => {
-        permissions.add(permission.name);
-      });
-    });
-
+    user.permissions?.forEach((p: any) => permissions.add(p.name));
+    user.roles?.forEach((role: any) => role.permissions?.forEach((p: any) => permissions.add(p.name)));
     return Array.from(permissions);
   }
 
   private async getMFAMethods(userId: string): Promise<any[]> {
-    // Implementation would return available MFA methods for the user
     return [
-      {
-        type: 'totp',
-        name: 'Authenticator App',
-        enabled: false,
-        verified: false,
-      },
+      { type: 'totp', name: 'Authenticator App', enabled: false, verified: false },
       { type: 'sms', name: 'SMS', enabled: false, verified: false },
       { type: 'email', name: 'Email', enabled: false, verified: false },
     ];
@@ -820,31 +445,10 @@ export class AuthService extends BaseService {
     detailsOrUserAgent: Record<string, any> | string,
     extraDetails?: Record<string, any>
   ): Promise<void> {
-    // Support both 4-arg and 5-arg invocations:
-    //   (type, description, request, details)
-    //   (type, description, ipAddress, userAgent, details)
-    const ipAddress =
-      typeof requestOrIp === 'string' ? requestOrIp : '127.0.0.1';
-    const userAgent =
-      typeof detailsOrUserAgent === 'string'
-        ? detailsOrUserAgent
-        : 'auth-service';
-    const details =
-      extraDetails !== undefined
-        ? extraDetails
-        : typeof detailsOrUserAgent === 'object'
-          ? (detailsOrUserAgent as Record<string, any>)
-          : {};
-    await SecurityEventModel.createEvent(
-      type,
-      description,
-      ipAddress,
-      userAgent,
-      {
-        severity: this.getEventSeverity(type),
-        details,
-      }
-    );
+    const ipAddress = typeof requestOrIp === 'string' ? requestOrIp : '127.0.0.1';
+    const userAgent = typeof detailsOrUserAgent === 'string' ? detailsOrUserAgent : 'auth-service';
+    const details = extraDetails !== undefined ? extraDetails : typeof detailsOrUserAgent === 'object' ? (detailsOrUserAgent as Record<string, any>) : {};
+    await SecurityEventModel.createEvent(type, description, ipAddress, userAgent, { severity: this.getEventSeverity(type), details });
   }
 
   private getEventSeverity(type: SecurityEventType): SecurityEventSeverity {
@@ -870,125 +474,42 @@ export class AuthService extends BaseService {
 
   private async createDefaultRolesAndPermissions(): Promise<void> {
     this.logOperation('Creating default roles and permissions');
-
-    // Create default permissions
     const defaultPermissions = [
-      {
-        name: 'user:read:own',
-        resource: 'user',
-        action: 'read',
-        description: 'Read own user profile',
-      },
-      {
-        name: 'user:update:own',
-        resource: 'user',
-        action: 'update',
-        description: 'Update own user profile',
-      },
-      {
-        name: 'admin:users:read',
-        resource: 'admin',
-        action: 'read',
-        description: 'Read all users',
-      },
-      {
-        name: 'admin:users:update',
-        resource: 'admin',
-        action: 'update',
-        description: 'Update any user',
-      },
-      {
-        name: 'admin:users:delete',
-        resource: 'admin',
-        action: 'delete',
-        description: 'Delete any user',
-      },
-      {
-        name: 'admin:security:read',
-        resource: 'admin',
-        action: 'read',
-        description: 'Read security events',
-      },
-      {
-        name: 'admin:system:read',
-        resource: 'admin',
-        action: 'read',
-        description: 'Read system information',
-      },
+      { name: 'user:read:own', resource: 'user', action: 'read', description: 'Read own user profile' },
+      { name: 'user:update:own', resource: 'user', action: 'update', description: 'Update own user profile' },
+      { name: 'admin:users:read', resource: 'admin', action: 'read', description: 'Read all users' },
+      { name: 'admin:users:update', resource: 'admin', action: 'update', description: 'Update any user' },
+      { name: 'admin:users:delete', resource: 'admin', action: 'delete', description: 'Delete any user' },
+      { name: 'admin:security:read', resource: 'admin', action: 'read', description: 'Read security events' },
+      { name: 'admin:system:read', resource: 'admin', action: 'read', description: 'Read system information' },
     ];
-
     for (const permData of defaultPermissions) {
-      const existingPerm = await PermissionModel.findOne({
-        name: permData.name,
-      });
+      const existingPerm = await PermissionModel.findOne({ name: permData.name });
       if (!existingPerm) {
-        await (PermissionModel as any).createSystemPermission(
-          permData.name,
-          permData.resource,
-          permData.action,
-          permData.description
-        );
+        await (PermissionModel as any).createSystemPermission(permData.name, permData.resource, permData.action, permData.description);
       }
     }
-
-    // Create default roles
     const defaultRoles = [
-      {
-        name: 'user',
-        description: 'Default user role',
-        permissions: ['user:read:own', 'user:update:own'],
-      },
-      {
-        name: 'admin',
-        description: 'Administrator role',
-        permissions: [
-          'admin:users:read',
-          'admin:users:update',
-          'admin:users:delete',
-          'admin:security:read',
-          'admin:system:read',
-        ],
-      },
-      {
-        name: 'super_admin',
-        description: 'Super administrator role',
-        permissions: [], // Will have all permissions
-      },
+      { name: 'user', description: 'Default user role', permissions: ['user:read:own', 'user:update:own'] },
+      { name: 'admin', description: 'Administrator role', permissions: ['admin:users:read', 'admin:users:update', 'admin:users:delete', 'admin:security:read', 'admin:system:read'] },
+      { name: 'super_admin', description: 'Super administrator role', permissions: [] },
     ];
-
     for (const roleData of defaultRoles) {
       const existingRole = await RoleModel.findOne({ name: roleData.name });
       if (!existingRole) {
-        const permissions = await PermissionModel.find({
-          name: { $in: roleData.permissions },
-        });
-        await (RoleModel as any).createSystemRole(
-          roleData.name,
-          roleData.description,
-          permissions.map((p: any) => p._id)
-        );
+        const permissions = await PermissionModel.find({ name: { $in: roleData.permissions } });
+        await (RoleModel as any).createSystemRole(roleData.name, roleData.description, permissions.map((p: any) => p._id));
       }
     }
-
     this.logOperation('Default roles and permissions created');
   }
 
   async healthCheck(): Promise<{ status: string; details: any }> {
     try {
       const metrics = await this.getAuthenticationMetrics();
-      return {
-        status: 'healthy',
-        details: {
-          activeUsers: metrics.activeUsers,
-          activeSessions: metrics.activeSessions,
-          uptime: process.uptime(),
-        },
-      };
+      return { status: 'healthy', details: { activeUsers: metrics.activeUsers, activeSessions: metrics.activeSessions, uptime: process.uptime() } };
     } catch (error) {
-      return {
-        status: 'unhealthy',
-        details: { error: (error as Error).message },
-      };
+      return { status: 'unhealthy', details: { error: (error as Error).message } };
     }
   }
 }
