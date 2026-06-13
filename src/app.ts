@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import morgan from 'morgan';
+import { fileURLToPath } from 'url';
 import { config } from './config';
 import logger from './utils/logger';
 import { DiscoveryService } from './services/discovery.service';
@@ -411,22 +412,18 @@ async function startServer() {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('Received SIGTERM, shutting down gracefully');
-
   await Promise.all([discoveryService.stop(), securityService.stop()]);
-
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   logger.info('Received SIGINT, shutting down gracefully');
-
   await Promise.all([discoveryService.stop(), securityService.stop()]);
-
   process.exit(0);
 });
 
-// Start server if this file is run directly
-if (require.main === module) {
+// ESM-compatible entry point detection (replaces CJS require.main === module)
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   startServer();
 }
 
