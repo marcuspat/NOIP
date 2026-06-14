@@ -98,6 +98,7 @@
     "@types/passport-local": "^1.0.38",
     "@types/speakeasy": "^2.0.10",
     "@types/uuid": "^10.0.0",
+    "@kubernetes/client-node": "^0.22.0",
     "argon2": "^0.44.0",
     "compression": "^1.8.1",
     "express-rate-limit": "^8.1.0",
