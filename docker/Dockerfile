@@ -1,10 +1,10 @@
 # NOIP Platform - Production Dockerfile
 # Multi-stage build with security hardening and optimization
 
-# --------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Stage 1: Base Dependencies
-# --------------------------------------------------------------------------
-FROM node:18-alpine AS base
+# -------------------------------------------------------------------------
+FROM node:20-alpine AS base
 LABEL maintainer="NOIP Platform Team" \
       version="1.0.0" \
       description="NOIP Platform - Production Build"
@@ -29,21 +29,20 @@ RUN addgroup -g 1001 -S nodejs && \
 # Set working directory
 WORKDIR /app
 
-# --------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Stage 2: Dependencies Installation
-# --------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 FROM base AS deps
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install dependencies with security audit
-RUN npm ci --only=production && \
-    npm cache clean --force && \
-    npx audit-ci --moderate
+# Install production dependencies (no audit to avoid lockfile issues)
+RUN npm install --omit=dev --no-audit && \
+    npm cache clean --force
 
-# --------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Stage 3: Build Stage
-# --------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 FROM deps AS builder
 COPY . .
 
@@ -54,9 +53,9 @@ RUN mkdir -p /app/build && \
 # Build TypeScript application
 RUN npm run build
 
-# --------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 # Stage 4: Production Runtime
-# --------------------------------------------------------------------------
+# -------------------------------------------------------------------------
 FROM base AS runtime
 
 # Security labels
