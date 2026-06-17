@@ -178,10 +178,10 @@ export class ComplianceController {
               version: framework.version,
               overallScore: report.overallScore,
               status: report.status,
-              totalControls: report.summary.totalControls,
-              compliantControls: report.summary.compliantControls,
-              criticalRisks: report.summary.criticalRisks,
-              highRisks: report.summary.highRisks,
+              totalControls: report.summary?.totalControls ?? 0,
+              complianceControls: report.summary?.complianceControls ?? 0,
+              criticalRisks: report.summary?.criticalRisks ?? 0,
+              highRisks: report.summary?.highRisks ?? 0,
             };
           })
         ),
