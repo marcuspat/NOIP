@@ -119,9 +119,13 @@ export class DiscoveryService extends BaseService {
           this.coreV1Api.listServiceForAllNamespaces(),
         ]);
 
-      const nodes = nodesResp.items;
+      const nodes = (nodesResp as any).items as k8s.V1Node[];
       const serverVersion =
         nodes[0]?.status?.nodeInfo?.kubeletVersion ?? BASELINE_CLUSTER.version;
+
+      const nsItems = (namespacesResp as any).items as any[];
+      const podItems = (podsResp as any).items as any[];
+      const svcItems = (servicesResp as any).items as any[];
 
       const clusterInfo: ClusterInfo = {
         name:
@@ -133,12 +137,12 @@ export class DiscoveryService extends BaseService {
           config.services.discovery.k8sEndpoint,
         version: serverVersion,
         nodeCount: nodes.length > 0 ? nodes.length : BASELINE_CLUSTER.nodeCount,
-        namespaceCount: namespacesResp.items.length,
+        namespaceCount: nsItems.length,
         podCount:
-          podsResp.items.length > 0
-            ? podsResp.items.length
+          podItems.length > 0
+            ? podItems.length
             : BASELINE_CLUSTER.podCount,
-        serviceCount: servicesResp.items.length,
+        serviceCount: svcItems.length,
         lastScan: new Date(),
       };
 
@@ -170,11 +174,11 @@ export class DiscoveryService extends BaseService {
       ]);
 
       const resources: KubernetesResource[] = [
-        ...podsResp.items.map((r) => this.normalizeResource(r, 'Pod', 'v1')),
-        ...servicesResp.items.map((r) =>
+        ...(((podsResp as any).items) as any[]).map((r: any) => this.normalizeResource(r, 'Pod', 'v1')),
+        ...(((servicesResp as any).items) as any[]).map((r: any) =>
           this.normalizeResource(r, 'Service', 'v1')
         ),
-        ...deploymentsResp.items.map((r) =>
+        ...(((deploymentsResp as any).items) as any[]).map((r: any) =>
           this.normalizeResource(r, 'Deployment', 'apps/v1')
         ),
       ];
@@ -191,8 +195,8 @@ export class DiscoveryService extends BaseService {
     this.logOperation('Fetching namespaces');
     try {
       const resp = await this.coreV1Api.listNamespace();
-      const namespaces = resp.items
-        .map((ns) => ns.metadata?.name ?? '')
+      const namespaces = ((resp as any).items as any[])
+        .map((ns: any) => ns.metadata?.name ?? '')
         .filter(Boolean)
         .sort();
       this.logOperation('Fetched namespaces', { count: namespaces.length });
@@ -218,7 +222,7 @@ export class DiscoveryService extends BaseService {
     this.logOperation('Fetching node information');
     try {
       const resp = await this.coreV1Api.listNode();
-      const nodes = resp.items.map((node) => ({
+      const nodes = ((resp as any).items as k8s.V1Node[]).map((node) => ({
         name: node.metadata?.name,
         status:
           node.status?.conditions?.find((c) => c.type === 'Ready')?.status ===
