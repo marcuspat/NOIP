@@ -259,8 +259,6 @@ export class DiscoveryService extends BaseService {
         namespace: resource.metadata?.namespace,
         labels: resource.metadata?.labels ?? {},
         annotations: resource.metadata?.annotations ?? {},
-        creationTimestamp: resource.metadata?.creationTimestamp,
-        uid: resource.metadata?.uid,
       },
       spec: resource.spec,
       status: resource.status,
