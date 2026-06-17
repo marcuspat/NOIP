@@ -90,6 +90,8 @@
     "winston": "^3.18.3"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@kubernetes/client-node": "^0.22.3",
     "@types/argon2": "^0.14.1",
     "@types/mongoose": "^5.11.96",
     "@types/nodemailer": "^7.0.3",
@@ -98,7 +100,6 @@
     "@types/passport-local": "^1.0.38",
     "@types/speakeasy": "^2.0.10",
     "@types/uuid": "^10.0.0",
-    "@kubernetes/client-node": "^0.22.0",
     "argon2": "^0.44.0",
     "compression": "^1.8.1",
     "express-rate-limit": "^8.1.0",
