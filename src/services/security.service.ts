@@ -120,7 +120,7 @@ export class SecurityService extends BaseService {
     try {
       const podsResp = await this.coreV1Api.listPodForAllNamespaces();
 
-      for (const pod of podsResp.items) {
+      for (const pod of (podsResp as any).items) {
         const ns = pod.metadata?.namespace ?? 'default';
         const name = pod.metadata?.name ?? 'unknown';
         const allContainers = [
@@ -234,10 +234,10 @@ export class SecurityService extends BaseService {
       ]);
 
       const coveredNamespaces = new Set(
-        netpolResp.items.map(p => p.metadata?.namespace).filter(Boolean)
+        (netpolResp as any).items.map((p: any) => p.metadata?.namespace).filter(Boolean)
       );
 
-      for (const ns of namespacesResp.items) {
+      for (const ns of (namespacesResp as any).items) {
         const nsName = ns.metadata?.name ?? '';
         if (systemNamespaces.has(nsName)) continue;
 
@@ -252,8 +252,8 @@ export class SecurityService extends BaseService {
         }
       }
 
-      for (const policy of netpolResp.items) {
-        if (policy.spec?.egress?.some(e => !e.to || e.to.length === 0)) {
+      for (const policy of (netpolResp as any).items) {
+        if (policy.spec?.egress?.some((e: any) => !e.to || e.to.length === 0)) {
           findings.push({
             severity: 'medium', category: 'Network Security',
             resource: `${policy.metadata?.namespace ?? 'unknown'}/${policy.metadata?.name ?? 'unknown'}`,
@@ -282,7 +282,7 @@ export class SecurityService extends BaseService {
       const secretsResp = await this.coreV1Api.listSecretForAllNamespaces();
       const systemNamespaces = new Set(['kube-system', 'kube-public', 'kube-node-lease']);
 
-      for (const secret of secretsResp.items) {
+      for (const secret of (secretsResp as any).items) {
         const ns = secret.metadata?.namespace ?? 'default';
         const name = secret.metadata?.name ?? 'unknown';
         if (systemNamespaces.has(ns)) continue;
@@ -331,7 +331,7 @@ export class SecurityService extends BaseService {
         this.rbacApi.listRoleBindingForAllNamespaces(),
       ]);
 
-      for (const binding of clusterRoleBindings.items) {
+      for (const binding of (clusterRoleBindings as any).items) {
         if (binding.roleRef.name !== 'cluster-admin') continue;
         for (const subject of binding.subjects ?? []) {
           if (subject.kind === 'Group' &&
@@ -357,7 +357,7 @@ export class SecurityService extends BaseService {
       }
 
       const systemNamespaces = new Set(['kube-system', 'kube-public', 'kube-node-lease']);
-      for (const binding of roleBindings.items) {
+      for (const binding of (roleBindings as any).items) {
         const ns = binding.metadata?.namespace ?? '';
         if (systemNamespaces.has(ns)) continue;
         for (const subject of binding.subjects ?? []) {
