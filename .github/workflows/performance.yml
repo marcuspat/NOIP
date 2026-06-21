@@ -1,9 +1,7 @@
 name: Performance Testing & Monitoring
 
+# Workflow disabled: automatic triggers removed, manual dispatch only.
 on:
-  schedule:
-    # Run performance tests weekly on Sundays at 3 AM UTC
-    - cron: '0 3 * * 0'
   workflow_dispatch:
     inputs:
       environment:
@@ -24,12 +22,6 @@ on:
         - stress
         - spike
         - endurance
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'src/**'
-      - 'Dockerfile'
-      - 'package*.json'
 
 env:
   NODE_ENV: test

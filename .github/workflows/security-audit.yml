@@ -1,9 +1,8 @@
 # .github/workflows/security-audit.yml
 name: Security Audit & Compliance
 
+# Workflow disabled: automatic triggers removed, manual dispatch only.
 on:
-  schedule:
-    - cron: '0 2 * * *'  # Daily at 2 AM UTC
   workflow_dispatch:
     inputs:
       scan_type:

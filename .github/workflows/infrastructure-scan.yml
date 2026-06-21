@@ -1,9 +1,8 @@
 # .github/workflows/infrastructure-scan.yml
 name: Infrastructure Discovery & Analysis
 
+# Workflow disabled: automatic triggers removed, manual dispatch only.
 on:
-  schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
   workflow_dispatch:
     inputs:
       target:

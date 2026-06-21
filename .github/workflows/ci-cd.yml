@@ -1,13 +1,8 @@
 name: NOIP Platform CI/CD Pipeline
 
+# Workflow disabled: automatic triggers removed, manual dispatch only.
 on:
-  push:
-    branches: [main, develop]
-    tags: ['v*']
-  pull_request:
-    branches: [main]
-  release:
-    types: [published]
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io

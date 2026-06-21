@@ -1,16 +1,8 @@
 name: Security Scanning & Compliance
 
+# Workflow disabled: automatic triggers removed, manual dispatch only.
 on:
-  schedule:
-    # Run security scans daily at 2 AM UTC
-    - cron: '0 2 * * *'
   workflow_dispatch:
-  push:
-    branches: [ main ]
-    paths:
-      - 'src/**'
-      - 'package*.json'
-      - 'Dockerfile'
 
 env:
   SCAN_TIMEOUT: 300

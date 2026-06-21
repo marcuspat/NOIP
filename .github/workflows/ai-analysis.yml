@@ -1,12 +1,8 @@
 # .github/workflows/ai-analysis.yml
 name: AI Infrastructure Analysis & Insights
 
+# Workflow disabled: automatic triggers removed, manual dispatch only.
 on:
-  workflow_run:
-    workflows: ["Infrastructure Discovery & Analysis", "Security Audit & Compliance"]
-    types:
-      - completed
-    branches: [main, develop]
   workflow_dispatch:
     inputs:
       analysis_type:
