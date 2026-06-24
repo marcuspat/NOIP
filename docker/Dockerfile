@@ -52,12 +52,12 @@ npm cache clean --force
 
 COPY . .
 
-# Create non-root build directory
-RUN mkdir -p /app/build && \
+# Create output directory
+RUN mkdir -p /app/dist && \
 chown -R nodejs:nodejs /app
 
-# Build TypeScript application
-RUN npm run build
+# Compile TypeScript to JavaScript (override noEmit:true from tsconfig)
+RUN node_modules/.bin/tsc --noEmit false --outDir ./dist
 
 # -------------------------------------------------------------------------
 # Stage 4: Production Runtime
